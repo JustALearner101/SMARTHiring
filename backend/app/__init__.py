@@ -1,0 +1,1 @@
+"""Heketon FastAPI Backend Application."""
