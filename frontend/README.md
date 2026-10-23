@@ -1,228 +1,139 @@
-# TailAdmin Next.js - Free Next.js Tailwind Admin Dashboard Template
+# Heketon Frontend
 
-TailAdmin is a free and open-source admin dashboard template built on **Next.js and Tailwind CSS** providing developers with everything they need to create a feature-rich and data-driven: back-end, dashboard, or admin panel solution for any sort of web project.
+Next.js 16 App Router frontend for **Heketon** (HR & Office Ops AI Orchestrator), built for the Tencent Cloud Hackathon Indonesia 2026. The interface is developed using a customized TailAdmin Pro architecture, providing an accessible dashboard for HR operators to manage candidate interview escalations, review AI triage recommendations, approve outbound WhatsApp/Email communications with a 60-second undo window, and audit immutable system logs.
 
-![TailAdmin - Next.js Dashboard Preview](./banner.png)
+---
 
-With TailAdmin Next.js, you get access to all the necessary dashboard UI components, elements, and pages required to build a high-quality and complete dashboard or admin panel. Whether you're building a dashboard or admin panel for a complex web application or a simple website.
+## Architecture & Directory Structure
 
-TailAdmin utilizes the powerful features of **Next.js 16** and common features of Next.js such as server-side rendering (SSR), static site generation (SSG), and seamless API route integration. Combined with the advancements of **React 19** and the robustness of **TypeScript**, TailAdmin is the perfect solution to help get your project up and running quickly.
+The frontend is built on **Next.js 16 (App Router)** and **React 19** with strict localization boundaries:
 
-## Overview
-
-TailAdmin provides essential UI components and layouts for building feature-rich, data-driven admin dashboards and control panels. It's built on:
-
-- Next.js 16.x
-- React 19
-- TypeScript
-- Tailwind CSS V4
-
-### Quick Links
-
-- [✨ Visit Website](https://tailadmin.com)
-- [📄 Documentation](https://tailadmin.com/docs)
-- [⬇️ Download](https://tailadmin.com/download)
-- [🖌️ Figma Design File (Community Edition)](https://www.figma.com/community/file/1463141366275764364)
-- [⚡ Get PRO Version](https://tailadmin.com/pricing)
-
-### Demos
-
-- [Free Version](https://nextjs-free-demo.tailadmin.com)
-- [Pro Version](https://nextjs-demo.tailadmin.com)
-
-### Other Versions
-
-- [Next.js Version](https://github.com/TailAdmin/free-nextjs-admin-dashboard)
-- [React.js Version](https://github.com/TailAdmin/free-react-tailwind-admin-dashboard)
-- [Vue.js Version](https://github.com/TailAdmin/vue-tailwind-admin-dashboard)
-- [Angular Version](https://github.com/TailAdmin/free-angular-tailwind-dashboard)
-- [Laravel Version](https://github.com/TailAdmin/tailadmin-laravel)
-
-## Installation
-
-### Prerequisites
-
-To get started with TailAdmin, ensure you have the following prerequisites installed and set up:
-
-- Node.js 20.x or later
-
-### Cloning the Repository
-
-Clone the repository using the following command:
-
-```bash
-git clone https://github.com/TailAdmin/free-nextjs-admin-dashboard.git
+```
+frontend/
+├── public/                 # Static assets (images, logos, favicons)
+├── src/
+│   ├── app/
+│   │   ├── [locale]/       # Localized application shell (via next-intl)
+│   │   │   ├── (admin)/    # Authenticated dashboard layouts (with Sidebar & Header)
+│   │   │   └── (full-width-pages)/ # Unauthenticated / standalone views (Auth, Error)
+│   │   └── globals.css     # Tailwind v4 configuration, theme tokens & custom styles
+│   ├── components/         # Reusable UI components (Buttons, Modals, Tables, Forms)
+│   ├── context/            # Global React Contexts (ThemeContext, SidebarContext)
+│   ├── hooks/              # Custom React hooks (useModal, useTheme)
+│   ├── i18n/               # next-intl routing, navigation wrappers & config
+│   ├── icons/              # SVG icons compiled into React components via SVGR
+│   ├── layout/             # Layout wrappers (Sidebar, AppHeader, Backdrop)
+│   ├── lib/                # Shared utilities & API client (apiFetch, ApiError)
+│   ├── messages/           # Localization dictionaries (en.json)
+│   ├── proxy.ts            # Next.js 16 middleware (internationalization router)
+│   └── services/           # Typed API service functions calling backend endpoints
+├── package.json            # Dependencies & scripts
+└── tsconfig.json           # TypeScript configuration
 ```
 
-> Windows Users: place the repository near the root of your drive if you face issues while cloning.
+> [!IMPORTANT]
+> All pages must reside inside `src/app/[locale]/`. Never create pages directly at `src/app/`. Navigation must be imported from `@/i18n/navigation`, not `next/navigation`.
 
-1. Install dependencies:
+---
 
-   ```bash
-   npm install
-   # or
-   yarn install
-   ```
+## Tech Stack & Component Responsibilities
 
-   > Use `--legacy-peer-deps` flag if you face peer-dependency error during installation.
+The frontend combines modern React 19 capabilities, low-runtime CSS with Tailwind v4, rich data visualization, interactive scheduling widgets, and direct AI streaming.
 
-2. Start the development server:
+### 1. Core Framework & Language
 
-   ```bash
-   npm run dev
-   # or
-   yarn dev
-   ```
+| Technology | Version | Purpose & Functionality in Heketon |
+| :--- | :--- | :--- |
+| **Next.js 16 (App Router)** | `^16.3.4` | Modern React web framework with React Server Components (RSC), Client Components (`"use client"`), Turbopack dev engine, and localized routing. |
+| **React 19** | `^19.2.8` | Core UI library utilizing modern concurrent rendering, Action hooks, and optimistic UI updates for smooth user interactions. |
+| **TypeScript** | `^5.9.3` | Type-safe development with strict type inference across component props, DTOs, and API responses. |
 
-## Components
+### 2. Styling, Design System & Theming
 
-TailAdmin is a pre-designed starting point for building a web-based dashboard using Next.js and Tailwind CSS. The template includes:
+| Technology | Version | Purpose & Functionality in Heketon |
+| :--- | :--- | :--- |
+| **Tailwind CSS v4** | `^4.1.17` | Zero-configuration utility CSS framework. Uses CSS-native `@theme` declarations inside `src/app/globals.css` rather than legacy `tailwind.config.js`. |
+| **CSS Logical Properties** | *Native* | Direction-agnostic styling (`ms-*`, `pe-*`, `start-*`, `text-start`) guaranteeing full compatibility for both LTR and RTL layouts. |
+| **clsx & tailwind-merge** | `^2.1.1` / `^2.6.0` | Helper utilities for safely joining conditional class names and eliminating conflicting Tailwind utility classes. |
 
-- Sophisticated and accessible sidebar
-- Data visualization components
-- Profile management and custom 404 page
-- Tables and Charts(Line and Bar)
-- Authentication forms and input elements
-- Alerts, Dropdowns, Modals, Buttons and more
-- Can't forget Dark Mode 🕶️
+### 3. Internationalization (i18n)
 
-All components are built with React and styled using Tailwind CSS for easy customization.
+| Technology | Version | Purpose & Functionality in Heketon |
+| :--- | :--- | :--- |
+| **next-intl** | `^4.14.2` | Enterprise internationalization framework managing localized path routing (`src/i18n/routing.ts`), typed translation lookups (`src/messages/`), and localized navigation helpers (`Link`, `useRouter`, `usePathname`). |
+| **proxy.ts** | *Custom* | Next.js 16 middleware file handling locale redirection and path matching. |
 
-## Feature Comparison
+### 4. Interactive Scheduling & Rich Data Visualization
 
-### Free Version
+| Technology | Version | Purpose & Functionality in Heketon |
+| :--- | :--- | :--- |
+| **FullCalendar (`@fullcalendar/react`)** | `^7.1.0` | Calendar scheduling component. Visualizes Interviewer availability, candidate time slots across WIB/WITA/WIT, and automatic blackout periods (such as Friday Prayer 11:30–13:00). Dynamically imported (`ssr: false`). |
+| **ApexCharts (`react-apexcharts`)** | `^2.1.1` | Analytics charts displaying recruitment KPIs, negotiation round distributions, triage success rates, and response latencies. Dynamically imported (`ssr: false`). |
+| **Flatpickr** | `^4.6.13` | Lightweight date-time picker for precise manual slot overrides and operational rule setting. |
+| **Swiper** | `^14.2.0` | Touch-enabled carousel component used for guided onboarding walkthroughs and multi-step action plan confirmation cards. |
+| **SimpleBar React** | `^3.3.2` | Performance-optimized cross-browser scrollbar for dense data tables and chat logs. |
+| **@react-jvectormap** | `^1.0.4` | Interactive SVG vector maps displaying candidate geographical distributions across Indonesian provinces and timezones. |
 
-- 1 Unique Dashboard
-- 30+ dashboard components
-- 50+ UI elements
-- Basic Figma design files
-- Community support
+### 5. Drag-and-Drop & Document Handling
 
-### Pro Version
+| Technology | Version | Purpose & Functionality in Heketon |
+| :--- | :--- | :--- |
+| **react-dnd & HTML5 Backend** | `^16.0.1` | Flexible drag-and-drop primitives powering the interactive candidate pipeline Kanban board (Application → Screening → Escalated → Scheduled). |
+| **react-dropzone** | `^20.1.1` | Drag-and-drop file upload zone for CVs, job description documents, and company operational rule policies. |
 
-- 7 Unique Dashboards: Ecommerce, Analytics, Marketing, CRM, Stocks, SaaS, Logistics, AI, Sales, Finance (more coming soon)
-- 500+ dashboard components and UI elements
-- Complete Figma design file
-- Email support
+### 6. Client-Side AI & Streaming
 
-To learn more about pro version features and pricing, visit our [pricing page](https://tailadmin.com/pricing).
+| Technology | Version | Purpose & Functionality in Heketon |
+| :--- | :--- | :--- |
+| **Vercel AI SDK (`ai`, `@ai-sdk/react`)** | `^7.0.148` / `^4.0.152` | Reactive hooks (`useChat`, `useCompletion`) and UI state utilities for streaming AI responses directly to the browser. |
+| **AI Provider Adapters** | `@ai-sdk/google`, `@ai-sdk/openai`, `@ai-sdk/anthropic` | Client/server adapters for direct LLM connection when bypassing backend orchestration for simple client prompts. |
 
-## Changelog
+### 7. Icons & Assets
 
-### Version 2.4.0 - [September 13, 2026]
+| Technology | Version | Purpose & Functionality in Heketon |
+| :--- | :--- | :--- |
+| **@svgr/webpack** | `^8.1.0` | Webpack loader that transforms raw SVG vector files into first-class, theme-aware React components inside `@/icons`. |
 
-- Added Internationalization (Multi Language) support.
-- Updated complete template styles to support RTL.
-- Added Yearly View into calendar page.
-- Updated `maplibre-gl` implementation with `react-map-gl`.
-- Added new requested components and fixed noted accessibility issues.
-- Updated project structure and component compositions for easy adaption.
-- Added AGENTS.md to easily work with AI Agents.
-- Updated all the packages and libraries to the latest versions. Also removed unused packages.
+### 8. API Communication & State Management
 
-### Version 2.3.1 - [May 23, 2026]
+| Technology | Version | Purpose & Functionality in Heketon |
+| :--- | :--- | :--- |
+| **apiFetch (`src/lib/api.ts`)** | *Internal* | Custom HTTP client wrapping the Fetch API. Automatically attaches `NEXT_PUBLIC_API_URL`, parses JSON payloads, handles bearer tokens, and unwraps FastAPI `ApiResponse[T]` responses. |
+| **React Context** | *Native* | Lightweight state management for application-wide concerns (`ThemeContext` for Dark Mode toggle, `SidebarContext` for collapsible drawer state). |
 
-- Added AI Settings page to configure models, keys, and token limits.
-- Added Maps page with MapLibre GL, Leaflet, and iframe styles.
-- Added Vector Maps page powered by AmCharts 5 geodata (World & USA).
-- Added Radar Charts page with 3 unique formats.
-- Added Radial Progress Charts page featuring 4 custom layout templates.
-- Introduced new Bar Charts Five & Six and Pie Charts Four & Five.
+---
 
-### Version 2.3.0 - [April 28, 2026]
+## Shared Environment
 
-- **New Feature**: Added **AI Dashboard** with token usage and revenue tracking.
-- **New Feature**: Added **Sales Dashboard** with retention and multi-channel analytics.
-- **New Feature**: Added **Finance Dashboard** with cashflow and balance management.
-- **New Feature**: Introduced **6 New Layout variations** for improved UI flexibility.
-- **Enhancement**: Integrated **Advanced Data Visualization** with 7+ new chart types.
+The frontend reads configuration from the **root monorepo `.env`** loaded in `next.config.ts`:
 
-### Version 2.2.3 - [March 15, 2026]
+```ini
+# Exposed to the browser (prefixed with NEXT_PUBLIC_)
+NEXT_PUBLIC_APP_NAME="Heketon"
+NEXT_PUBLIC_API_URL="http://localhost:8000/api/v1"
+NEXT_PUBLIC_SUPABASE_URL=""
+NEXT_PUBLIC_SUPABASE_ANON_KEY=""
+```
 
-- update ESLint configuration and dependencies; upgrade Next.js to version 16.1.6
+> [!CAUTION]
+> Never prefix private credentials (database passwords, private API keys) with `NEXT_PUBLIC_`, as those will be bundled into client-side JavaScript.
 
-### Version 2.2.2 - [December 30, 2025]
+---
 
-- Fixed date picker positioning and functionality in Statistics Chart.
+## Developer Commands
 
-### Version 2.1.0 - [November 15, 2025]
+Run from the `frontend/` directory:
 
-- Updated to Next.js 16.x
-- Fixed all reported minor bugs
+```bash
+# Install dependencies
+pnpm install
 
-### Version 2.0.2 - [March 25, 2025]
+# Start Turbopack development server on http://localhost:3000
+pnpm dev
 
-- Upgraded to Next.js 16.x for [CVE-2025-29927](https://nextjs.org/blog/cve-2025-29927) concerns
-- Included overrides vectormap for packages to prevent peer dependency errors during installation.
-- Migrated from react-flatpickr to flatpickr package for React 19 support
+# Build production bundle
+pnpm build
 
-### Version 2.0.1 - [February 27, 2025]
-
-#### Update Overview
-
-- Upgraded to Tailwind CSS v4 for better performance and efficiency.
-- Updated class usage to match the latest syntax and features.
-- Replaced deprecated class and optimized styles.
-
-#### Next Steps
-
-- Run npm install or yarn install to update dependencies.
-- Check for any style changes or compatibility issues.
-- Refer to the Tailwind CSS v4 [Migration Guide](https://tailwindcss.com/docs/upgrade-guide) on this release. if needed.
-- This update keeps the project up to date with the latest Tailwind improvements. 🚀
-
-### v2.0.0 (February 2025)
-
-A major update focused on Next.js 16 implementation and comprehensive redesign.
-
-#### Major Improvements
-
-- Complete redesign using Next.js 16 App Router and React Server Components
-- Enhanced user interface with Next.js-optimized components
-- Improved responsiveness and accessibility
-- New features including collapsible sidebar, chat screens, and calendar
-- Redesigned authentication using Next.js App Router and server actions
-- Updated data visualization using ApexCharts for React
-
-#### Breaking Changes
-
-- Migrated from Next.js 14 to Next.js 16
-- Chart components now use ApexCharts for React
-- Authentication flow updated to use Server Actions and middleware
-
-[Read more](https://tailadmin.com/docs/update-logs/nextjs) on this release.
-
-### v1.3.4 (July 01, 2024)
-
-- Fixed JSvectormap rendering issues
-
-### v1.3.3 (June 20, 2024)
-
-- Fixed build error related to Loader component
-
-### v1.3.2 (June 19, 2024)
-
-- Added ClickOutside component for dropdown menus
-- Refactored sidebar components
-- Updated Jsvectormap package
-
-### v1.3.1 (Feb 12, 2024)
-
-- Fixed layout naming consistency
-- Updated styles
-
-### v1.3.0 (Feb 05, 2024)
-
-- Upgraded to Next.js 14
-- Added Flatpickr integration
-- Improved form elements
-- Enhanced multiselect functionality
-- Added default layout component
-
-## License
-
-TailAdmin Next.js Free Version is released under the MIT License.
-
-## Support
-
-If you find this project helpful, please consider giving it a star on GitHub. Your support helps us continue developing and maintaining this template.
+# Run linter
+pnpm lint
+```

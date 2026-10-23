@@ -54,6 +54,15 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     OLLAMA_BASE_URL: str = "http://localhost:11434"
 
+    # LangSmith / Observability
+    LANGSMITH_TRACING: bool = False
+    LANGSMITH_API_KEY: str = ""
+    LANGSMITH_PROJECT: str = "heketon-agent"
+    LANGSMITH_ENDPOINT: str = "https://api.smith.langchain.com"
+
+    # Experimental Feature Flags
+    ENABLE_EXPERIMENTAL_ADK_AGENT: bool = False
+
 
 @lru_cache
 def get_settings() -> Settings:
