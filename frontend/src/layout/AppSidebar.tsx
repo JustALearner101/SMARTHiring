@@ -319,9 +319,9 @@ const AppSidebar: React.FC = () => {
         }`}
       >
         <Link href="/" className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-500 text-white font-bold text-lg shadow-theme-xs">
-            <BoltIcon className="w-5 h-5 text-white" />
-          </div>
+          {/* <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-500 text-white font-bold text-lg shadow-theme-xs">
+            <BoltIcon className="w-6.5 h-6.5 text-white" />
+          </div> */}
           {(isExpanded || isHovered || isMobileOpen) && (
             <div className="flex flex-col">
               <span className="text-base font-bold text-gray-900 dark:text-white leading-tight">

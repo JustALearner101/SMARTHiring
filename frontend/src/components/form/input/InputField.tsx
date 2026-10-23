@@ -6,6 +6,7 @@ export interface InputFieldProps extends Omit<InputHTMLAttributes<HTMLInputEleme
   success?: boolean;
   startIcon?: ReactNode;
   endIcon?: ReactNode;
+  hint?: string;
 }
 
 const InputField = forwardRef<HTMLInputElement, InputFieldProps>(
@@ -17,6 +18,7 @@ const InputField = forwardRef<HTMLInputElement, InputFieldProps>(
       success = false,
       startIcon,
       endIcon,
+      hint,
       ...props
     },
     ref
@@ -52,6 +54,20 @@ const InputField = forwardRef<HTMLInputElement, InputFieldProps>(
           <span className="pointer-events-none absolute inset-y-0 end-0 flex items-center pe-3.5 text-gray-400">
             {endIcon}
           </span>
+        )}
+
+        {hint && (
+          <p
+            className={`mt-1.5 text-xs ${
+              error
+                ? "text-error-500"
+                : success
+                ? "text-success-500"
+                : "text-gray-500 dark:text-gray-400"
+            }`}
+          >
+            {hint}
+          </p>
         )}
       </div>
     );
