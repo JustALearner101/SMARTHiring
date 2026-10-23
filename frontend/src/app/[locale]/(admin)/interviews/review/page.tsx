@@ -21,7 +21,7 @@ export default function ReviewEvidencePage() {
             </p>
           </div>
           <span className="inline-flex items-center rounded-full bg-brand-50 px-3 py-1 text-xs font-medium text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
-            Pilar: SOURCES
+            SOURCES
           </span>
         </div>
 

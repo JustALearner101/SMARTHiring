@@ -178,7 +178,7 @@ export default function ContactsPage() {
       {/* <div className="mb-5 rounded-2xl border border-brand-200 bg-brand-50/70 p-4.5 dark:border-brand-500/20 dark:bg-brand-500/10">
         <div className="flex items-start gap-3.5">
           <div className="rounded-xl bg-brand-500 p-2 text-white shrink-0 shadow-theme-xs">
-            <InfoIcon className="w-6 h-6" />
+            <InfoIcon/>
           </div>
           <div>
             <h4 className="text-sm font-semibold text-brand-900 dark:text-brand-300">
@@ -211,8 +211,8 @@ export default function ContactsPage() {
           </div>
           <Button
             variant="primary"
-            size="md"
-            startIcon={<PlusIcon className="w-3 h-3" />}
+            size="sm"
+            startIcon={<PlusIcon/>}
             onClick={handleOpenAdd}
           >
             Add Interviewer
@@ -352,7 +352,7 @@ export default function ContactsPage() {
                           className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-theme-xs hover:border-brand-300 hover:bg-gray-50 hover:text-brand-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-brand-500/30 dark:hover:bg-gray-700/60 dark:hover:text-brand-400 transition-all"
                           title="Edit Kontak"
                         >
-                          <PencilIcon className="w-5 h-5" />
+                          <PencilIcon/>
                         </button>
                         <button
                           type="button"
@@ -363,7 +363,7 @@ export default function ContactsPage() {
                           className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-theme-xs hover:border-error-300 hover:bg-error-50 hover:text-error-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-error-500/30 dark:hover:bg-error-500/15 dark:hover:text-error-400 transition-all"
                           title="Hapus Kontak"
                         >
-                          <TrashBinIcon className="w-5 h-5" />
+                          <TrashBinIcon/>
                         </button>
                       </div>
                     </TableCell>
@@ -496,7 +496,7 @@ export default function ContactsPage() {
       <Modal isOpen={isDeleteModalOpen} onClose={() => setIsDeleteModalOpen(false)}>
         <div className="p-6 text-center">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-error-50 text-error-500 dark:bg-error-500/10 mb-3">
-            <TrashBinIcon className="w-6 h-6" />
+            <TrashBinIcon/>
           </div>
           <h3 className="text-base font-semibold text-gray-900 dark:text-white">
             Delete Interviewer?

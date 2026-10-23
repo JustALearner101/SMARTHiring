@@ -75,7 +75,7 @@ export default function OperationalRulesPage() {
       {/* Success Notification Alert */}
       {saveSuccess && (
         <div className="mb-5 flex items-center gap-3 rounded-xl border border-success-200 bg-success-50 p-4 text-xs font-medium text-success-800 dark:border-success-500/20 dark:bg-success-500/15 dark:text-success-300 animate-in fade-in">
-          <CheckCircleIcon className="w-5 h-5 text-success-500 shrink-0" />
+          <CheckCircleIcon className="text-success-500 shrink-0" />
           <span>The operational rules were successfully cached in the AI Orchestrator</span>
         </div>
       )}
@@ -207,7 +207,7 @@ export default function OperationalRulesPage() {
               <Button
                 variant="outline"
                 size="sm"
-                startIcon={<PlusIcon className="w-3.5 h-3.5" />}
+                startIcon={<PlusIcon/>}
                 onClick={() => setIsAddHolidayOpen(true)}
               >
                 Add Holiday
@@ -256,7 +256,7 @@ export default function OperationalRulesPage() {
                           className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-theme-xs hover:border-error-300 hover:bg-error-50 hover:text-error-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-error-500/30 dark:hover:bg-error-500/15 dark:hover:text-error-400 transition-all"
                           title="Delete Holiday"
                         >
-                          <TrashBinIcon className="w-5 h-5" />
+                          <TrashBinIcon/>
                         </button>
                       </TableCell>
                     </TableRow>

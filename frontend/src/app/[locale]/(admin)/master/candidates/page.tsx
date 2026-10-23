@@ -194,8 +194,8 @@ export default function CandidatesPage() {
           </div>
           <Button
             variant="primary"
-            size="md"
-            startIcon={<PlusIcon className="w-3 h-3" />}
+            size="sm"
+            startIcon={<PlusIcon/>}
             onClick={handleOpenAdd}
           >
             Add Candidate
@@ -344,8 +344,8 @@ export default function CandidatesPage() {
                           className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-0.5 text-xs font-semibold text-white shadow-theme-xs hover:bg-brand-600 active:bg-brand-700 transition-all duration-150"
                           title="Eskalasi ke User Interview"
                         >
-                          <BoltIcon className="w-7 h-7 text-white" />
-                          <span>Eskalasi</span>
+                          <BoltIcon className="text-white" />
+                          <span>Escalate</span>
                         </Link>
 
                         {/* Edit button */}
@@ -355,7 +355,7 @@ export default function CandidatesPage() {
                           className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-theme-xs hover:border-brand-300 hover:bg-gray-50 hover:text-brand-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-brand-500/30 dark:hover:bg-gray-700/60 dark:hover:text-brand-400 transition-all"
                           title="Edit Kandidat"
                         >
-                          <PencilIcon className="w-5 h-5" />
+                          <PencilIcon/>
                         </button>
 
                         {/* Delete button */}
@@ -368,7 +368,7 @@ export default function CandidatesPage() {
                           className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-theme-xs hover:border-error-300 hover:bg-error-50 hover:text-error-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-error-500/30 dark:hover:bg-error-500/15 dark:hover:text-error-400 transition-all"
                           title="Hapus Kandidat"
                         >
-                          <TrashBinIcon className="w-5 h-5" />
+                          <TrashBinIcon/>
                         </button>
                       </div>
                     </TableCell>
@@ -501,7 +501,7 @@ export default function CandidatesPage() {
       <Modal isOpen={isDeleteModalOpen} onClose={() => setIsDeleteModalOpen(false)}>
         <div className="p-6 text-center">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-error-50 text-error-500 dark:bg-error-500/10 mb-3">
-            <TrashBinIcon className="w-6 h-6" />
+            <TrashBinIcon/>
           </div>
           <h3 className="text-base font-semibold text-gray-900 dark:text-white">
             Delete Candidate?

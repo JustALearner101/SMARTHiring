@@ -152,7 +152,7 @@ export default function RubricsPage() {
           <Button
             variant="outline"
             size="sm"
-            startIcon={<PlusIcon className="w-3.5 h-3.5" />}
+            startIcon={<PlusIcon/>}
             onClick={() => setIsAddCompOpen(true)}
           >
             Add Competency Indicator
@@ -216,7 +216,7 @@ export default function RubricsPage() {
                       className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-theme-xs hover:border-error-300 hover:bg-error-50 hover:text-error-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-error-500/30 dark:hover:bg-error-500/15 dark:hover:text-error-400 transition-all"
                       title="Delete Competency"
                     >
-                      <TrashBinIcon className="w-5 h-5" />
+                      <TrashBinIcon/>
                     </button>
                   </TableCell>
                 </TableRow>

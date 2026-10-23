@@ -21,7 +21,7 @@ export default function CalendarMatrixPage() {
             </p>
           </div>
           <span className="inline-flex items-center rounded-full bg-success-50 px-3 py-1 text-xs font-medium text-success-600 dark:bg-success-500/15 dark:text-success-400">
-            Pilar: PERMISSIONS
+            PERMISSIONS
           </span>
         </div>
 
