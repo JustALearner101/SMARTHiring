@@ -57,7 +57,7 @@ export default function DisambiguationModal({
 
         {/* Two Budi Comparison Cards */}
         <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {budiDisambiguationProfiles.map((budi, idx) => {
+          {budiDisambiguationProfiles.map((budi) => {
             const isEngineering = budi.department === "Engineering";
             return (
               <div

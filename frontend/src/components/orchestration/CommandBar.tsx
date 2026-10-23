@@ -46,7 +46,8 @@ export default function CommandBar({
               Autonomous Scheduling Command Bar
             </h3>
             <p className="text-[11px] text-gray-500 dark:text-gray-400">
-              Type a natural language instruction or click the quick scenario button to test the AI's accountability.            </p>
+              Type a natural language instruction or click the quick scenario button to test the AI&apos;s accountability.
+            </p>
           </div>
         </div>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-2.5 py-0.5 text-[10px] font-mono font-semibold text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">

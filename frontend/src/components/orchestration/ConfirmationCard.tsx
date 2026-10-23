@@ -62,7 +62,7 @@ export default function ConfirmationCard({
               </span>
             </div>
             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-              AI has verified the schedule's availability. Messages and calendar reservations <strong>will not be sent</strong> before approved by HR.
+              AI has verified the schedule&apos;s availability. Messages and calendar reservations <strong>will not be sent</strong> before approved by HR.
             </p>
           </div>
         </div>

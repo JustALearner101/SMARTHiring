@@ -15,11 +15,14 @@ import {
 } from "@/data/mockOrchestrationData";
 import {
   BoltIcon,
+  ChatIcon,
   CheckCircleIcon,
   CloseIcon,
+  EnvelopeIcon,
   InfoIcon,
   ShootingStarIcon,
 } from "@/icons";
+import { Link } from "@/i18n/navigation";
 import { ActionPlan, AuditEvent, DisambiguationProfile, PlanStatus } from "@/types/orchestration";
 import { useSearchParams } from "next/navigation";
 import React, { Suspense, useMemo, useState } from "react";
@@ -358,10 +361,24 @@ function SchedulingContent() {
                     <br />
                     • <strong>Calendar Slot</strong> locked at {activePlan?.proposed_slot?.formatted_wib}
                   </p>
-                  <div className="mt-4 flex items-center gap-2.5">
+                  <div className="mt-4 flex flex-wrap items-center gap-2.5">
                     <Button variant="primary" size="sm" onClick={handleReset}>
                       Start New Orchestration
                     </Button>
+                    <Link
+                      href="/simulator/whatsapp"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 transition-colors hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+                    >
+                      <ChatIcon className="text-emerald-600" />
+                      <span>View in WhatsApp Simulator</span>
+                    </Link>
+                    <Link
+                      href="/simulator/email"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-brand-300 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-800 transition-colors hover:bg-brand-100 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300"
+                    >
+                      <EnvelopeIcon className="text-brand-600" />
+                      <span>View in Email Simulator</span>
+                    </Link>
                   </div>
                 </div>
               </div>
