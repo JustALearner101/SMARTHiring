@@ -3,23 +3,18 @@
 import { Link, usePathname } from "@/i18n/navigation";
 import { cn } from "@/utils";
 import { useTranslations } from "next-intl";
-import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSidebar } from "../context/SidebarContext";
 import {
-  BoxCubeIcon,
-  CalenderIcon,
+  BoltIcon,
+  ChatIcon,
   ChevronDownIcon,
+  DocsIcon,
+  FolderIcon,
   GridIcon,
   HorizontaLDots,
-  ListIcon,
   PageIcon,
-  PieChartIcon,
-  PlugInIcon,
-  TableIcon,
-  UserCircleIcon,
 } from "../icons/index";
-import SidebarWidget from "./SidebarWidget";
 
 type NavItem = {
   key: string;
@@ -40,65 +35,49 @@ const navItems: NavItem[] = [
   {
     icon: <GridIcon />,
     key: "dashboard",
-    subItems: [{ key: "ecommerceHome", path: "/" }],
+    path: "/",
   },
   {
-    icon: <CalenderIcon />,
-    key: "calendar",
-    path: "/calendar",
+    icon: <BoltIcon />,
+    key: "orchestration",
+    subItems: [
+      { key: "scheduling", path: "/orchestration/scheduling" },
+      { key: "triageThreads", path: "/orchestration/threads" },
+      { key: "calendarMatrix", path: "/orchestration/calendar" },
+    ],
   },
   {
-    icon: <UserCircleIcon />,
-    key: "userProfile",
-    path: "/profile",
-  },
-  {
-    key: "forms",
-    icon: <ListIcon />,
-    subItems: [{ key: "formElements", path: "/form-elements", pro: false }],
-  },
-  {
-    key: "tables",
-    icon: <TableIcon />,
-    subItems: [{ key: "basicTables", path: "/basic-tables", pro: false }],
-  },
-  {
-    key: "pages",
     icon: <PageIcon />,
+    key: "interviews",
     subItems: [
-      { key: "blankPage", path: "/blank" },
-      { key: "error404", path: "/error-404" },
-    ],
-  },
-];
-
-const othersItems: NavItem[] = [
-  {
-    icon: <PieChartIcon />,
-    key: "charts",
-    subItems: [
-      { key: "lineChart", path: "/line-chart", pro: false },
-      { key: "barChart", path: "/bar-chart", pro: false },
+      { key: "interviewSessions", path: "/interviews/sessions" },
+      { key: "reviewEvidence", path: "/interviews/review" },
     ],
   },
   {
-    icon: <BoxCubeIcon />,
-    key: "uiElements",
+    icon: <FolderIcon />,
+    key: "masterData",
     subItems: [
-      { key: "alerts", path: "/alerts" },
-      { key: "avatar", path: "/avatars" },
-      { key: "badge", path: "/badge" },
-      { key: "buttons", path: "/buttons" },
-      { key: "images", path: "/images" },
-      { key: "videos", path: "/videos" },
+      { key: "candidates", path: "/master/candidates" },
+      { key: "contacts", path: "/master/contacts" },
+      { key: "rubrics", path: "/master/rubrics" },
+      { key: "operationalRules", path: "/master/operational-rules" },
     ],
   },
   {
-    icon: <PlugInIcon />,
-    key: "authentication",
+    icon: <ChatIcon />,
+    key: "simulator",
     subItems: [
-      { key: "signIn", path: "/signin", pro: false },
-      { key: "signUp", path: "/signup", pro: false },
+      { key: "interviewerEmail", path: "/simulator/email" },
+      { key: "candidateWhatsapp", path: "/simulator/whatsapp" },
+    ],
+  },
+  {
+    icon: <DocsIcon />,
+    key: "auditSecurity",
+    subItems: [
+      { key: "auditLogs", path: "/audit/logs" },
+      { key: "guardrailAlerts", path: "/audit/guardrail" },
     ],
   },
 ];
@@ -138,32 +117,33 @@ const AppSidebar: React.FC = () => {
                 {nav.icon}
               </span>
               {(isExpanded || isHovered || isMobileOpen) && (
-                <span className="menu-item-text">{t(`items.${nav.key}`)}</span>
-              )}
-              {nav.new && (isExpanded || isHovered || isMobileOpen) && (
-                <span
-                  className={cn(
-                    "inset-e-10 absolute ms-auto",
-                    openSubmenu?.type === menuType &&
-                      openSubmenu?.index === index
-                      ? "menu-dropdown-badge-active"
-                      : "menu-dropdown-badge-inactive",
-                    "menu-dropdown-badge",
-                  )}
-                >
-                  {t("badges.new")}
-                </span>
-              )}
-              {(isExpanded || isHovered || isMobileOpen) && (
-                <ChevronDownIcon
-                  className={cn(
-                    "ms-auto h-5 w-5 transition-transform duration-200",
-                    openSubmenu?.type === menuType &&
-                      openSubmenu?.index === index
-                      ? "rotate-180 text-brand-500"
-                      : "",
-                  )}
-                />
+                <>
+                  <span className="menu-item-text truncate">{t(`items.${nav.key}`)}</span>
+                  <div className="ms-auto flex items-center gap-1.5 shrink-0">
+                    {nav.new && (
+                      <span
+                        className={cn(
+                          openSubmenu?.type === menuType &&
+                            openSubmenu?.index === index
+                            ? "menu-dropdown-badge-active"
+                            : "menu-dropdown-badge-inactive",
+                          "menu-dropdown-badge text-[10px] px-1.5 py-0.5",
+                        )}
+                      >
+                        {t("badges.new")}
+                      </span>
+                    )}
+                    <ChevronDownIcon
+                      className={cn(
+                        "h-5 w-5 transition-transform duration-200",
+                        openSubmenu?.type === menuType &&
+                          openSubmenu?.index === index
+                          ? "rotate-180 text-brand-500"
+                          : "",
+                      )}
+                    />
+                  </div>
+                </>
               )}
             </button>
           ) : (
@@ -272,21 +252,18 @@ const AppSidebar: React.FC = () => {
   useEffect(() => {
     // Check if the current path matches any submenu item
     let submenuMatched = false;
-    ["main", "support", "others"].forEach((menuType) => {
-      const items = menuType === "main" ? navItems : othersItems;
-      items.forEach((nav, index) => {
-        if (nav.subItems) {
-          nav.subItems.forEach((subItem) => {
-            if (isActive(subItem.path)) {
-              setOpenSubmenu({
-                type: menuType as "main" | "support" | "others",
-                index,
-              });
-              submenuMatched = true;
-            }
-          });
-        }
-      });
+    navItems.forEach((nav, index) => {
+      if (nav.subItems) {
+        nav.subItems.forEach((subItem) => {
+          if (isActive(subItem.path)) {
+            setOpenSubmenu({
+              type: "main",
+              index,
+            });
+            submenuMatched = true;
+          }
+        });
+      }
     });
 
     // If no submenu item matches, close the open submenu
@@ -341,37 +318,19 @@ const AppSidebar: React.FC = () => {
           !isExpanded && !isHovered ? "xl:justify-center" : "justify-start"
         }`}
       >
-        <Link href="/">
-          {isExpanded || isHovered || isMobileOpen ? (
-            <>
-              <Image
-                className="dark:hidden"
-                src="/images/logo/logo.svg"
-                alt="Logo"
-                width={150}
-                height={40}
-                priority
-                style={{ width: "auto", height: "auto" }}
-              />
-              <Image
-                className="hidden dark:block"
-                src="/images/logo/logo-dark.svg"
-                alt="Logo"
-                width={150}
-                height={40}
-                priority
-                style={{ width: "auto", height: "auto" }}
-              />
-            </>
-          ) : (
-            <Image
-              src="/images/logo/logo-icon.svg"
-              alt="Logo"
-              width={32}
-              height={32}
-              priority
-              style={{ width: "auto", height: "auto" }}
-            />
+        <Link href="/" className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-500 text-white font-bold text-lg shadow-theme-xs">
+            <BoltIcon className="w-5 h-5 text-white" />
+          </div>
+          {(isExpanded || isHovered || isMobileOpen) && (
+            <div className="flex flex-col">
+              <span className="text-base font-bold text-gray-900 dark:text-white leading-tight">
+                SmartHiring
+              </span>
+              <span className="text-[10px] font-medium text-brand-500 uppercase tracking-wider">
+                AI Orchestrator
+              </span>
+            </div>
           )}
         </Link>
       </div>
@@ -394,26 +353,8 @@ const AppSidebar: React.FC = () => {
               </h2>
               {renderMenuItems(navItems, "main")}
             </div>
-
-            <div>
-              <h2
-                className={`mb-4 flex text-xs leading-5 text-gray-400 uppercase ${
-                  !isExpanded && !isHovered
-                    ? "xl:justify-center"
-                    : "justify-start"
-                }`}
-              >
-                {isExpanded || isHovered || isMobileOpen ? (
-                  t("groups.others")
-                ) : (
-                  <HorizontaLDots />
-                )}
-              </h2>
-              {renderMenuItems(othersItems, "others")}
-            </div>
           </div>
         </nav>
-        {isExpanded || isHovered || isMobileOpen ? <SidebarWidget /> : null}
       </div>
     </aside>
   );

@@ -1,63 +1,31 @@
-import React from "react";
+import type React from "react";
+import { type TextareaHTMLAttributes, forwardRef } from "react";
 
-interface TextareaProps {
-  placeholder?: string; // Placeholder text
-  rows?: number; // Number of rows
-  value?: string; // Current value
-  onChange?: (value: string) => void; // Change handler
-  className?: string; // Additional CSS classes
-  disabled?: boolean; // Disabled state
-  error?: boolean; // Error state
-  hint?: string; // Hint text to display
+export interface TextAreaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
+  error?: boolean;
 }
 
-const TextArea: React.FC<TextareaProps> = ({
-  placeholder = "Enter your message", // Default placeholder
-  rows = 3, // Default number of rows
-  value = "", // Default value
-  onChange, // Callback for changes
-  className = "", // Additional custom styles
-  disabled = false, // Disabled state
-  error = false, // Error state
-  hint = "", // Default hint text
-}) => {
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    if (onChange) {
-      onChange(e.target.value);
+const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(
+  ({ className = "", disabled = false, error = false, rows = 3, ...props }, ref) => {
+    let stateClasses = "border-gray-300 bg-transparent text-gray-800 focus:border-brand-300 focus:ring-brand-500/20 dark:border-gray-700 dark:text-white/90 dark:focus:border-brand-800";
+
+    if (disabled) {
+      stateClasses = "border-gray-300 bg-gray-100 text-gray-400 opacity-60 cursor-not-allowed dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500";
+    } else if (error) {
+      stateClasses = "border-error-500 text-gray-800 focus:border-error-300 focus:ring-error-500/20 dark:border-error-500 dark:text-white/90";
     }
-  };
 
-  let textareaClasses = `w-full rounded-lg border px-4 py-2.5 text-sm shadow-theme-xs focus:outline-hidden ${className}`;
-
-  if (disabled) {
-    textareaClasses += ` bg-gray-100 opacity-50 text-gray-500 border-gray-300 cursor-not-allowed dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700`;
-  } else if (error) {
-    textareaClasses += ` bg-transparent text-gray-400 border-gray-300 focus:border-error-300 focus:ring-3 focus:ring-error-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:focus:border-error-800`;
-  } else {
-    textareaClasses += ` bg-transparent text-gray-400 border-gray-300 focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:focus:border-brand-800`;
-  }
-
-  return (
-    <div className="relative">
+    return (
       <textarea
-        placeholder={placeholder}
+        ref={ref}
         rows={rows}
-        value={value}
-        onChange={handleChange}
         disabled={disabled}
-        className={textareaClasses}
+        className={`w-full rounded-lg border text-sm shadow-theme-xs appearance-none transition-colors px-4 py-2.5 placeholder:text-gray-400 focus:outline-hidden focus:ring-3 dark:bg-gray-900 dark:placeholder:text-white/30 ${stateClasses} ${className}`}
+        {...props}
       />
-      {hint && (
-        <p
-          className={`mt-2 text-sm ${
-            error ? "text-error-500" : "text-gray-500 dark:text-gray-400"
-          }`}
-        >
-          {hint}
-        </p>
-      )}
-    </div>
-  );
-};
+    );
+  }
+);
 
+TextArea.displayName = "TextArea";
 export default TextArea;

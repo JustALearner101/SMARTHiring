@@ -1,70 +1,54 @@
+import type React from "react";
+import { type SelectHTMLAttributes, forwardRef } from "react";
 import { ChevronDownIcon } from "@/icons";
-import { useState } from "react";
 
-interface Option {
+export interface SelectOption {
   value: string;
   label: string;
+  disabled?: boolean;
 }
 
-interface SelectProps {
-  options: Option[];
+export interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, "size"> {
+  options: SelectOption[];
   placeholder?: string;
-  onChange: (value: string) => void;
-  className?: string;
-  defaultValue?: string;
+  error?: boolean;
 }
 
-const Select: React.FC<SelectProps> = ({
-  options,
-  placeholder = "Select an option",
-  onChange,
-  className = "",
-  defaultValue = "",
-}) => {
-  // Manage the selected value
-  const [selectedValue, setSelectedValue] = useState<string>(defaultValue);
-
-  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = e.target.value;
-    setSelectedValue(value);
-    onChange(value); // Trigger parent handler
-  };
-
-  return (
-    <div className="relative">
-      <select
-        className={`h-11 w-full appearance-none rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 pe-11 text-sm shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800 ${
-          selectedValue
-            ? "text-gray-800 dark:text-white/90"
-            : "text-gray-400 dark:text-gray-400"
-        } ${className}`}
-        value={selectedValue}
-        onChange={handleChange}
-      >
-        {/* Placeholder option */}
-        <option
-          value=""
-          disabled
-          className="text-gray-700 dark:bg-gray-900 dark:text-gray-400"
+const Select = forwardRef<HTMLSelectElement, SelectProps>(
+  ({ options, placeholder = "Pilih salah satu...", error = false, disabled = false, className = "", value, ...props }, ref) => {
+    return (
+      <div className="relative w-full">
+        <select
+          ref={ref}
+          value={value}
+          disabled={disabled}
+          className={`h-11 w-full appearance-none rounded-lg border text-sm shadow-theme-xs ps-4 pe-11 py-2.5 transition-colors focus:outline-hidden focus:ring-3 ${
+            disabled
+              ? "border-gray-300 bg-gray-100 text-gray-400 opacity-60 cursor-not-allowed dark:border-gray-700 dark:bg-gray-800"
+              : error
+              ? "border-error-500 text-gray-800 focus:border-error-300 focus:ring-error-500/20 dark:border-error-500 dark:text-white/90"
+              : "border-gray-300 bg-transparent text-gray-800 focus:border-brand-300 focus:ring-brand-500/20 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+          } ${className}`}
+          {...props}
         >
-          {placeholder}
-        </option>
-        {/* Map over options */}
-        {options.map((option) => (
-          <option
-            key={option.value}
-            value={option.value}
-            className="text-gray-700 dark:bg-gray-900 dark:text-gray-400"
-          >
-            {option.label}
-          </option>
-        ))}
-      </select>
-      <span className="inset-e-3 pointer-events-none absolute top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
-        <ChevronDownIcon />
-      </span>
-    </div>
-  );
-};
+          {placeholder && (
+            <option value="" disabled className="text-gray-400 dark:bg-gray-900">
+              {placeholder}
+            </option>
+          )}
+          {options.map((opt) => (
+            <option key={opt.value} value={opt.value} disabled={opt.disabled} className="text-gray-800 dark:bg-gray-900 dark:text-gray-200">
+              {opt.label}
+            </option>
+          ))}
+        </select>
+        <span className="pointer-events-none absolute inset-y-0 end-3.5 flex items-center text-gray-400">
+          <ChevronDownIcon className="w-4 h-4" />
+        </span>
+      </div>
+    );
+  }
+);
 
+Select.displayName = "Select";
 export default Select;
