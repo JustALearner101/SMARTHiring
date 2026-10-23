@@ -181,10 +181,21 @@ Konfigurasi satu ronde wawancara (HR, user, atau teknis). Setiap perubahan rubri
 | `vcode`                            | varchar | Kode profil (misalnya `HR-ROUND`, `USER-ROUND`)                                           |
 | `vname`                            | varchar | Nama ronde (misalnya "Ronde HR")                                                          |
 | `vversion_no`                      | varchar | Nomor versi rubrik (misalnya `v1.2`). Kombinasi `vcode` + `vversion_no` bersifat `UNIQUE` |
-| `vsummary_format`                  | varchar | Format / template ringkasan yang dipakai Summarizer                                       |
+| `vsummary_format`                  | JSONOB  | Format / template ringkasan yang dipakai Summarizer                                       |
 | `vcrea`, `dcrea`, `vmodi`, `dmodi` | audit   | Kolom jejak standar                                                                       |
 
 Relasi: dirujuk oleh `tblm_competency.nid_profile` dan `tblt_interview.nid_profile`.
+
+Note : untuk kolom `vsummary_format` menjawab pertanyaan hasil rangkumannya mau ditulis dengan gaya seperti apa untuk ronde ini. Kolomnya bisa berisi pengaturan seperti ini (JSON atau teks):
+
+```
+{
+  "language": "id",
+  "max_points_per_competency": 3,
+  "include_reference_question": false,
+  "not_discussed_label": "Tidak dibahas dalam wawancara ini"
+}
+```
 
 ---
 
