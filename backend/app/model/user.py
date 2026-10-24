@@ -18,6 +18,7 @@ class User(TableBaseModel):
             name="ck_tblm_user_vtimezone",
         ),
         CheckConstraint(
+            "vstatus IN ('ACTIVE', 'INACTIVE')",
             name="ck_tblm_user_vstatus",
         ),
     )
