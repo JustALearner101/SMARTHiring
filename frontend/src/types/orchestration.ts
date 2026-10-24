@@ -112,3 +112,89 @@ export interface PresetScenario {
   prompt: string;
   description: string;
 }
+
+/**
+ * Triage Threads & Rescheduling Negotiation (Pillar LIMITS)
+ */
+export type ThreadStatus =
+  | "NEGOTIATING"
+  | "SCHEDULED"
+  | "DEADLOCK_ESCALATED"
+  | "EXPIRED";
+
+export interface ThreadMessage {
+  id: string;
+  round_number: number;
+  sender_role: "AI_ORCHESTRATOR" | "CANDIDATE" | "HR_ADMIN";
+  sender_name: string;
+  channel: "whatsapp" | "email";
+  sent_at: string;
+  content: string;
+  proposed_slot?: string;
+  source_citation?: string;
+  is_rejection?: boolean;
+}
+
+export interface NegotiationThread {
+  id: string;
+  candidate_id: string;
+  candidate_name: string;
+  candidate_channel: "whatsapp" | "email";
+  candidate_position: string;
+  candidate_phone?: string;
+  candidate_email?: string;
+  interviewer_id: string;
+  interviewer_name: string;
+  interviewer_role: string;
+  interviewer_dept: string;
+  interviewer_timezone: "WIB" | "WITA" | "WIT";
+  current_round: number; // 1, 2, or 3
+  max_rounds: number; // strictly 3
+  status: ThreadStatus;
+  last_activity_at: string;
+  last_message_preview: string;
+  deadline_at: string;
+  messages: ThreadMessage[];
+  escalation_reason?: string;
+  agreed_slot?: string;
+}
+
+/**
+ * Calendar Matrix & Operational Rules (Pillar PERMISSIONS & SOURCES)
+ */
+export type CalendarEventType =
+  | "SCHEDULED_INTERVIEW"
+  | "TEAM_MEETING"
+  | "FRIDAY_PRAYER_BLOCK"
+  | "OUT_OF_OFFICE"
+  | "BUFFER_BLOCK";
+
+export interface CalendarMatrixEvent {
+  id: string;
+  interviewer_id: string;
+  title: string;
+  start: string; // ISO string
+  end: string;   // ISO string
+  event_type: CalendarEventType;
+  candidate_name?: string;
+  rule_code?: string; // e.g. "[rule-jumatan]"
+  description?: string;
+}
+
+export interface SlotConflictCheckRequest {
+  interviewer_id: string;
+  candidate_id?: string;
+  date: string; // YYYY-MM-DD
+  time: string; // HH:mm
+  duration_minutes: number;
+  timezone: "WIB" | "WITA" | "WIT";
+}
+
+export interface SlotConflictCheckResult {
+  is_available: boolean;
+  status: "VALID" | "CONFLICT_EXISTING_EVENT" | "BLOCKED_FRIDAY_PRAYER" | "OUTSIDE_WORKING_HOURS" | "INSUFFICIENT_BUFFER";
+  message: string;
+  rule_code?: string;
+  conflicting_event?: string;
+  suggested_alternatives?: string[];
+}

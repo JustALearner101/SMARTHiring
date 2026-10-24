@@ -1,42 +1,50 @@
-import PageBreadcrumb from "@/components/common/PageBreadCrumb";
-import type { Metadata } from "next";
+"use client";
 
-export const metadata: Metadata = {
-  title: "Calendar Matrix | SmartHiring Orchestrator",
-  description: "Cross-timezone interview calendar with operational rule blocks",
-};
+import React, { useState } from "react";
+import PageBreadcrumb from "@/components/common/PageBreadCrumb";
+import { initialCalendarMatrixEvents } from "@/data/mockThreadAndCalendarData";
+import { CalendarMatrixEvent } from "@/types/orchestration";
+import TimezoneMatrixHeader from "@/components/orchestration/calendar/TimezoneMatrixHeader";
+import OperationalPolicyBanner from "@/components/orchestration/calendar/OperationalPolicyBanner";
+import CalendarMatrixView from "@/components/orchestration/calendar/CalendarMatrixView";
+import SlotConflictCheckerModal from "@/components/orchestration/calendar/SlotConflictCheckerModal";
 
 export default function CalendarMatrixPage() {
-  return (
-    <div>
-      <PageBreadcrumb pageTitle="Calendar Matrix" />
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 xl:p-7 dark:border-gray-800 dark:bg-gray-900 shadow-theme-xs">
-        <div className="flex items-center justify-between border-b border-gray-100 pb-4 dark:border-gray-800">
-          <div>
-            <h3 className="text-theme-xl font-semibold text-gray-800 dark:text-white/90">
-              Interviewer Calendar & Timezone Matrix
-            </h3>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Sinkronisasi kalender slot kosong dengan konversi WIB/WITA/WIT dan pemblokiran waktu Sholat Jumat.
-            </p>
-          </div>
-          <span className="inline-flex items-center rounded-full bg-success-50 px-3 py-1 text-xs font-medium text-success-600 dark:bg-success-500/15 dark:text-success-400">
-            PERMISSIONS
-          </span>
-        </div>
+  const [selectedTimezone, setSelectedTimezone] = useState<"WIB" | "WITA" | "WIT">("WIB");
+  const [events, setEvents] = useState<CalendarMatrixEvent[]>(initialCalendarMatrixEvents);
+  const [isTesterOpen, setIsTesterOpen] = useState(false);
 
-        <div className="mt-6 flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 p-8 text-center dark:border-gray-800">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success-50 text-success-500 dark:bg-success-500/10">
-            📅
-          </div>
-          <h4 className="mt-3 text-base font-medium text-gray-800 dark:text-white/90">
-            Calendar View & Conflict Checker
-          </h4>
-          <p className="mt-1 max-w-md text-xs text-gray-500 dark:text-gray-400">
-            Matriks kalender ketersediaan interviewer, visualisasi bentrok jam kerja (09:00 - 17:00), dan blokir Sholat Jumat (11:30 - 13:00).
-          </p>
-        </div>
-      </div>
+  const handleSelectSlot = (date: string, time: string) => {
+    // When an available slot is clicked in the grid, open the tester pre-filled
+    setIsTesterOpen(true);
+  };
+
+  return (
+    <div className="space-y-6">
+      <PageBreadcrumb pageTitle="Calendar Matrix" />
+
+      {/* Tri-Zone Synchronizer Header */}
+      <TimezoneMatrixHeader
+        selectedTimezone={selectedTimezone}
+        onSelectTimezone={setSelectedTimezone}
+      />
+
+      {/* Operational Policy Banner */}
+      <OperationalPolicyBanner onOpenTester={() => setIsTesterOpen(true)} />
+
+      {/* Weekly Matrix View */}
+      <CalendarMatrixView
+        events={events}
+        selectedTimezone={selectedTimezone}
+        onSelectSlot={handleSelectSlot}
+      />
+
+      {/* Quick Conflict Checker Modal */}
+      <SlotConflictCheckerModal
+        isOpen={isTesterOpen}
+        onClose={() => setIsTesterOpen(false)}
+        events={events}
+      />
     </div>
   );
 }
