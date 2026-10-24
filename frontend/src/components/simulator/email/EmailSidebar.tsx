@@ -31,7 +31,7 @@ export default function EmailSidebar({
 }: EmailSidebarProps) {
   return (
     <div className="flex w-full md:w-64 flex-col border-b md:border-b-0 md:border-r border-gray-200 bg-gray-50/70 p-4 dark:border-gray-800 dark:bg-gray-900/40">
-      {/* Account Selector (Pilar LIMITS - Dua Pak Budi demonstration) */}
+      {/* Account Selector*/}
       <div className="mb-5 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-800 shadow-2xs">
         <label className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
           <UserIcon className="text-brand-500" />

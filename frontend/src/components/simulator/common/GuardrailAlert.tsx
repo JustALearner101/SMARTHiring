@@ -28,7 +28,7 @@ export default function GuardrailAlert({
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1 rounded bg-error-100 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-error-700 dark:bg-error-500/20 dark:text-error-300">
               <LockIcon/>
-              Guardrail Scanner Intercept (Pilar PERMISSIONS)
+              Guardrail Scanner Intercept
             </span>
             <span className="text-xs text-gray-500 dark:text-gray-400">{timestamp}</span>
           </div>

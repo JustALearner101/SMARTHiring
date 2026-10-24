@@ -524,6 +524,54 @@ function SchedulingContent() {
                   </span>
                 </div>
               </div>
+
+              {/* Candidates Awaiting Interview Escalation (Queue - Eliminates Whitespace) */}
+              <div className="mt-5 rounded-xl border border-gray-100 bg-gray-50/60 p-4 dark:border-gray-800 dark:bg-gray-800/30">
+                <div className="flex items-center justify-between border-b border-gray-200/60 pb-3 dark:border-gray-800">
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-xs font-bold text-gray-900 dark:text-white">
+                      Candidates Awaiting Interview Escalation
+                    </h4>
+                    <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-mono font-semibold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
+                      3 in Queue
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-3 divide-y divide-gray-200/50 dark:divide-gray-800">
+                  {initialCandidates.slice(0, 3).map((cand) => (
+                    <div
+                      key={cand.id}
+                      className="flex flex-wrap items-center justify-between gap-3 py-2.5 first:pt-1 last:pb-1"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-semibold text-xs text-gray-900 dark:text-white">
+                              {cand.name}
+                            </span>
+                            <span className="rounded bg-gray-200/70 px-1.5 py-0.2 text-[10px] font-medium text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                              {cand.timezone}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                            {cand.applied_position} &bull; Channel: {cand.preferred_channel.toUpperCase()}
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleExecuteCommand(`Schedule an interview for ${cand.name} with Mr. Budi next week`)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-brand-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-50 dark:border-brand-500/30 dark:bg-gray-800 dark:text-brand-300 shadow-2xs transition-colors"
+                      >
+                        <BoltIcon/>
+                        <span>Escalate Now</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
         </div>

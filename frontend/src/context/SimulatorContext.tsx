@@ -173,7 +173,7 @@ export function SimulatorProvider({ children }: { children: React.ReactNode }) {
       if (presetType === "friday_conflict" || text.toLowerCase().includes("jumat")) {
         // Skenario 3: Secondary Validator Friday Prayer Block
         botResponseText =
-          "Mohon maaf Kak Rina, berdasarkan aturan operasional kantor, hari Jumat pukul 11:30 - 13:00 WIB dialokasikan khusus untuk waktu ibadah Sholat Jumat dan istirahat kerja (Pilar PERMISSIONS).\n\nKami menyarankan alternatif hari yang sama pukul 14:00 - 15:00 WIB atau hari Kamis jam kerja. Apakah Kak Rina berkenan dengan slot jam 14:00 WIB?";
+          "Mohon maaf Kak Rina, berdasarkan aturan operasional kantor, hari Jumat pukul 11:30 - 13:00 WIB dialokasikan khusus untuk waktu ibadah Sholat Jumat dan istirahat kerja (PERMISSIONS).\n\nKami menyarankan alternatif hari yang sama pukul 14:00 - 15:00 WIB atau hari Kamis jam kerja. Apakah Kak Rina berkenan dengan slot jam 14:00 WIB?";
       } else if (presetType === "reschedule" || text.toLowerCase().includes("jadwal ulang") || text.toLowerCase().includes("sidang")) {
         // Skenario 2: Reschedule Triage Request (Putaran 2 dari 3)
         nextRound = Math.min(3, activeNegotiationRound + 1);
