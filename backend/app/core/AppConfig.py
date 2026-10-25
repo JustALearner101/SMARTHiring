@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # App
     PROJECT_NAME: str = "Heketon API"
     API_V1_STR: str = "/api/v1"
-    ENVIRONMENT: Literal["development", "staging", "production"] = "development"
+    ENVIRONMENT: Literal["development", "staging", "production", "test"] = "development"
     DEBUG: bool = True
 
     # CORS
