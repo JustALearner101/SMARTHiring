@@ -69,23 +69,26 @@ Layered MVC under `backend/app/`; dependencies flow **controller → service →
 
 | Layer | Path | Role |
 | --- | --- | --- |
-| `controller/` | FastAPI routers | HTTP only; mount under `settings.API_V1_STR` (`/api/v1`) |
-| `service/` | business logic | orchestration, validation, transaction boundaries |
-| `repository/` | data access | `BaseRepository[ModelType]` generic async CRUD |
-| `model/` | SQLAlchemy ORM | `Base` / `BaseModel` |
-| `dto/` | Pydantic schemas | `BaseDTO`, `TimestampedDTO`, `ApiResponse[T]` |
+| `controller/` | `*Controller.py` | FastAPI routers; mount under `settings.API_V1_STR` (`/api/v1`) with camelCase paths |
+| `service/` | `*Service.py` | business logic; orchestration, validation, transaction boundaries |
+| `repository/` | `*Repository.py` | data access; `BaseRepository[ModelType]` generic async CRUD, `selectinload` queries |
+| `model/` | `*Model.py` | SQLAlchemy ORM; `Base`, `TableBaseModel`, `AppendOnlyBaseModel` |
+| `dto/` | `*DTO.py` | Pydantic schemas; `BaseDTO`, `ApiResponse[T]`, `PaginatedResponse[T]` |
+| `exception/` | `*Exception.py` | custom exceptions (`CustomException.py`) and global handlers (`ExceptionHandler.py`) |
 | `agent/` | LangChain / LangGraph | state graph, nodes, tools |
-| `core/` | config, JWT + Argon2 (`security.py`) | |
-| `db/` | async engine, session, `get_db` dependency | |
-| `exception/`, `middleware/`, `constant/`, `util/` | cross-cutting | |
+| `core/` | `AppConfig.py`, `AppSecurity.py` | config (pydantic-settings), JWT + Argon2 |
+| `db/` | `DatabaseSession.py` | async engine, session, `get_db` dependency |
+| `middleware/`, `constant/`, `util/` | cross-cutting | CORS, timing, enums, timezone helpers |
 
 Conventions that are easy to get wrong:
 
-- `BaseModel` (`app/model/base.py`) supplies UUID PK, `created_at`, `updated_at`, and a `MetaData` naming convention — every new model inherits it.
-- `BaseRepository` uses PEP 695 generics (`class BaseRepository[ModelType: BaseModel]`) and commits inside `create`/`update`/`delete`, so services must not assume an open transaction after those calls.
-- API responses are wrapped in `ApiResponse[T]` (`success`, `message`, `data`).
-- `app/main.py` currently has **no routers mounted** and only exposes `GET /health` at the root (not under `/api/v1`). OpenAPI is at `/api/v1/openapi.json`, Swagger at `/docs`.
-- Alembic autogenerate only sees models that have been imported before `target_metadata = Base.metadata` is evaluated. When adding ORM models, import them (e.g. via `app/model/__init__.py`) and reference them in `alembic/env.py`; the existing `env.py` imports only `Base`.
+- **Strict CamelCase File Naming**: All functional backend files must be PascalCase/CamelCase (e.g. `CandidateController.py`, `CandidateService.py`, `CandidateRepository.py`, `CandidateDTO.py`, `CandidateModel.py`).
+- **camelCase Route URLs**: Endpoint paths under `/api/v1` use camelCase (e.g. `/api/v1/operationalRules`, `/api/v1/actionPlans`, `/api/v1/slotConflictChecker/check`).
+- `BaseModel` / `TableBaseModel` (`app/model/BaseModel.py`) supplies integer PK `nid` (or UUID `id`), `dcrea`, `dmod`, and a `MetaData` naming convention — every new model inherits it.
+- `BaseRepository` uses PEP 695 generics (`class BaseRepository[ModelType: Base]`) and commits inside `create`/`update`/`delete`, so services must not assume an open transaction after those calls.
+- API responses are wrapped in `ApiResponse[T]` (`success`, `message`, `data`) and `PaginatedResponse[T]` (`items`, `total`, `page`, `page_size`, `total_pages`).
+- `app/main.py` mounts all 16 modular routers under `/api/v1` with `TAGS_METADATA` registered for Swagger UI at `/docs`.
+- Alembic autogenerate sees all models via `app/model/__init__.py`. Migration revision is currently at `06784f3e4d33`.
 - Database is PostgreSQL + `pgvector`; `LANGGRAPH_CHECKPOINT_DB_URI` (sync DSN) is separate from `DATABASE_URL` (asyncpg DSN) and is intended for the Postgres checkpointer.
 - LLM providers already in `pyproject.toml`: OpenAI, Google GenAI, Anthropic, Groq, Ollama. Do not add a provider package without checking first.
 
@@ -102,13 +105,22 @@ TailAdmin Pro template (Next.js 16 App Router, React 19, Tailwind v4) extended f
 - Routes live only under `src/app/[locale]/`. Route groups: `(admin)` (sidebar + header shell), `(full-width-pages)` (auth/error, no shell), `(layouts-example)`. Never create pages directly under `src/app/`.
 - i18n via next-intl: `src/i18n/routing.ts` currently declares **only `en`** with `localePrefix: "never"`; `src/messages/en.json` is the only dictionary. Import `Link`/`useRouter`/`usePathname`/`redirect` from `@/i18n/navigation`, never from `next/*`. New locales require edits to `routing.ts`, `languages.ts`, and a matching `messages/<locale>.json`.
 - `src/proxy.ts` is the Next.js 16 middleware (renamed to `proxy`), running next-intl routing.
-- API access: `src/lib/api.ts` (`apiFetch<T>`, `ApiError`) prepends `NEXT_PUBLIC_API_URL`, injects JSON + optional bearer token, and surfaces FastAPI's `detail`. Endpoint constants go in `src/constants/index.ts`; typed service modules belong in `src/services/` (currently empty barrel).
+- API access: `src/lib/api.ts` (`apiFetch<T>`, `ApiError`) prepends `NEXT_PUBLIC_API_URL`, injects JSON + optional bearer token, and surfaces FastAPI's `detail` and `message`. Endpoint constants go in `src/constants/index.ts`; typed service modules belong in `src/services/` (currently empty barrel).
 - UI conventions: `@/*` → `src/*`; components are PascalCase with default exports; icons come from the `@/icons` barrel (SVGs compiled via SVGR); charts (`react-apexcharts`), FullCalendar, and Swiper must be dynamically imported with `ssr: false`.
 - Tailwind v4 has **no `tailwind.config`** — theme tokens and third-party overrides live in `src/app/globals.css` under `@theme`. Use theme tokens, `dark:` variants on every styled element, and CSS logical properties (`ms-*`, `pe-*`, `start-*`, `text-start`, …) instead of physical `ml-*`/`left-*` so RTL keeps working.
 - Global state stays in `ThemeContext` and `SidebarContext`; modals use `useModal`.
 
 ## Current state (what exists vs. spec)
 
-Implemented: monorepo scaffolding, shared env loading, backend health endpoint, async DB session/engine, base ORM model, generic repository, base DTOs, JWT/Argon2 helpers, Alembic async setup, DB check/seed scripts, pytest + httpx fixture, TailAdmin UI shell and demo pages, `apiFetch` client, Docker images.
+Implemented:
+- Monorepo scaffolding, shared `.env` loading, async DB session/engine (`DatabaseSession.py`), base ORM models (`BaseModel.py`), generic repository (`BaseRepository.py`), base DTOs (`BaseDTO.py`).
+- 16 modular standalone CamelCase controllers, services, repositories, DTOs, and ORM models.
+- OpenAPI metadata tags and 16 routers mounted in `app/main.py`.
+- Alembic async migrations up to `06784f3e4d33` (`06784f3e4d33_add_orchestration_and_extended_model_.py`).
+- Complete automated test suite: 36 tests passing (unit tests + integration tests covering all 16 domains).
+- Technical documentation suite in `docs/backend/` (`ARCHITECTURE_AND_STRUCTURE.md`, `API_CONTRACTS.md`, `DATABASE_AND_MIGRATIONS.md`, `TESTING_AND_DEVELOPMENT.md`).
+- TailAdmin UI shell, `apiFetch` client, and Docker images.
 
-Not yet implemented: all domain models/DTOs/repositories/services/controllers, the entire `app/agent/` graph, auth endpoints, frontend feature pages wired to the API, tests beyond `test_health.py`. The folder layout already matches the mapping in section 5 of `docs/ARCHITECTURE_AND_SPEC.md`; add files there rather than inventing new layers.
+Not yet implemented:
+- Full LangGraph agent graph in `app/agent/`.
+- Frontend feature pages wired to backend API endpoints.

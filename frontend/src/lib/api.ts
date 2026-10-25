@@ -42,10 +42,15 @@ export async function apiFetch<T>(
   const data = isJson ? await response.json() : await response.text();
 
   if (!response.ok) {
-    const errorMessage =
-      (typeof data === "object" && data !== null && "detail" in data
-        ? String((data as { detail: unknown }).detail)
-        : null) || `API Error: ${response.status} ${response.statusText}`;
+    let errorMessage: string | null = null;
+    if (typeof data === "object" && data !== null) {
+      if ("message" in data && typeof (data as { message: unknown }).message === "string") {
+        errorMessage = (data as { message: string }).message;
+      } else if ("detail" in data) {
+        errorMessage = String((data as { detail: unknown }).detail);
+      }
+    }
+    errorMessage = errorMessage || `API Error: ${response.status} ${response.statusText}`;
     throw new ApiError(errorMessage, response.status, data);
   }
 
