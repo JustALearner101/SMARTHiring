@@ -2,7 +2,7 @@ import asyncio
 
 from sqlalchemy import text
 
-from app.db.session import engine
+from app.db.DatabaseSession import engine
 
 
 async def check_database() -> None:

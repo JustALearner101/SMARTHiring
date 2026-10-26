@@ -36,6 +36,8 @@ dev = [
     "pytest-asyncio>=0.24.0",
     "httpx>=0.28.0",
     "ruff>=0.8.0",
+    "bandit>=1.7.10",
+    "pip-audit>=2.7.3",
 ]
 
 [tool.pytest.ini_options]
@@ -43,3 +45,17 @@ asyncio_mode = "auto"
 pythonpath = ["."]
 testpaths = ["tests"]
 
+[tool.ruff.lint]
+extend-select = ["I"]
+ignore = ["N999"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.params.Depends",
+    "fastapi.Query",
+    "fastapi.params.Query",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"alembic/*" = ["ALL"]

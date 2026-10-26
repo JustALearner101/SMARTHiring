@@ -1,0 +1,29 @@
+from typing import Literal
+
+from pydantic import Field
+
+from app.dto.BaseDTO import BaseDTO
+
+
+class SlotConflictCheckRequestDTO(BaseDTO):
+    interviewer_id: str
+    candidate_id: str | None = None
+    date: str
+    time: str
+    duration_minutes: int = 60
+    timezone: Literal["WIB", "WITA", "WIT"] = "WIB"
+
+
+class SlotConflictCheckResultDTO(BaseDTO):
+    is_available: bool
+    status: Literal[
+        "VALID",
+        "CONFLICT_EXISTING_EVENT",
+        "BLOCKED_FRIDAY_PRAYER",
+        "OUTSIDE_WORKING_HOURS",
+        "INSUFFICIENT_BUFFER",
+    ]
+    message: str
+    rule_code: str | None = None
+    conflicting_event: str | None = None
+    suggested_alternatives: list[str] = Field(default_factory=list)

@@ -1,0 +1,72 @@
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.model.FollowupModel import ActionRecipient, FollowupPlan
+from app.repository.BaseRepository import BaseRepository
+
+
+class ActionPlanRepository(BaseRepository[FollowupPlan]):
+    def __init__(self, session: AsyncSession) -> None:
+        super().__init__(FollowupPlan, session)
+
+    async def get_action_plan(self, plan_id: int) -> FollowupPlan | None:
+        stmt = (
+            select(FollowupPlan)
+            .options(
+                selectinload(FollowupPlan.recipients).selectinload(ActionRecipient.candidate),
+                selectinload(FollowupPlan.recipients).selectinload(ActionRecipient.user),
+            )
+            .where(FollowupPlan.nid == plan_id)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_latest_plan(self) -> FollowupPlan | None:
+        stmt = (
+            select(FollowupPlan)
+            .options(
+                selectinload(FollowupPlan.recipients).selectinload(ActionRecipient.candidate),
+                selectinload(FollowupPlan.recipients).selectinload(ActionRecipient.user),
+            )
+            .order_by(FollowupPlan.nid.desc())
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def create_action_plan(
+        self,
+        plan_data: dict,
+        recipients_data: list[dict] | None = None,
+    ) -> FollowupPlan:
+        plan = FollowupPlan(**plan_data)
+        self.session.add(plan)
+        await self.session.flush()
+
+        if recipients_data:
+            for r_data in recipients_data:
+                recipient = ActionRecipient(nid_followup_plan=plan.nid, **r_data)
+                self.session.add(recipient)
+
+        await self.session.commit()
+        return await self.get_action_plan(plan.nid) or plan
+
+    async def update_plan_status(
+        self,
+        plan_id: int,
+        status: str,
+        approved_by_id: int | None = None,
+    ) -> FollowupPlan | None:
+        plan = await self.get_by_id(plan_id)
+        if not plan:
+            return None
+        plan.vapproval_status = status
+        if status == "EXECUTED" and not plan.vapproval_token:
+            plan.vapproval_token = f"tok_appr_{plan_id}"
+        if approved_by_id:
+            plan.nid_approved_by = approved_by_id
+        self.session.add(plan)
+        await self.session.commit()
+        await self.session.refresh(plan)
+        return plan
