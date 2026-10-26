@@ -14,20 +14,56 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  initialNationalHolidays,
-  initialOperationalPolicy,
-} from "@/data/mockMasterData";
-import {
   CheckCircleIcon,
   PlusIcon,
   TrashBinIcon,
 } from "@/icons";
+import { masterService } from "@/services";
 import { NationalHoliday, OperationalPolicy } from "@/types/master";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+const EMPTY_POLICY_DEFAULTS: OperationalPolicy = {
+  work_start_time: "09:00",
+  work_end_time: "17:00",
+  friday_prayer_start: "11:30",
+  friday_prayer_end: "13:00",
+  max_negotiation_rounds: 3,
+  buffer_minutes: 15,
+  injection_guardrail_enabled: true,
+};
+
+const toHHMM = (value: string, fallback: string): string =>
+  typeof value === "string" && value.length >= 4 ? value.slice(0, 5) : fallback;
+
+const normalizePolicy = (policy: OperationalPolicy): OperationalPolicy => ({
+  ...policy,
+  work_start_time: toHHMM(policy.work_start_time, EMPTY_POLICY_DEFAULTS.work_start_time),
+  work_end_time: toHHMM(policy.work_end_time, EMPTY_POLICY_DEFAULTS.work_end_time),
+  friday_prayer_start: toHHMM(
+    policy.friday_prayer_start,
+    EMPTY_POLICY_DEFAULTS.friday_prayer_start
+  ),
+  friday_prayer_end: toHHMM(
+    policy.friday_prayer_end,
+    EMPTY_POLICY_DEFAULTS.friday_prayer_end
+  ),
+  max_negotiation_rounds:
+    Number.isFinite(policy.max_negotiation_rounds)
+      ? policy.max_negotiation_rounds
+      : EMPTY_POLICY_DEFAULTS.max_negotiation_rounds,
+  buffer_minutes: Number.isFinite(policy.buffer_minutes)
+    ? policy.buffer_minutes
+    : EMPTY_POLICY_DEFAULTS.buffer_minutes,
+  injection_guardrail_enabled: Boolean(policy.injection_guardrail_enabled),
+});
+
+const sortHolidays = (items: NationalHoliday[]): NationalHoliday[] =>
+  [...items].sort((a, b) => a.date.localeCompare(b.date));
 
 export default function OperationalRulesPage() {
-  const [policy, setPolicy] = useState<OperationalPolicy>(initialOperationalPolicy);
-  const [holidays, setHolidays] = useState<NationalHoliday[]>(initialNationalHolidays);
+  const [policy, setPolicy] = useState<OperationalPolicy>(EMPTY_POLICY_DEFAULTS);
+  const [holidays, setHolidays] = useState<NationalHoliday[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   // Add Holiday Modal
@@ -36,34 +72,82 @@ export default function OperationalRulesPage() {
   const [newHolidayName, setNewHolidayName] = useState("");
   const [newHolidayJointLeave, setNewHolidayJointLeave] = useState(false);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadOperationalRules = async () => {
+      try {
+        const [apiPolicy, apiHolidays] = await Promise.all([
+          masterService.getOperationalPolicy(),
+          masterService.listHolidays(2026),
+        ]);
+
+        if (cancelled) return;
+
+        if (apiPolicy && !Array.isArray(apiPolicy)) {
+          setPolicy(normalizePolicy(apiPolicy));
+        }
+
+        if (Array.isArray(apiHolidays)) {
+          setHolidays(sortHolidays(apiHolidays));
+        }
+      } catch (error) {
+        console.error("Failed to fetch operational rules:", error);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+
+    void loadOperationalRules();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Save Policy Handler
-  const handleSavePolicy = () => {
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
+  const handleSavePolicy = async () => {
+    const normalizedPolicy = normalizePolicy(policy);
+    try {
+      const savedPolicy = await masterService.updateOperationalPolicy(normalizedPolicy);
+      if (savedPolicy && !Array.isArray(savedPolicy)) {
+        setPolicy(normalizePolicy(savedPolicy));
+      } else {
+        setPolicy(normalizedPolicy);
+      }
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (error) {
+      console.error("Failed to update operational policy:", error);
+    }
   };
 
   // Add Holiday Handler
-  const handleAddHoliday = () => {
+  const handleAddHoliday = async () => {
     if (!newHolidayDate || !newHolidayName.trim()) {
       alert("Harap isi tanggal dan nama hari libur.");
       return;
     }
 
-    const item: NationalHoliday = {
-      id: `hol-${Date.now()}`,
-      date: newHolidayDate,
-      name: newHolidayName,
-      is_joint_leave: newHolidayJointLeave,
-    };
-
-    setHolidays([...holidays, item].sort((a, b) => a.date.localeCompare(b.date)));
-    setNewHolidayDate("");
-    setNewHolidayName("");
-    setNewHolidayJointLeave(false);
-    setIsAddHolidayOpen(false);
+    try {
+      const createdHoliday = await masterService.createHoliday({
+        date: newHolidayDate,
+        name: newHolidayName,
+        is_joint_leave: newHolidayJointLeave,
+      });
+      if (createdHoliday) {
+        setHolidays((current) => sortHolidays([...current, createdHoliday]));
+      }
+      setNewHolidayDate("");
+      setNewHolidayName("");
+      setNewHolidayJointLeave(false);
+      setIsAddHolidayOpen(false);
+    } catch (error) {
+      console.error("Failed to create holiday:", error);
+    }
   };
 
-  // Delete Holiday Handler
+  // Delete Holiday Handler (Client-side state — no DELETE endpoint on backend, Ledger U-03)
   const handleDeleteHoliday = (id: string) => {
     setHolidays(holidays.filter((h) => h.id !== id));
   };
@@ -234,33 +318,47 @@ export default function OperationalRulesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {holidays.map((h) => (
-                    <TableRow key={h.id} className="hover:bg-gray-50/70 dark:hover:bg-white/[0.02] transition-colors">
-                      <TableCell className="ps-4 pe-3 py-3 text-xs font-mono font-medium text-gray-800 dark:text-gray-200">
-                        {h.date}
-                      </TableCell>
-                      <TableCell className="px-3 py-3 text-xs text-gray-700 dark:text-gray-300 font-medium">
-                        {h.name}
-                      </TableCell>
-                      <TableCell className="px-3 py-3">
-                        {h.is_joint_leave ? (
-                          <Badge color="warning" size="sm">Cuti Bersama</Badge>
-                        ) : (
-                          <Badge color="error" size="sm">Libur Nasional</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="pe-5 ps-3 py-3 text-end whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteHoliday(h.id)}
-                          className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-theme-xs hover:border-error-300 hover:bg-error-50 hover:text-error-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-error-500/30 dark:hover:bg-error-500/15 dark:hover:text-error-400 transition-all"
-                          title="Delete Holiday"
-                        >
-                          <TrashBinIcon/>
-                        </button>
+                  {isLoading ? (
+                    <TableRow>
+                      <TableCell className="py-8 text-center text-xs text-gray-400">
+                        Loading holidays from database...
                       </TableCell>
                     </TableRow>
-                  ))}
+                  ) : holidays.length === 0 ? (
+                    <TableRow>
+                      <TableCell className="py-8 text-center text-xs text-gray-400">
+                        No holidays registered in the database.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    holidays.map((h) => (
+                      <TableRow key={h.id} className="hover:bg-gray-50/70 dark:hover:bg-white/[0.02] transition-colors">
+                        <TableCell className="ps-4 pe-3 py-3 text-xs font-mono font-medium text-gray-800 dark:text-gray-200">
+                          {h.date}
+                        </TableCell>
+                        <TableCell className="px-3 py-3 text-xs text-gray-700 dark:text-gray-300 font-medium">
+                          {h.name}
+                        </TableCell>
+                        <TableCell className="px-3 py-3">
+                          {h.is_joint_leave ? (
+                            <Badge color="warning" size="sm">Cuti Bersama</Badge>
+                          ) : (
+                            <Badge color="error" size="sm">Libur Nasional</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="pe-5 ps-3 py-3 text-end whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteHoliday(h.id)}
+                            className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-theme-xs hover:border-error-300 hover:bg-error-50 hover:text-error-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-error-500/30 dark:hover:bg-error-500/15 dark:hover:text-error-400 transition-all"
+                            title="Delete Holiday"
+                          >
+                            <TrashBinIcon/>
+                          </button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </div>

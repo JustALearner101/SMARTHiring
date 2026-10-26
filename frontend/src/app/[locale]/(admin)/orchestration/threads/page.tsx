@@ -1,21 +1,46 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
-import { initialNegotiationThreads } from "@/data/mockThreadAndCalendarData";
 import { NegotiationThread } from "@/types/orchestration";
+import {
+  getNegotiationThread,
+  listNegotiationThreads,
+  replyNegotiationThread,
+} from "@/services/orchestrationService";
 import ThreadStatsCards from "@/components/orchestration/threads/ThreadStatsCards";
 import ThreadFilters from "@/components/orchestration/threads/ThreadFilters";
 import ThreadTable from "@/components/orchestration/threads/ThreadTable";
 import ThreadDetailModal from "@/components/orchestration/threads/ThreadDetailModal";
 
 export default function TriageThreadsPage() {
-  const [threads, setThreads] = useState<NegotiationThread[]>(initialNegotiationThreads);
+  const [threads, setThreads] = useState<NegotiationThread[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [channelFilter, setChannelFilter] = useState("ALL");
   const [selectedThread, setSelectedThread] = useState<NegotiationThread | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Hydrate the thread list strictly from the backend API
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadThreads = async () => {
+      try {
+        const page = await listNegotiationThreads({ page_size: 50 });
+        if (isCancelled) return;
+        setThreads(Array.isArray(page?.items) ? page.items : []);
+      } catch (error) {
+        console.error("Failed to fetch negotiation threads:", error);
+      }
+    };
+
+    void loadThreads();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
 
   // Filter threads
   const filteredThreads = threads.filter((t) => {
@@ -31,35 +56,53 @@ export default function TriageThreadsPage() {
   const handleOpenThread = (thread: NegotiationThread) => {
     setSelectedThread(thread);
     setIsModalOpen(true);
+
+    // Refresh message history from the backend
+    void (async () => {
+      try {
+        const fresh = await getNegotiationThread(thread.id);
+        const merged: NegotiationThread = {
+          ...thread,
+          ...fresh,
+          messages: fresh.messages.length > 0 ? fresh.messages : thread.messages,
+        };
+        setThreads((prev) => prev.map((t) => (t.id === merged.id ? merged : t)));
+        setSelectedThread((current) =>
+          current && current.id === merged.id ? merged : current
+        );
+      } catch (error) {
+        console.error("Failed to fetch thread detail:", error);
+      }
+    })();
   };
 
-  const handleTakeoverSubmit = (threadId: string, replyText: string) => {
-    setThreads((prev) =>
-      prev.map((t) => {
-        if (t.id === threadId) {
-          const updatedMessages = [
-            ...t.messages,
-            {
-              id: `msg-hr-${Date.now()}`,
-              round_number: t.current_round,
-              sender_role: "HR_ADMIN" as const,
-              sender_name: "HR Admin (Manual Takeover)",
-              channel: t.candidate_channel,
-              sent_at: new Date().toISOString(),
-              content: replyText,
-            },
-          ];
-          return {
-            ...t,
-            status: "SCHEDULED" as const,
-            last_message_preview: `HR Takeover: "${replyText.slice(0, 60)}..."`,
-            last_activity_at: new Date().toISOString(),
-            messages: updatedMessages,
-          };
-        }
-        return t;
-      })
-    );
+  const handleTakeoverSubmit = async (threadId: string, replyText: string) => {
+    const target = threads.find((t) => t.id === threadId);
+    if (!target) return;
+
+    try {
+      const message = await replyNegotiationThread(threadId, {
+        content: replyText,
+        sender_role: "HR_ADMIN",
+        channel: target.candidate_channel,
+      });
+
+      const applyReply = (t: NegotiationThread): NegotiationThread => {
+        if (t.id !== threadId) return t;
+        return {
+          ...t,
+          status: "SCHEDULED",
+          last_message_preview: `HR Takeover: "${replyText.slice(0, 60)}..."`,
+          last_activity_at: message.sent_at || new Date().toISOString(),
+          messages: [...t.messages, message],
+        };
+      };
+
+      setThreads((prev) => prev.map(applyReply));
+      setSelectedThread((current) => (current ? applyReply(current) : current));
+    } catch (error) {
+      console.error("Failed to send thread reply:", error);
+    }
   };
 
   return (
@@ -114,6 +157,7 @@ export default function TriageThreadsPage() {
 
       {/* Detail & Takeover Modal */}
       <ThreadDetailModal
+        key={selectedThread?.id ?? "no-thread"}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         thread={selectedThread}

@@ -4,13 +4,13 @@ import React, { useState } from "react";
 import { NegotiationThread } from "@/types/orchestration";
 import { Modal } from "@/components/ui/modal";
 import Button from "@/components/ui/button/Button";
-import { AlertIcon, CheckCircleIcon, CloseIcon, LockIcon } from "@/icons";
+import { AlertIcon, LockIcon } from "@/icons";
 
 interface ThreadDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   thread: NegotiationThread | null;
-  onTakeoverSubmit: (threadId: string, replyText: string) => void;
+  onTakeoverSubmit: (threadId: string, replyText: string) => Promise<void>;
 }
 
 export default function ThreadDetailModal({
@@ -21,16 +21,22 @@ export default function ThreadDetailModal({
 }: ThreadDetailModalProps) {
   const [manualReply, setManualReply] = useState("");
   const [isSent, setIsSent] = useState(false);
-
+  const [isSending, setIsSending] = useState(false);
   if (!thread) return null;
 
   const isDeadlock = thread.status === "DEADLOCK_ESCALATED";
 
-  const handleSendTakeover = (e: React.FormEvent) => {
+  const handleSendTakeover = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!manualReply.trim()) return;
-    onTakeoverSubmit(thread.id, manualReply);
-    setIsSent(true);
+    if (!manualReply.trim() || isSending) return;
+    setIsSending(true);
+    try {
+      await onTakeoverSubmit(thread.id, manualReply);
+      setIsSent(true);
+      setManualReply("");
+    } finally {
+      setIsSending(false);
+    }
   };
 
   return (
@@ -81,7 +87,6 @@ export default function ThreadDetailModal({
       {/* Message Timeline */}
       <div className="mt-4 max-h-[380px] overflow-y-auto space-y-3.5 pe-1">
         {thread.messages.map((msg, index) => {
-          const isAI = msg.sender_role === "AI_ORCHESTRATOR";
           const isCandidate = msg.sender_role === "CANDIDATE";
 
           return (
@@ -165,7 +170,7 @@ export default function ThreadDetailModal({
             <Button size="sm" variant="outline" onClick={onClose}>
               Batal
             </Button>
-            <Button size="sm" type="submit" disabled={!manualReply.trim()}>
+            <Button size="sm" type="submit" disabled={!manualReply.trim() || isSending}>
               Send HR Resolution via {thread.candidate_channel.toUpperCase()}
             </Button>
           </div>

@@ -1,9 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
-import { initialCalendarMatrixEvents } from "@/data/mockThreadAndCalendarData";
 import { CalendarMatrixEvent } from "@/types/orchestration";
+import { OperationalPolicy } from "@/types/master";
+import { listCalendarEvents } from "@/services/orchestrationService";
+import { getOperationalPolicy } from "@/services/masterService";
 import TimezoneMatrixHeader from "@/components/orchestration/calendar/TimezoneMatrixHeader";
 import OperationalPolicyBanner from "@/components/orchestration/calendar/OperationalPolicyBanner";
 import CalendarMatrixView from "@/components/orchestration/calendar/CalendarMatrixView";
@@ -11,11 +13,44 @@ import SlotConflictCheckerModal from "@/components/orchestration/calendar/SlotCo
 
 export default function CalendarMatrixPage() {
   const [selectedTimezone, setSelectedTimezone] = useState<"WIB" | "WITA" | "WIT">("WIB");
-  const [events, setEvents] = useState<CalendarMatrixEvent[]>(initialCalendarMatrixEvents);
+  const [events, setEvents] = useState<CalendarMatrixEvent[]>([]);
+  const [policy, setPolicy] = useState<OperationalPolicy | null>(null);
   const [isTesterOpen, setIsTesterOpen] = useState(false);
 
-  const handleSelectSlot = (date: string, time: string) => {
-    // When an available slot is clicked in the grid, open the tester pre-filled
+  // Hydrate the matrix strictly from the backend calendar API
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadCalendar = async () => {
+      try {
+        const apiEvents = await listCalendarEvents();
+        if (isCancelled) return;
+        setEvents(Array.isArray(apiEvents) ? apiEvents : []);
+      } catch (error) {
+        console.error("Failed to fetch calendar events:", error);
+      }
+    };
+
+    const loadPolicy = async () => {
+      try {
+        const apiPolicy = await getOperationalPolicy();
+        if (isCancelled || !apiPolicy) return;
+        setPolicy(apiPolicy);
+      } catch (error) {
+        console.error("Failed to fetch operational policy:", error);
+      }
+    };
+
+    void loadCalendar();
+    void loadPolicy();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  // When an available slot is clicked in the grid, open the tester.
+  const handleSelectSlot = () => {
     setIsTesterOpen(true);
   };
 
@@ -30,7 +65,7 @@ export default function CalendarMatrixPage() {
       />
 
       {/* Operational Policy Banner */}
-      <OperationalPolicyBanner onOpenTester={() => setIsTesterOpen(true)} />
+      <OperationalPolicyBanner onOpenTester={() => setIsTesterOpen(true)} policy={policy} />
 
       {/* Weekly Matrix View */}
       <CalendarMatrixView

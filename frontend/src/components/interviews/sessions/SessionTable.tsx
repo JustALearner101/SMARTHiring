@@ -24,11 +24,11 @@ import {
 } from "@/icons";
 
 interface SessionTableProps {
-  initialSessions: InterviewSession[];
+  sessions: InterviewSession[];
+  onUploadSession: (session: InterviewSession) => void;
 }
 
-export default function SessionTable({ initialSessions }: SessionTableProps) {
-  const [sessions, setSessions] = useState<InterviewSession[]>(initialSessions);
+export default function SessionTable({ sessions, onUploadSession }: SessionTableProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [consentFilter, setConsentFilter] = useState<string>("ALL");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -46,10 +46,6 @@ export default function SessionTable({ initialSessions }: SessionTableProps) {
 
     return matchesSearch && matchesConsent;
   });
-
-  const handleAddSession = (newSession: InterviewSession) => {
-    setSessions([newSession, ...sessions]);
-  };
 
   const getJobStatusBadge = (status: string) => {
     switch (status) {
@@ -258,7 +254,7 @@ export default function SessionTable({ initialSessions }: SessionTableProps) {
       <AudioUploadModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        onSubmit={handleAddSession}
+        onSubmit={onUploadSession}
       />
     </div>
   );

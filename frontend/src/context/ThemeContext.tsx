@@ -30,6 +30,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
     ) as ResolvedTheme | null;
     const initialMode = savedMode || (legacySavedTheme as ThemeMode) || "light";
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- client-only preference hydration must run after mount
     setThemeModeState(initialMode);
     setIsInitialized(true);
   }, []);
@@ -54,6 +55,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
         mediaQuery.removeEventListener("change", handleChange);
       };
     } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- sync explicit theme mode with the resolved theme
       setTheme(themeMode as ResolvedTheme);
     }
   }, [themeMode, isInitialized]);
@@ -76,7 +78,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const toggleTheme = () => {
-    setThemeModeState((prevMode) => {
+    setThemeModeState(() => {
       const currentResolved = theme;
       return currentResolved === "light" ? "dark" : "light";
     });

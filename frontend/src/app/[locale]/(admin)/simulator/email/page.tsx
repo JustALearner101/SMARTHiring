@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import EmailSidebar from "@/components/simulator/email/EmailSidebar";
 import EmailList from "@/components/simulator/email/EmailList";
@@ -30,6 +30,18 @@ export default function InterviewerEmailSimulatorPage() {
   });
 
   const activeEmail = emails.find((m) => m.id === activeEmailId) || filteredEmails[0];
+
+  // Keep the open email valid after the inbox is hydrated from GET /simulator/email/inbox
+  useEffect(() => {
+    const visibleEmails =
+      currentFolder === "sent"
+        ? emails.filter((mail) => mail.folder === "sent")
+        : emails.filter((mail) => mail.folder === "inbox");
+
+    if (visibleEmails.length > 0 && !visibleEmails.some((mail) => mail.id === activeEmailId)) {
+      setActiveEmailId(visibleEmails[0].id);
+    }
+  }, [emails, currentFolder, activeEmailId, setActiveEmailId]);
 
   const inboxCount = emails.filter((m) => m.folder === "inbox" && !m.is_read).length;
   const sentCount = emails.filter((m) => m.folder === "sent").length;

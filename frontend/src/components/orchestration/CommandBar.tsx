@@ -1,7 +1,6 @@
 "use client";
 
 import Button from "@/components/ui/button/Button";
-import { presetScenarios } from "@/data/mockOrchestrationData";
 import { BoltIcon, ShootingStarIcon } from "@/icons";
 import { PresetScenario } from "@/types/orchestration";
 import React, { useState } from "react";
@@ -10,12 +9,14 @@ interface CommandBarProps {
   onExecuteCommand: (prompt: string, scenarioId?: string) => void;
   isProcessing: boolean;
   activeCandidateName?: string;
+  scenarios: PresetScenario[];
 }
 
 export default function CommandBar({
   onExecuteCommand,
   isProcessing,
   activeCandidateName,
+  scenarios,
 }: CommandBarProps) {
   const [commandText, setCommandText] = useState(
     activeCandidateName
@@ -95,7 +96,7 @@ export default function CommandBar({
           </span>
         </div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          {presetScenarios.map((sc) => (
+          {scenarios.map((sc) => (
             <button
               key={sc.id}
               type="button"

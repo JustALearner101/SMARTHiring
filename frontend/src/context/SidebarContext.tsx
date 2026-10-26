@@ -38,6 +38,7 @@ export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({
   const pathname = usePathname();
   // Close sidebar on route change (for mobile)
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- close the mobile drawer on navigation
     setIsMobileOpen(false);
   }, [pathname]);
 

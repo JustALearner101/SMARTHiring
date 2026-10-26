@@ -14,18 +14,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { initialInterviewers } from "@/data/mockMasterData";
-import {
-  InfoIcon,
-  PencilIcon,
-  PlusIcon,
-  TrashBinIcon,
-} from "@/icons";
+import { PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
+import { masterService } from "@/services";
 import { Department, InterviewerContact, Timezone } from "@/types/master";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export default function ContactsPage() {
-  const [contacts, setContacts] = useState<InterviewerContact[]>(initialInterviewers);
+  const [contacts, setContacts] = useState<InterviewerContact[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDept, setSelectedDept] = useState<string>("ALL");
   const [selectedTimezone, setSelectedTimezone] = useState<string>("ALL");
@@ -46,6 +42,28 @@ export default function ContactsPage() {
     timezone: "WIB" as Timezone,
     working_hours: "09:00 - 17:00",
   });
+
+  // Hydrate strictly from Backend API
+  useEffect(() => {
+    let cancelled = false;
+
+    masterService
+      .listContacts()
+      .then((result) => {
+        if (cancelled) return;
+        setContacts(Array.isArray(result) ? result : []);
+      })
+      .catch((error: unknown) => {
+        console.error("Failed to fetch contacts:", error);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Filtered List
   const filteredContacts = useMemo(() => {
@@ -97,57 +115,46 @@ export default function ContactsPage() {
   };
 
   // Unified Save Contact (Add or Edit)
-  const handleSaveContact = () => {
+  const handleSaveContact = async () => {
     if (!formData.name.trim() || !formData.email.trim() || !formData.role.trim()) {
       alert("Please fill in the interviewer's name, email, and position.");
       return;
     }
 
-    if (activeContact) {
-      setContacts(
-        contacts.map((c) =>
-          c.id === activeContact.id
-            ? {
-                ...c,
-                name: formData.name,
-                email: formData.email,
-                phone: formData.phone,
-                department: formData.department,
-                role: formData.role,
-                timezone: formData.timezone,
-                working_hours: formData.working_hours,
-              }
-            : c
-        )
-      );
-    } else {
-      const initials = formData.name
-        .split(" ")
-        .map((n) => n[0])
-        .slice(0, 2)
-        .join("")
-        .toUpperCase();
+    const editing = activeContact;
 
-      const newContact: InterviewerContact = {
-        id: `int-${Date.now()}`,
-        employee_id: formData.employee_id,
-        name: formData.name,
-        email: formData.email,
-        phone: formData.phone,
-        department: formData.department,
-        role: formData.role,
-        timezone: formData.timezone,
-        working_hours: formData.working_hours,
-        avatar_initials: initials || "IN",
-      };
-
-      setContacts([...contacts, newContact]);
+    try {
+      if (editing) {
+        const updated = await masterService.updateContact(editing.id, {
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          department: formData.department,
+          role: formData.role,
+          timezone: formData.timezone,
+          working_hours: formData.working_hours,
+        });
+        setContacts((prev) => prev.map((c) => (c.id === editing.id ? updated : c)));
+      } else {
+        const created = await masterService.createContact({
+          employee_id: formData.employee_id,
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          department: formData.department,
+          role: formData.role,
+          timezone: formData.timezone,
+          working_hours: formData.working_hours,
+        });
+        setContacts((prev) => [created, ...prev]);
+      }
+      setIsFormModalOpen(false);
+    } catch (error) {
+      console.error("Failed to save contact:", error);
     }
-
-    setIsFormModalOpen(false);
   };
 
-  // Confirm Delete
+  // Confirm Delete (Client-side state — no DELETE endpoint on backend, Ledger U-02)
   const handleConfirmDelete = () => {
     if (!activeContact) return;
     setContacts(contacts.filter((c) => c.id !== activeContact.id));
@@ -173,29 +180,6 @@ export default function ContactsPage() {
   return (
     <div>
       <PageBreadcrumb pageTitle="Interviewer Directory" />
-
-      {/* Disambiguation Test Case Alert Banner */}
-      {/* <div className="mb-5 rounded-2xl border border-brand-200 bg-brand-50/70 p-4.5 dark:border-brand-500/20 dark:bg-brand-500/10">
-        <div className="flex items-start gap-3.5">
-          <div className="rounded-xl bg-brand-500 p-2 text-white shrink-0 shadow-theme-xs">
-            <InfoIcon/>
-          </div>
-          <div>
-            <h4 className="text-sm font-semibold text-brand-900 dark:text-brand-300">
-              Hackathon Committee Test Case: &quot;Two Mr. Budis&quot; Disambiguation Scenario
-            </h4>
-            <p className="mt-1 text-xs text-brand-700 dark:text-brand-400 leading-relaxed">
-              This table contains data for two interviewers named <strong>Budi</strong> with different departments and timezones:
-              <br />
-              1. <strong>Budi Santoso</strong> — <em>VP of Engineering</em> (Jakarta - WIB).
-              <br />
-              2. <strong>Budi Raharjo</strong> — <em>Head of Finance</em> (Bali - WITA).
-              <br />
-              When HR gives a natural language command: <em>&quot;Schedule an interview with Mr. Budi&quot;</em>, the AI Orchestrator system will trigger <strong>The LIMITS Pillar (Disambiguation Gate)</strong> to request human clarification.
-            </p>
-          </div>
-        </div>
-      </div> */}
 
       {/* Main Container */}
       <div className="rounded-2xl border border-gray-200 bg-white p-5 xl:p-6 dark:border-gray-800 dark:bg-gray-900 shadow-theme-xs">
@@ -287,7 +271,13 @@ export default function ContactsPage() {
               </TableRow>
             </TableHeader>
             <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {filteredContacts.length === 0 ? (
+              {isLoading ? (
+                <TableRow>
+                  <TableCell className="py-8 text-center text-xs text-gray-400">
+                    Loading contacts from database...
+                  </TableCell>
+                </TableRow>
+              ) : filteredContacts.length === 0 ? (
                 <TableRow>
                   <TableCell className="py-8 text-center text-xs text-gray-400">
                     No contacts match the search filter.

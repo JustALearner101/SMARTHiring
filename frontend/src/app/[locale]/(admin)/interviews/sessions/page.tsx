@@ -1,12 +1,55 @@
 "use client";
 
-import React from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import SessionTable from "@/components/interviews/sessions/SessionTable";
-import { initialInterviewSessions } from "@/data/mockInterviewData";
+import { listInterviewSessions, uploadInterviewSession } from "@/services/interviewService";
+import { InterviewSession } from "@/types/interview";
 import { AudioIcon, LockIcon } from "@/icons";
 
+// Rubric profile seeded in the backend
+const DEFAULT_PROFILE_ID = "PROFILE-TECH-R1";
+
 export default function InterviewSessionsPage() {
+  const [sessions, setSessions] = useState<InterviewSession[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSessions = async () => {
+      try {
+        const page = await listInterviewSessions({ page_size: 50 });
+        if (!cancelled) {
+          setSessions(Array.isArray(page?.items) ? page.items : []);
+        }
+      } catch (error) {
+        console.error("Failed to fetch interview sessions:", error);
+      }
+    };
+
+    void loadSessions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleUploadSession = useCallback(async (localSession: InterviewSession) => {
+    try {
+      const created = await uploadInterviewSession({
+        candidate_id: localSession.candidate_id,
+        profile_id: DEFAULT_PROFILE_ID,
+        consent_status: localSession.consent_status,
+        audio_url: localSession.audio_url,
+        audio_duration: localSession.audio_duration,
+        notes: `${localSession.round_name} - Interviewer: ${localSession.interviewer_name}`,
+      });
+      setSessions((prev) => [created, ...prev]);
+    } catch (error) {
+      console.error("Failed to upload interview session:", error);
+    }
+  }, []);
+
   return (
     <div>
       <PageBreadcrumb pageTitle="Interview Sessions" />
@@ -41,7 +84,7 @@ export default function InterviewSessionsPage() {
       </div>
 
       {/* Master Session Table */}
-      <SessionTable initialSessions={initialInterviewSessions} />
+      <SessionTable sessions={sessions} onUploadSession={handleUploadSession} />
     </div>
   );
 }

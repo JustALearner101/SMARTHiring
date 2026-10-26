@@ -3,14 +3,23 @@
 import React from "react";
 import { AlertIcon, LockIcon } from "@/icons";
 import Button from "@/components/ui/button/Button";
+import { OperationalPolicy } from "@/types/master";
 
 interface OperationalPolicyBannerProps {
   onOpenTester: () => void;
+  policy?: OperationalPolicy | null;
 }
 
 export default function OperationalPolicyBanner({
   onOpenTester,
+  policy,
 }: OperationalPolicyBannerProps) {
+  const workStart = policy?.work_start_time?.slice(0, 5) || "09:00";
+  const workEnd = policy?.work_end_time?.slice(0, 5) || "17:00";
+  const prayerStart = policy?.friday_prayer_start?.slice(0, 5) || "11:30";
+  const prayerEnd = policy?.friday_prayer_end?.slice(0, 5) || "13:00";
+  const bufferMinutes = policy?.buffer_minutes ?? 15;
+
   return (
     <div className="rounded-2xl border border-warning-200 bg-warning-50/60 p-4 shadow-theme-xs dark:border-warning-900/40 dark:bg-warning-500/10">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -27,13 +36,13 @@ export default function OperationalPolicyBanner({
             </h4>
             <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-warning-800 dark:text-warning-300">
               <span className="flex items-center gap-1">
-                <span className="font-semibold">• Jam Kerja:</span> 09:00 - 17:00
+                <span className="font-semibold">• Jam Kerja:</span> {workStart} - {workEnd}
               </span>
               <span className="flex items-center gap-1 font-semibold text-error-700 dark:text-error-400">
-                <span>• Sholat Jumat:</span> 11:30 - 13:00 (Blocked)
+                <span>• Sholat Jumat:</span> {prayerStart} - {prayerEnd} (Blocked)
               </span>
               <span className="flex items-center gap-1">
-                <span className="font-semibold">• Buffer Antar-Interview:</span> Min. 15 Menit
+                <span className="font-semibold">• Buffer Antar-Interview:</span> Min. {bufferMinutes} Menit
               </span>
             </div>
           </div>

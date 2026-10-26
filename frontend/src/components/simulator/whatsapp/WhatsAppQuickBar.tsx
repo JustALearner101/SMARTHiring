@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { QuickReplyPreset, QuickPresetType } from "@/types/simulator";
-import { quickReplyPresets } from "@/data/mockSimulatorData";
+import { listQuickPresets } from "@/services/simulatorService";
 import { BoltIcon, CheckLineIcon, TimeIcon, AlertIcon, LockIcon } from "@/icons";
 
 interface WhatsAppQuickBarProps {
@@ -14,6 +14,29 @@ export default function WhatsAppQuickBar({
   onSelectPreset,
   disabled = false,
 }: WhatsAppQuickBarProps) {
+  const [presets, setPresets] = useState<QuickReplyPreset[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPresets = async () => {
+      try {
+        const apiPresets = await listQuickPresets();
+        if (!cancelled && Array.isArray(apiPresets)) {
+          setPresets(apiPresets);
+        }
+      } catch (error) {
+        console.error("Failed to fetch quick presets:", error);
+      }
+    };
+
+    void loadPresets();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const getIcon = (type: QuickPresetType) => {
     switch (type) {
       case "confirm":
@@ -54,7 +77,7 @@ export default function WhatsAppQuickBar({
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {quickReplyPresets.map((preset) => (
+        {presets.map((preset) => (
           <button
             key={preset.id}
             type="button"

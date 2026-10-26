@@ -2,7 +2,6 @@
 
 import Button from "@/components/ui/button/Button";
 import { Modal } from "@/components/ui/modal";
-import { budiDisambiguationProfiles } from "@/data/mockOrchestrationData";
 import { AlertIcon, CheckCircleIcon, InfoIcon } from "@/icons";
 import { DisambiguationProfile } from "@/types/orchestration";
 import React from "react";
@@ -13,6 +12,7 @@ interface DisambiguationModalProps {
   onSelectInterviewer: (profile: DisambiguationProfile) => void;
   candidateName: string;
   targetPosition: string;
+  profiles?: DisambiguationProfile[];
 }
 
 export default function DisambiguationModal({
@@ -21,6 +21,7 @@ export default function DisambiguationModal({
   onSelectInterviewer,
   candidateName,
   targetPosition,
+  profiles = [],
 }: DisambiguationModalProps) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} className="max-w-3xl m-4">
@@ -40,7 +41,7 @@ export default function DisambiguationModal({
               </span>
             </div>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-              Your instructions refer to the name <strong>&quot;Pak Budi&quot;</strong>, but the system detected <strong>2 contacts</strong> with that name in the company directory. According to the <em>Admits its limits</em> principle, AI does not guess and asks for human confirmation.
+              Your instructions refer to the name <strong>&quot;Pak Budi&quot;</strong>, but the system detected <strong>{profiles.length || 2} contacts</strong> with that name in the company directory. According to the <em>Admits its limits</em> principle, AI does not guess and asks for human confirmation.
             </p>
           </div>
         </div>
@@ -57,7 +58,7 @@ export default function DisambiguationModal({
 
         {/* Two Budi Comparison Cards */}
         <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {budiDisambiguationProfiles.map((budi) => {
+          {profiles.map((budi) => {
             const isEngineering = budi.department === "Engineering";
             return (
               <div

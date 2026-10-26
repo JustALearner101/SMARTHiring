@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { AudioIcon, TimeIcon } from "@/icons";
+import { AudioIcon } from "@/icons";
 
 interface AudioWavePlayerProps {
   currentTimeMs: number;
@@ -26,8 +26,6 @@ export default function AudioWavePlayer({
     const seconds = totalSeconds % 60;
     return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
   };
-
-  const progressPercent = durationMs > 0 ? (currentTimeMs / durationMs) * 100 : 0;
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">

@@ -33,6 +33,7 @@ const CalendarEventModal: React.FC<CalendarEventModalProps> = ({
 
   useEffect(() => {
     if (selectedEvent) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate the edit form from the selected event
       setEventTitle((selectedEvent.title as string) || "");
       const startStr =
         typeof selectedEvent.start === "string"

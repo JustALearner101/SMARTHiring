@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { CalendarMatrixEvent } from "@/types/orchestration";
-import { AlertIcon, CheckCircleIcon, TimeIcon } from "@/icons";
+import { AlertIcon, CheckCircleIcon } from "@/icons";
 
 interface CalendarMatrixViewProps {
   events: CalendarMatrixEvent[];
@@ -24,8 +24,22 @@ export default function CalendarMatrixView({
     { id: "int-006", name: "I Made Sukadana", role: "Regional Operations Director", dept: "Operations", baseTz: "WITA" },
   ];
 
+  // Backend calendar rows may belong to interviewer ids outside the demo roster.
+  const interviewerOptions = [
+    ...interviewers,
+    ...Array.from(new Set(events.map((e) => e.interviewer_id)))
+      .filter((id) => !interviewers.some((i) => i.id === id))
+      .map((id) => ({
+        id,
+        name: `Interviewer #${id}`,
+        role: "Calendar Owner",
+        dept: "—",
+        baseTz: selectedTimezone,
+      })),
+  ];
+
   const currentInterviewer =
-    interviewers.find((i) => i.id === selectedInterviewerId) || interviewers[0];
+    interviewerOptions.find((i) => i.id === selectedInterviewerId) || interviewerOptions[0];
 
   // Week days for late October 2026: Mon 26 Oct - Fri 30 Oct 2026
   const weekDays = [
@@ -51,7 +65,7 @@ export default function CalendarMatrixView({
 
   // Filter events for the selected interviewer
   const interviewerEvents = events.filter(
-    (e) => e.interviewer_id === selectedInterviewerId
+    (e) => e.interviewer_id === currentInterviewer.id
   );
 
   return (
@@ -63,11 +77,11 @@ export default function CalendarMatrixView({
             Pilih Interviewer:
           </label>
           <select
-            value={selectedInterviewerId}
+            value={currentInterviewer.id}
             onChange={(e) => setSelectedInterviewerId(e.target.value)}
             className="rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-xs font-bold text-brand-700 shadow-theme-xs focus:border-brand-500 focus:outline-hidden dark:border-gray-800 dark:bg-gray-800 dark:text-brand-300"
           >
-            {interviewers.map((i) => (
+            {interviewerOptions.map((i) => (
               <option key={i.id} value={i.id}>
                 {i.name} — {i.role} ({i.baseTz})
               </option>
@@ -184,7 +198,6 @@ export default function CalendarMatrixView({
                         {cellEvents.map((evt) => {
                           const isInterview = evt.event_type === "SCHEDULED_INTERVIEW";
                           const isMeeting = evt.event_type === "TEAM_MEETING";
-                          const isOOO = evt.event_type === "OUT_OF_OFFICE";
 
                           if (evt.event_type === "FRIDAY_PRAYER_BLOCK") return null;
 

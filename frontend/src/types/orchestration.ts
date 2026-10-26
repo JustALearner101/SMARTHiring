@@ -73,17 +73,8 @@ export interface ActionPlan {
 export interface AuditEvent {
   id: string;
   timestamp: string;
-  event_type:
-  | "REQUEST_RECEIVED"
-  | "GUARDRAIL_PASSED"
-  | "DISAMBIGUATION_TRIGGERED"
-  | "DISAMBIGUATION_RESOLVED"
-  | "SOURCES_RETRIEVED"
-  | "PLAN_VALIDATED"
-  | "HUMAN_APPROVED"
-  | "UNDO_BUFFER_STARTED"
-  | "ACTION_UNDONE"
-  | "ACTION_DISPATCHED";
+  /** Backend audit trail is free-form (AuditEventDTO.event_type: str). */
+  event_type: string;
   title: string;
   description: string;
   actor: string; // "AI Orchestrator" | "HR Admin (You)" | "Secondary Validator" | "Guardrail Scanner"

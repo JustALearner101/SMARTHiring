@@ -2,7 +2,7 @@
 
 import Button from "@/components/ui/button/Button";
 import { BoltIcon, CloseIcon, TimeIcon } from "@/icons";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 interface UndoBufferBannerProps {
   initialSeconds?: number;
@@ -16,28 +16,40 @@ export default function UndoBufferBanner({
   onDispatchImmediately,
 }: UndoBufferBannerProps) {
   const [secondsLeft, setSecondsLeft] = useState(initialSeconds);
+  const deadlineRef = useRef<number | null>(null);
+  const dispatchRef = useRef(onDispatchImmediately);
+  const hasDispatchedRef = useRef(false);
 
   useEffect(() => {
-    if (secondsLeft <= 0) {
-      onDispatchImmediately();
-      return;
-    }
+    dispatchRef.current = onDispatchImmediately;
+  }, [onDispatchImmediately]);
 
-    const timer = setInterval(() => {
-      setSecondsLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          onDispatchImmediately();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+  useEffect(() => {
+    deadlineRef.current = Date.now() + initialSeconds * 1000;
+    hasDispatchedRef.current = false;
 
-    return () => clearInterval(timer);
-  }, [secondsLeft, onDispatchImmediately]);
+    const timer = window.setInterval(() => {
+      if (deadlineRef.current === null) return;
+      const remaining = Math.max(
+        0,
+        Math.ceil((deadlineRef.current - Date.now()) / 1000)
+      );
+      setSecondsLeft(remaining);
 
-  const progressPercent = (secondsLeft / initialSeconds) * 100;
+      if (remaining <= 0 && !hasDispatchedRef.current) {
+        hasDispatchedRef.current = true;
+        window.clearInterval(timer);
+        dispatchRef.current();
+      }
+    }, 500);
+
+    return () => window.clearInterval(timer);
+  }, [initialSeconds]);
+
+  const progressPercent = Math.min(
+    100,
+    Math.max(0, (secondsLeft / initialSeconds) * 100)
+  );
 
   return (
     <div className="rounded-2xl border-2 border-warning-400 bg-gradient-to-r from-warning-500/10 via-brand-500/10 to-transparent p-5 xl:p-6 dark:border-warning-500/40 dark:bg-gray-900 shadow-theme-md transition-all animate-in fade-in slide-in-from-top-2">

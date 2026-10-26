@@ -7,12 +7,6 @@ import ConfirmationCard from "@/components/orchestration/ConfirmationCard";
 import DisambiguationModal from "@/components/orchestration/DisambiguationModal";
 import UndoBufferBanner from "@/components/orchestration/UndoBufferBanner";
 import Button from "@/components/ui/button/Button";
-import { initialCandidates } from "@/data/mockMasterData";
-import {
-  budiDisambiguationProfiles,
-  generateSampleActionPlan,
-  initialAuditLogs,
-} from "@/data/mockOrchestrationData";
 import {
   BoltIcon,
   ChatIcon,
@@ -23,26 +17,84 @@ import {
   ShootingStarIcon,
 } from "@/icons";
 import { Link } from "@/i18n/navigation";
-import { ActionPlan, AuditEvent, DisambiguationProfile, PlanStatus } from "@/types/orchestration";
+import { listAuditLogs } from "@/services/auditService";
+import { getCandidate, listCandidates } from "@/services/masterService";
+import {
+  approveActionPlan,
+  executeCommand,
+  getCurrentActionPlan,
+  isDisambiguationResult,
+  listPresetScenarios,
+  undoActionPlan,
+} from "@/services/orchestrationService";
+import { Candidate } from "@/types/master";
+import {
+  ActionPlan,
+  AuditEvent,
+  DisambiguationProfile,
+  PlanStatus,
+  PresetScenario,
+} from "@/types/orchestration";
 import { useSearchParams } from "next/navigation";
-import React, { Suspense, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useRef, useState } from "react";
+
+function formatAuditTimestamp(raw: string): string {
+  if (!raw.includes("T")) return raw;
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return raw;
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${pad(parsed.getHours())}:${pad(parsed.getMinutes())}:${pad(parsed.getSeconds())}`;
+}
+
+function toAuditEvent(event: AuditEvent): AuditEvent {
+  return {
+    id: event.id,
+    timestamp: formatAuditTimestamp(event.timestamp),
+    event_type: event.event_type,
+    title: event.title,
+    description: event.description,
+    actor: event.actor,
+    status_badge: event.status_badge,
+    metadata: event.metadata,
+  };
+}
+
+function mapPlanStatus(planStatus: PlanStatus): PlanStatus {
+  switch (planStatus) {
+    case "PENDING_APPROVAL":
+    case "UNDO_WINDOW":
+    case "EXECUTED":
+    case "UNDONE":
+      return planStatus;
+    default:
+      return "IDLE";
+  }
+}
 
 function SchedulingContent() {
   const searchParams = useSearchParams();
   const candidateId = searchParams.get("candidateId");
 
-  // Matched Candidate from URL Query if navigated from /master/candidates
-  const targetCandidate = useMemo(() => {
-    if (!candidateId) return initialCandidates[0];
-    return initialCandidates.find((c) => c.id === candidateId) || initialCandidates[0];
-  }, [candidateId]);
+  const [candidatesQueue, setCandidatesQueue] = useState<Candidate[]>([]);
+  const [apiCandidate, setApiCandidate] = useState<Candidate | null>(null);
+  const targetCandidate: Candidate | null =
+    apiCandidate && candidateId && apiCandidate.id === candidateId
+      ? apiCandidate
+      : candidatesQueue.find((c) => c.id === candidateId) ?? candidatesQueue[0] ?? null;
 
   // Orchestrator State
   const [status, setStatus] = useState<PlanStatus>("IDLE");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isApprovingPlan, setIsApprovingPlan] = useState(false);
   const [activePlan, setActivePlan] = useState<ActionPlan | null>(null);
   const [isDisambiguationOpen, setIsDisambiguationOpen] = useState(false);
-  const [auditLogs, setAuditLogs] = useState<AuditEvent[]>(initialAuditLogs);
+  const [disambiguationProfiles, setDisambiguationProfiles] = useState<DisambiguationProfile[]>([]);
+  const [undoSeconds, setUndoSeconds] = useState(60);
+  const [scenarioList, setScenarioList] = useState<PresetScenario[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditEvent[]>([]);
+
+  // Prevents the 60s countdown and the "Send Now" button from double-dispatching.
+  const finalizedRef = useRef(false);
 
   // Helper to add timestamped audit event
   const pushAudit = (
@@ -70,10 +122,116 @@ function SchedulingContent() {
     setAuditLogs((prev) => [newEvent, ...prev]);
   };
 
-  // 1. Execute Command (Natural Language or Quick Presets)
-  const handleExecuteCommand = (prompt: string, scenarioId?: string) => {
+  // Initial hydration strictly from Backend API
+  useEffect(() => {
+    let cancelled = false;
+
+    const hydrate = async () => {
+      try {
+        const candidatesPage = await listCandidates({ page_size: 20 });
+        if (!cancelled && Array.isArray(candidatesPage?.items)) {
+          setCandidatesQueue(candidatesPage.items);
+        }
+      } catch (error) {
+        console.error("Failed to fetch candidates queue:", error);
+      }
+
+      try {
+        const scenarios = await listPresetScenarios();
+        if (!cancelled && Array.isArray(scenarios)) setScenarioList(scenarios);
+      } catch (error) {
+        console.error("Failed to fetch preset scenarios:", error);
+      }
+
+      try {
+        const page = await listAuditLogs({ page_size: 50 });
+        if (!cancelled && Array.isArray(page?.items)) {
+          setAuditLogs(page.items.map(toAuditEvent));
+        }
+      } catch (error) {
+        console.error("Failed to fetch audit logs:", error);
+      }
+
+      try {
+        const plan = await getCurrentActionPlan();
+        if (!cancelled && plan) {
+          setActivePlan(plan);
+          const mappedStatus = mapPlanStatus(plan.status);
+          if (mappedStatus === "UNDO_WINDOW") {
+            const expiresAt = plan.undo_expires_at;
+            if (typeof expiresAt === "number" && expiresAt > Date.now()) {
+              setUndoSeconds(Math.max(1, Math.ceil((expiresAt - Date.now()) / 1000)));
+              setStatus("UNDO_WINDOW");
+            } else {
+              setStatus("EXECUTED");
+            }
+          } else {
+            setStatus(mappedStatus);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch current action plan:", error);
+      }
+    };
+
+    void hydrate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Candidate context from ?candidateId=...
+  useEffect(() => {
+    if (!candidateId) return;
+
+    let cancelled = false;
+    getCandidate(candidateId)
+      .then((candidate) => {
+        if (!cancelled) setApiCandidate(candidate);
+      })
+      .catch((error: unknown) => {
+        console.error("Failed to fetch candidate by ID:", error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [candidateId]);
+
+  const applyPlan = (plan: ActionPlan) => {
+    setActivePlan(plan);
+    setStatus("PENDING_APPROVAL");
+    setIsProcessing(false);
+    setIsApprovingPlan(false);
+    finalizedRef.current = false;
+
+    const sourceRefs = plan.sources_cited.map((src) => src.ref_code).join(" · ");
+    pushAudit(
+      "SOURCES_RETRIEVED",
+      "Sources & Calendar Slots Verified",
+      sourceRefs || `Calendar slots and candidate records verified for ${plan.candidate_name}.`,
+      "Context Retriever Node",
+      "info"
+    );
+
+    pushAudit(
+      "PLAN_VALIDATED",
+      "Action Plan Ready for Review",
+      plan.validator_notes ||
+        "Draft WhatsApp to Candidate and Email to User are ready for Approval Gate.",
+      "Secondary Validator Agent",
+      "success"
+    );
+  };
+
+  // 1. Execute Command (Natural Language or Quick Presets) strictly via Backend API
+  const handleExecuteCommand = async (prompt: string, scenarioId?: string) => {
+    if (isProcessing) return;
+
     setIsProcessing(true);
     setStatus("ANALYZING");
+    finalizedRef.current = false;
 
     pushAudit(
       "REQUEST_RECEIVED",
@@ -83,22 +241,14 @@ function SchedulingContent() {
       "info"
     );
 
-    setTimeout(() => {
-      pushAudit(
-        "GUARDRAIL_PASSED",
-        "Prompt Injection Scanner: Lolos",
-        "Instruksi dan lampiran bebas dari kode injeksi liar.",
-        "Guardrail Scanner Node",
-        "success"
-      );
+    try {
+      const result = await executeCommand({
+        command: prompt,
+        scenario_id: scenarioId ?? null,
+      });
 
-      // Check for Disambiguation ("Dua Pak Budi" scenario)
-      const isDisambiguation =
-        scenarioId === "scenario-disambiguation" ||
-        prompt.toLowerCase().includes("pak budi") ||
-        prompt.toLowerCase().includes("budi");
-
-      if (isDisambiguation) {
+      if (isDisambiguationResult(result)) {
+        setDisambiguationProfiles(result.profiles);
         setIsProcessing(false);
         setStatus("CLARIFICATION_NEEDED");
         setIsDisambiguationOpen(true);
@@ -106,82 +256,24 @@ function SchedulingContent() {
         pushAudit(
           "DISAMBIGUATION_TRIGGERED",
           "Detected Contact Ambiguity",
-          "There are 2 contacts named Budi (Budi Santoso & Budi Raharjo). Requesting human clarification.",
+          result.message ||
+            "Multiple contacts matched the query. Requesting human clarification.",
           "Planner & Triage Agent",
           "warning"
         );
-      } else if (scenarioId === "scenario-friday-prayer") {
-        // Friday prayer auto-block scenario
-        const prayerPlan = generateSampleActionPlan(
-          targetCandidate.name,
-          targetCandidate.applied_position,
-          budiDisambiguationProfiles[0],
-          prompt,
-          1
-        );
-        // Change slot to 14:00 WIB
-        prayerPlan.proposed_slot.formatted_wib = "Friday, 30 October 2026 — 14:00 - 15:00 WIB";
-        prayerPlan.proposed_slot.formatted_wita = "Friday, 30 October 2026 — 15:00 - 16:00 WITA";
-        prayerPlan.validator_notes =
-          "The initial 12:00 PM WIB schedule was automatically blocked because it coincided with Friday Prayer time (11:30 AM–1:00 PM WIB). The slot was moved to 2:00 PM WIB.";
-
-        setActivePlan(prayerPlan);
-        setIsProcessing(false);
-        setStatus("PENDING_APPROVAL");
-
-        pushAudit(
-          "SOURCES_RETRIEVED",
-          "Friday Prayer Time Blocked",
-          "12:00 PM WIB slot moved to 2:00 PM WIB.",
-          "Secondary Validator Agent",
-          "success"
-        );
-      } else if (scenarioId === "scenario-triage-round-3") {
-        // Round 3 scenario
-        const round3Plan = generateSampleActionPlan(
-          "Fajar Nugroho",
-          "Backend Engineer (Golang)",
-          budiDisambiguationProfiles[0],
-          prompt,
-          3
-        );
-        setActivePlan(round3Plan);
-        setIsProcessing(false);
-        setStatus("PENDING_APPROVAL");
-
-        pushAudit(
-          "PLAN_VALIDATED",
-          "LIMITS: Final Negotiation Round (3/3)",
-          "If the candidate rejects this round, the AI will automatically escalate manually to HR.",
-          "Planner Agent",
-          "warning"
-        );
-      } else {
-        // Normal straight plan
-        const plan = generateSampleActionPlan(
-          targetCandidate.name,
-          targetCandidate.applied_position,
-          budiDisambiguationProfiles[0],
-          prompt,
-          1
-        );
-        setActivePlan(plan);
-        setIsProcessing(false);
-        setStatus("PENDING_APPROVAL");
-
-        pushAudit(
-          "PLAN_VALIDATED",
-          "Action Plan Ready for Review",
-          "Draft WhatsApp to Candidate and Email to User are ready for Approval Gate.",
-          "Secondary Validator Agent",
-          "success"
-        );
+        return;
       }
-    }, 800);
+
+      applyPlan(result);
+    } catch (error) {
+      console.error("Failed to execute scheduling command:", error);
+      setIsProcessing(false);
+      setStatus("IDLE");
+    }
   };
 
-  // 2. Resolve Disambiguation (Human picks one Budi)
-  const handleResolveDisambiguation = (chosenBudi: DisambiguationProfile) => {
+  // 2. Resolve Disambiguation (Human picks one Budi) strictly via Backend API
+  const handleResolveDisambiguation = async (chosenBudi: DisambiguationProfile) => {
     setIsDisambiguationOpen(false);
 
     pushAudit(
@@ -192,29 +284,37 @@ function SchedulingContent() {
       "success"
     );
 
-    const plan = generateSampleActionPlan(
-      targetCandidate.name,
-      targetCandidate.applied_position,
-      chosenBudi,
-      `Schedule an interview with ${chosenBudi.name}`,
-      1
-    );
+    setIsProcessing(true);
+    setStatus("ANALYZING");
+    finalizedRef.current = false;
 
-    setActivePlan(plan);
-    setStatus("PENDING_APPROVAL");
+    const candidateName = targetCandidate?.name ?? "Rina Kusuma";
+    const followUpCommand = `Schedule an interview for ${candidateName} with ${chosenBudi.name} (${chosenBudi.department}, ${chosenBudi.timezone})`;
 
-    pushAudit(
-      "SOURCES_RETRIEVED",
-      "Sources & Calendar Slots Verified",
-      `Checking [cal-${chosenBudi.employee_id.toLowerCase()}] & [cand-ats-${targetCandidate.name.split(" ")[0].toLowerCase()}].`,
-      "Context Retriever Node",
-      "info"
-    );
+    try {
+      const result = await executeCommand({ command: followUpCommand, scenario_id: null });
+
+      if (isDisambiguationResult(result)) {
+        setDisambiguationProfiles(result.profiles);
+        setIsProcessing(false);
+        setStatus("CLARIFICATION_NEEDED");
+        setIsDisambiguationOpen(true);
+        return;
+      }
+
+      applyPlan(result);
+    } catch (error) {
+      console.error("Failed to resolve disambiguation command:", error);
+      setIsProcessing(false);
+      setStatus("IDLE");
+    }
   };
 
   // 3. Human Approval (Enters 60s Undo Window)
-  const handleApprove = () => {
-    setStatus("UNDO_WINDOW");
+  const handleApprove = async () => {
+    if (!activePlan || isApprovingPlan) return;
+
+    setIsApprovingPlan(true);
     pushAudit(
       "HUMAN_APPROVED",
       "Human-in-the-Loop Approval Granted",
@@ -222,40 +322,93 @@ function SchedulingContent() {
       "HR Admin (You)",
       "success"
     );
+
+    try {
+      const approvedPlan = await approveActionPlan(activePlan.id, {
+        approved_by: "HR Admin (You)",
+        send_immediately: false,
+      });
+
+      finalizedRef.current = false;
+      setActivePlan(approvedPlan);
+      const expiresAt =
+        typeof approvedPlan.undo_expires_at === "number"
+          ? approvedPlan.undo_expires_at
+          : Date.now() + 60000;
+      setUndoSeconds(Math.max(1, Math.ceil((expiresAt - Date.now()) / 1000)));
+      setIsApprovingPlan(false);
+      setStatus("UNDO_WINDOW");
+
+      pushAudit(
+        "UNDO_BUFFER_STARTED",
+        "60-Second Undo Buffer Started",
+        "Dispatch is held for 60 seconds. HR can still cancel before the external gateway executes.",
+        "Approval Gate Node",
+        "warning"
+      );
+    } catch (error) {
+      console.error("Failed to approve action plan:", error);
+      setIsApprovingPlan(false);
+    }
   };
 
   // 4. Human Undo (< 60s)
-  const handleUndo = () => {
-    setStatus("UNDONE");
-    if (activePlan) {
-      setActivePlan({ ...activePlan, status: "UNDONE" });
+  const handleUndo = async () => {
+    finalizedRef.current = true;
+    const plan = activePlan;
+    if (!plan) return;
+
+    try {
+      const undonePlan = await undoActionPlan(
+        plan.id,
+        "Manual cancellation by HR within 60s window"
+      );
+      setActivePlan(undonePlan);
+      setStatus("UNDONE");
+
+      pushAudit(
+        "ACTION_UNDONE",
+        "Action Plan Canceled (Undo)",
+        "Dispatch canceled during grace period. No emails or WhatsApp messages sent.",
+        "HR Admin (You)",
+        "error"
+      );
+    } catch (error) {
+      console.error("Failed to undo action plan:", error);
     }
-    pushAudit(
-      "ACTION_UNDONE",
-      "Action Plan Canceled (Undo)",
-      "Disptach canceled during grace period. No emails or WhatsApp messages sent.",
-      "HR Admin (You)",
-      "error"
-    );
   };
 
   // 5. Final Dispatch (Timer Expired or Send Immediately)
-  const handleDispatchImmediately = () => {
-    setStatus("EXECUTED");
-    if (activePlan) {
-      setActivePlan({ ...activePlan, status: "EXECUTED" });
+  const handleDispatchImmediately = async () => {
+    if (finalizedRef.current) return;
+    finalizedRef.current = true;
+
+    const plan = activePlan;
+    if (!plan) return;
+
+    try {
+      const executedPlan = await approveActionPlan(plan.id, {
+        approved_by: "HR Admin (You)",
+        send_immediately: true,
+      });
+      setActivePlan(executedPlan);
+      setStatus("EXECUTED");
+
+      pushAudit(
+        "ACTION_DISPATCHED",
+        "Email & WhatsApp Sent",
+        "Email sent to Hiring Manager, WhatsApp sent to Candidate, and calendar booked in PostgreSQL.",
+        "Channel & Calendar Executor",
+        "success"
+      );
+    } catch (error) {
+      console.error("Failed to dispatch action plan:", error);
     }
-    pushAudit(
-      "ACTION_DISPATCHED",
-      "Email & WhatsApp Sent",
-      "Email sent to Hiring Manager, WhatsApp sent to Candidate, and calendar booked in PostgreSQL.",
-      "Channel & Calendar Executor",
-      "success"
-    );
   };
 
-  // 6. Reject Plan
+  // 6. Reject Plan (Client-side state — no /reject endpoint on backend, Ledger U-08)
   const handleReject = () => {
+    finalizedRef.current = true;
     setStatus("REJECTED");
     pushAudit(
       "ACTION_UNDONE",
@@ -268,8 +421,10 @@ function SchedulingContent() {
 
   // 7. Reset to Idle
   const handleReset = () => {
+    finalizedRef.current = false;
     setStatus("IDLE");
     setActivePlan(null);
+    setIsApprovingPlan(false);
   };
 
   return (
@@ -316,16 +471,18 @@ function SchedulingContent() {
 
       {/* Natural Language Command Bar */}
       <CommandBar
+        key={targetCandidate?.id ?? "default"}
         onExecuteCommand={handleExecuteCommand}
         isProcessing={isProcessing}
         activeCandidateName={targetCandidate?.name}
+        scenarios={scenarioList}
       />
 
       {/* 60-Second Undo Window Banner (Rendered when in UNDO_WINDOW) */}
       {status === "UNDO_WINDOW" && (
         <div className="mt-5">
           <UndoBufferBanner
-            initialSeconds={60}
+            initialSeconds={undoSeconds}
             onUndo={handleUndo}
             onDispatchImmediately={handleDispatchImmediately}
           />
@@ -435,7 +592,7 @@ function SchedulingContent() {
               plan={activePlan}
               onApprove={handleApprove}
               onReject={handleReject}
-              isApproving={status === "UNDO_WINDOW"}
+              isApproving={status === "UNDO_WINDOW" || isApprovingPlan}
             />
           )}
 
@@ -451,7 +608,13 @@ function SchedulingContent() {
                     Waiting for Orchestration Command
                   </h3>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Selected Candidate: <strong>{targetCandidate.name}</strong> ({targetCandidate.applied_position})
+                    {targetCandidate ? (
+                      <>
+                        Selected Candidate: <strong>{targetCandidate.name}</strong> ({targetCandidate.applied_position})
+                      </>
+                    ) : (
+                      "Loading candidate directory from database..."
+                    )}
                   </p>
                 </div>
               </div>
@@ -525,7 +688,7 @@ function SchedulingContent() {
                 </div>
               </div>
 
-              {/* Candidates Awaiting Interview Escalation (Queue - Eliminates Whitespace) */}
+              {/* Candidates Awaiting Interview Escalation */}
               <div className="mt-5 rounded-xl border border-gray-100 bg-gray-50/60 p-4 dark:border-gray-800 dark:bg-gray-800/30">
                 <div className="flex items-center justify-between border-b border-gray-200/60 pb-3 dark:border-gray-800">
                   <div className="flex items-center gap-2">
@@ -533,13 +696,13 @@ function SchedulingContent() {
                       Candidates Awaiting Interview Escalation
                     </h4>
                     <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-mono font-semibold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
-                      3 in Queue
+                      {candidatesQueue.slice(0, 3).length} in Queue
                     </span>
                   </div>
                 </div>
 
                 <div className="mt-3 divide-y divide-gray-200/50 dark:divide-gray-800">
-                  {initialCandidates.slice(0, 3).map((cand) => (
+                  {candidatesQueue.slice(0, 3).map((cand) => (
                     <div
                       key={cand.id}
                       className="flex flex-wrap items-center justify-between gap-3 py-2.5 first:pt-1 last:pb-1"
@@ -584,7 +747,7 @@ function SchedulingContent() {
         </div>
       </div>
 
-      {/* Disambiguation Modal*/}
+      {/* Disambiguation Modal */}
       <DisambiguationModal
         isOpen={isDisambiguationOpen}
         onClose={() => {
@@ -592,8 +755,9 @@ function SchedulingContent() {
           setStatus("IDLE");
         }}
         onSelectInterviewer={handleResolveDisambiguation}
-        candidateName={targetCandidate.name}
-        targetPosition={targetCandidate.applied_position}
+        candidateName={targetCandidate?.name ?? "Candidate"}
+        targetPosition={targetCandidate?.applied_position ?? "Applied Position"}
+        profiles={disambiguationProfiles}
       />
     </div>
   );

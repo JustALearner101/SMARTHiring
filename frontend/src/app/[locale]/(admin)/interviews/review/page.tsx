@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, Suspense, useMemo } from "react";
+import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import ReviewHeader from "@/components/interviews/review/ReviewHeader";
@@ -10,38 +10,85 @@ import CompetencyCard from "@/components/interviews/review/CompetencyCard";
 import CandidateSnapshotCard from "@/components/interviews/review/CandidateSnapshotCard";
 import HrDecisionCard from "@/components/interviews/review/HrDecisionCard";
 import {
-  initialInterviewSessions,
-  sampleTranscriptSegments,
-  sampleCompetencyPoints,
-} from "@/data/mockInterviewData";
-import {
   InterviewSession,
   TranscriptSegment,
   SummaryEvidence,
+  HrDecision,
   HrDecisionType,
 } from "@/types/interview";
+import {
+  getInterviewSession,
+  getInterviewTranscripts,
+  listInterviewSessions,
+  saveHrDecision,
+} from "@/services/interviewService";
 import { ShootingStarIcon, CheckCircleIcon } from "@/icons";
 
 function ReviewContent() {
   const searchParams = useSearchParams();
-  const sessionId = searchParams.get("id");
+  const sessionIdParam = searchParams.get("id");
 
-  // Matched interview session
-  const activeSession: InterviewSession = useMemo(() => {
-    if (!sessionId) return initialInterviewSessions[0];
-    return (
-      initialInterviewSessions.find((s) => s.id === sessionId) ||
-      initialInterviewSessions[0]
-    );
-  }, [sessionId]);
-
-  // Audio Player State (Starts at 01:20 / seg-002 for initial showcase)
+  // Audio Player State (Client-side UX simulation, Ledger U-07)
   const [currentTimeMs, setCurrentTimeMs] = useState<number>(80000);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [activeSegmentId, setActiveSegmentId] = useState<string | null>("seg-002");
-  const [sessionData, setSessionData] = useState<InterviewSession>(activeSession);
+  const [activeSegmentId, setActiveSegmentId] = useState<string | null>(null);
+
+  const [sessionData, setSessionData] = useState<InterviewSession | null>(null);
+  const [transcriptSegments, setTranscriptSegments] = useState<TranscriptSegment[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const durationMs = 45 * 60 * 1000 + 20 * 1000; // 45:20 in ms
+
+  // Hydrate session metadata + verbatim transcript strictly from the Backend API
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadEvidence = async () => {
+      setIsLoading(true);
+      try {
+        let targetId = sessionIdParam;
+        if (!targetId) {
+          const listPage = await listInterviewSessions({ page_size: 1 });
+          targetId = listPage?.items?.[0]?.id ?? null;
+        }
+
+        if (!targetId || cancelled) {
+          if (!cancelled) setIsLoading(false);
+          return;
+        }
+
+        const [session, segments] = await Promise.all([
+          getInterviewSession(targetId),
+          getInterviewTranscripts(targetId),
+        ]);
+        if (cancelled) return;
+
+        setSessionData(session);
+
+        const validSegments = Array.isArray(segments) ? segments : [];
+        setTranscriptSegments(validSegments);
+        if (validSegments.length > 0) {
+          setActiveSegmentId((prev) =>
+            prev && validSegments.some((seg) => seg.id === prev)
+              ? prev
+              : validSegments[0].id
+          );
+        }
+      } catch (error) {
+        console.error("Failed to fetch interview review data:", error);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+
+    void loadEvidence();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionIdParam]);
+
+  const competencyPoints = sessionData?.competency_points ?? [];
 
   // Audio play simulation timer
   useEffect(() => {
@@ -56,7 +103,7 @@ function ReviewContent() {
           const next = prev + 1000;
 
           // Auto-match active transcript segment as audio plays
-          const matchingSeg = sampleTranscriptSegments.find(
+          const matchingSeg = transcriptSegments.find(
             (s) => next >= s.start_ms && next <= s.end_ms
           );
           if (matchingSeg && matchingSeg.id !== activeSegmentId) {
@@ -68,7 +115,7 @@ function ReviewContent() {
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [isPlaying, durationMs, activeSegmentId]);
+  }, [isPlaying, durationMs, activeSegmentId, transcriptSegments]);
 
   // Click on evidence quote -> jump audio + highlight transcript
   const handleJumpToEvidence = (evidence: SummaryEvidence) => {
@@ -83,18 +130,55 @@ function ReviewContent() {
     setActiveSegmentId(segment.id);
   };
 
-  const handleDecisionSubmit = (decision: HrDecisionType, notes: string) => {
-    setSessionData((prev) => ({
-      ...prev,
-      hr_decision: {
-        decision,
-        notes,
-        decided_at: new Date().toISOString(),
-        decided_by: "HR Operations Lead (You)",
-      },
-      job_status: "COMPLETED",
-    }));
-  };
+  const handleDecisionSubmit = useCallback(
+    async (decision: HrDecisionType, notes: string) => {
+      if (!sessionData) return;
+
+      try {
+        const saved = await saveHrDecision(sessionData.id, { decision, notes });
+        const hrDecision: HrDecision = {
+          decision: saved.decision,
+          notes: saved.notes || notes,
+          decided_at: String(saved.decided_at),
+          decided_by: saved.decided_by,
+        };
+        setSessionData((prev) =>
+          prev
+            ? {
+                ...prev,
+                hr_decision: hrDecision,
+                job_status: "COMPLETED",
+              }
+            : prev
+        );
+      } catch (error) {
+        console.error("Failed to save HR decision:", error);
+      }
+    },
+    [sessionData]
+  );
+
+  if (isLoading) {
+    return (
+      <div>
+        <PageBreadcrumb pageTitle="Review & Evidence Workspace" />
+        <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center text-xs text-gray-400 dark:border-gray-800 dark:bg-gray-900">
+          Loading interview session and evidence from database...
+        </div>
+      </div>
+    );
+  }
+
+  if (!sessionData) {
+    return (
+      <div>
+        <PageBreadcrumb pageTitle="Review & Evidence Workspace" />
+        <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center text-xs text-gray-400 dark:border-gray-800 dark:bg-gray-900">
+          No interview session found in database.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -116,12 +200,12 @@ function ReviewContent() {
           />
 
           <TranscriptStream
-            segments={sampleTranscriptSegments}
+            segments={transcriptSegments}
             activeSegmentId={activeSegmentId}
             onSelectSegment={handleSelectSegment}
           />
 
-          {/* Provenance & ATS Match Snapshot to eliminate whitespace */}
+          {/* Provenance & ATS Match Snapshot */}
           <CandidateSnapshotCard session={sessionData} />
         </div>
 
@@ -146,14 +230,16 @@ function ReviewContent() {
 
               <span className="inline-flex items-center gap-1 rounded-md bg-success-50 px-2.5 py-1 text-xs font-semibold text-success-700 dark:bg-success-500/15 dark:text-success-300">
                 <CheckCircleIcon/>
-                <span>Audited 4/4 Points</span>
+                <span>
+                  Audited {competencyPoints.length}/{competencyPoints.length} Points
+                </span>
               </span>
             </div>
           </div>
 
           {/* Competency Rubric Cards */}
           <div className="space-y-3">
-            {sampleCompetencyPoints.map((point) => (
+            {competencyPoints.map((point) => (
               <CompetencyCard
                 key={point.id}
                 point={point}
@@ -164,6 +250,7 @@ function ReviewContent() {
 
           {/* HR Decision Gate Form */}
           <HrDecisionCard
+            key={sessionData.hr_decision?.decided_at ?? "pending-decision"}
             initialDecision={sessionData.hr_decision}
             onSubmitDecision={handleDecisionSubmit}
             candidateName={sessionData.candidate_name}

@@ -58,6 +58,15 @@ export interface HrDecision {
   decided_by: string;
 }
 
+export interface InterviewUploadRequest {
+  candidate_id: string;
+  profile_id: string;
+  consent_status?: ConsentStatus;
+  audio_url?: string;
+  audio_duration?: string;
+  notes?: string;
+}
+
 export interface InterviewSession {
   id: string;
   candidate_id: string;

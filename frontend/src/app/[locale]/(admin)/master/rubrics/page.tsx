@@ -14,14 +14,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { initialRubricProfiles } from "@/data/mockMasterData";
 import { PlusIcon, TrashBinIcon } from "@/icons";
+import { masterService } from "@/services";
 import { CompetencyItem, RubricProfile } from "@/types/master";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function RubricsPage() {
-  const [profiles, setProfiles] = useState<RubricProfile[]>(initialRubricProfiles);
-  const [activeProfileId, setActiveProfileId] = useState<string>(profiles[0]?.id || "");
+  const [profiles, setProfiles] = useState<RubricProfile[]>([]);
+  const [activeProfileId, setActiveProfileId] = useState<string>("");
+  const [isLoading, setIsLoading] = useState(true);
 
   // Add Competency Modal
   const [isAddCompOpen, setIsAddCompOpen] = useState(false);
@@ -31,9 +32,42 @@ export default function RubricsPage() {
   const [newCompWeight, setNewCompWeight] = useState(25);
   const [newCompTarget, setNewCompTarget] = useState(4);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadRubrics = async () => {
+      try {
+        const apiProfiles = await masterService.listRubrics();
+        if (cancelled) return;
+
+        const normalizedProfiles = (Array.isArray(apiProfiles) ? apiProfiles : []).map((profile) => ({
+          ...profile,
+          competencies: Array.isArray(profile.competencies) ? profile.competencies : [],
+        }));
+
+        setProfiles(normalizedProfiles);
+        if (normalizedProfiles.length > 0) {
+          setActiveProfileId(normalizedProfiles[0].id);
+        }
+      } catch (error) {
+        console.error("Failed to fetch rubrics:", error);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+
+    void loadRubrics();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const activeProfile = profiles.find((p) => p.id === activeProfileId) || profiles[0];
 
+  // Add Competency (Client-side state — no sub-item CRUD endpoint on backend, Ledger U-04)
   const handleAddCompetency = () => {
+    if (!activeProfile) return;
     if (!newCompCode.trim() || !newCompName.trim()) {
       alert("Harap lengkapi kode dan nama kompetensi.");
       return;
@@ -64,7 +98,9 @@ export default function RubricsPage() {
     setIsAddCompOpen(false);
   };
 
+  // Delete Competency (Client-side state — no sub-item CRUD endpoint on backend, Ledger U-04)
   const handleDeleteCompetency = (compId: string) => {
+    if (!activeProfile) return;
     setProfiles(
       profiles.map((p) =>
         p.id === activeProfile.id
@@ -154,6 +190,7 @@ export default function RubricsPage() {
             size="sm"
             startIcon={<PlusIcon/>}
             onClick={() => setIsAddCompOpen(true)}
+            disabled={!activeProfile}
           >
             Add Competency Indicator
           </Button>
@@ -182,45 +219,59 @@ export default function RubricsPage() {
               </TableRow>
             </TableHeader>
             <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {activeProfile?.competencies.map((comp) => (
-                <TableRow key={comp.id} className="hover:bg-gray-50/70 dark:hover:bg-white/[0.02] transition-colors">
-                  <TableCell className="ps-4 pe-3 py-3.5">
-                    <span className="font-mono text-xs font-semibold text-brand-600 dark:text-brand-400">
-                      {comp.code}
-                    </span>
-                  </TableCell>
-                  <TableCell className="px-3 py-3.5">
-                    <div className="flex flex-col">
-                      <span className="text-xs font-semibold text-gray-800 dark:text-white/90">
-                        {comp.name}
-                      </span>
-                      <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-                        {comp.description}
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="px-3 py-3.5">
-                    <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-xs font-mono font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                      {comp.weight}%
-                    </span>
-                  </TableCell>
-                  <TableCell className="px-3 py-3.5">
-                    <Badge color="primary" size="sm">
-                      {comp.target_score} / 5.0
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="pe-5 ps-3 py-3.5 text-end whitespace-nowrap">
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteCompetency(comp.id)}
-                      className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-theme-xs hover:border-error-300 hover:bg-error-50 hover:text-error-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-error-500/30 dark:hover:bg-error-500/15 dark:hover:text-error-400 transition-all"
-                      title="Delete Competency"
-                    >
-                      <TrashBinIcon/>
-                    </button>
+              {isLoading ? (
+                <TableRow>
+                  <TableCell className="py-8 text-center text-xs text-gray-400">
+                    Loading rubrics from database...
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : !activeProfile || activeProfile.competencies.length === 0 ? (
+                <TableRow>
+                  <TableCell className="py-8 text-center text-xs text-gray-400">
+                    No competency indicators available for this profile.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                activeProfile.competencies.map((comp) => (
+                  <TableRow key={comp.id} className="hover:bg-gray-50/70 dark:hover:bg-white/[0.02] transition-colors">
+                    <TableCell className="ps-4 pe-3 py-3.5">
+                      <span className="font-mono text-xs font-semibold text-brand-600 dark:text-brand-400">
+                        {comp.code}
+                      </span>
+                    </TableCell>
+                    <TableCell className="px-3 py-3.5">
+                      <div className="flex flex-col">
+                        <span className="text-xs font-semibold text-gray-800 dark:text-white/90">
+                          {comp.name}
+                        </span>
+                        <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                          {comp.description}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="px-3 py-3.5">
+                      <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-xs font-mono font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                        {comp.weight}%
+                      </span>
+                    </TableCell>
+                    <TableCell className="px-3 py-3.5">
+                      <Badge color="primary" size="sm">
+                        {comp.target_score} / 5.0
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="pe-5 ps-3 py-3.5 text-end whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCompetency(comp.id)}
+                        className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-theme-xs hover:border-error-300 hover:bg-error-50 hover:text-error-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-error-500/30 dark:hover:bg-error-500/15 dark:hover:text-error-400 transition-all"
+                        title="Delete Competency"
+                      >
+                        <TrashBinIcon/>
+                      </button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </div>

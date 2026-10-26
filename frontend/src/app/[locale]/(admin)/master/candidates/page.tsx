@@ -15,7 +15,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { initialCandidates } from "@/data/mockMasterData";
 import { Link } from "@/i18n/navigation";
 import {
   BoltIcon,
@@ -23,11 +22,13 @@ import {
   PlusIcon,
   TrashBinIcon,
 } from "@/icons";
+import { masterService } from "@/services";
 import { ApplicationStatus, Candidate, PreferredChannel, Timezone } from "@/types/master";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export default function CandidatesPage() {
-  const [candidates, setCandidates] = useState<Candidate[]>(initialCandidates);
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [timezoneFilter, setTimezoneFilter] = useState<string>("ALL");
@@ -49,6 +50,28 @@ export default function CandidatesPage() {
     resume_url: "",
     notes: "",
   });
+
+  // Hydrate strictly from Backend API
+  useEffect(() => {
+    let cancelled = false;
+
+    masterService
+      .listCandidates({ page_size: 100 })
+      .then((result) => {
+        if (cancelled) return;
+        setCandidates(Array.isArray(result?.items) ? result.items : []);
+      })
+      .catch((error: unknown) => {
+        console.error("Failed to fetch candidates:", error);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Filtered List
   const filteredCandidates = useMemo(() => {
@@ -102,56 +125,49 @@ export default function CandidatesPage() {
   };
 
   // Unified Save Candidate (Add or Edit)
-  const handleSaveCandidate = () => {
+  const handleSaveCandidate = async () => {
     if (!formData.name.trim() || !formData.email.trim() || !formData.applied_position.trim()) {
       alert("Please fill in candidate name, email, and applied position.");
       return;
     }
 
-    if (activeCandidate) {
-      setCandidates(
-        candidates.map((c) =>
-          c.id === activeCandidate.id
-            ? {
-                ...c,
-                name: formData.name,
-                email: formData.email,
-                phone: formData.phone,
-                preferred_channel: formData.preferred_channel,
-                applied_position: formData.applied_position,
-                status: formData.status,
-                timezone: formData.timezone,
-                resume_url: formData.resume_url,
-                notes: formData.notes,
-              }
-            : c
-        )
-      );
-    } else {
-      const nextNo = candidates.length + 1;
-      const newCode = `CAND-2026-${String(nextNo).padStart(3, "0")}`;
-      const newCandidate: Candidate = {
-        id: `cand-${Date.now()}`,
-        candidate_code: newCode,
-        name: formData.name,
-        email: formData.email,
-        phone: formData.phone,
-        preferred_channel: formData.preferred_channel,
-        applied_position: formData.applied_position,
-        status: formData.status,
-        timezone: formData.timezone,
-        resume_url: formData.resume_url,
-        notes: formData.notes,
-        created_at: new Date().toISOString(),
-      };
+    const editing = activeCandidate;
 
-      setCandidates([newCandidate, ...candidates]);
+    try {
+      if (editing) {
+        const updated = await masterService.updateCandidate(editing.id, {
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          preferred_channel: formData.preferred_channel,
+          applied_position: formData.applied_position,
+          status: formData.status,
+          timezone: formData.timezone,
+          resume_url: formData.resume_url,
+          notes: formData.notes,
+        });
+        setCandidates((prev) => prev.map((c) => (c.id === editing.id ? updated : c)));
+      } else {
+        const created = await masterService.createCandidate({
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          preferred_channel: formData.preferred_channel,
+          applied_position: formData.applied_position,
+          status: formData.status,
+          timezone: formData.timezone,
+          resume_url: formData.resume_url,
+          notes: formData.notes,
+        });
+        setCandidates((prev) => [created, ...prev]);
+      }
+      setIsFormModalOpen(false);
+    } catch (error) {
+      console.error("Failed to save candidate:", error);
     }
-
-    setIsFormModalOpen(false);
   };
 
-  // Confirm Delete
+  // Confirm Delete (Client-side state — no DELETE endpoint on backend, Ledger U-01)
   const handleConfirmDelete = () => {
     if (!activeCandidate) return;
     setCandidates(candidates.filter((c) => c.id !== activeCandidate.id));
@@ -271,7 +287,13 @@ export default function CandidatesPage() {
               </TableRow>
             </TableHeader>
             <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {filteredCandidates.length === 0 ? (
+              {isLoading ? (
+                <TableRow>
+                  <TableCell className="py-8 text-center text-xs text-gray-400">
+                    Loading candidates from database...
+                  </TableCell>
+                </TableRow>
+              ) : filteredCandidates.length === 0 ? (
                 <TableRow>
                   <TableCell className="py-8 text-center text-xs text-gray-400">
                     No candidate data matches the search criteria.
