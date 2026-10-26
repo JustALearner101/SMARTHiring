@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.AppSecurity import require_roles
 from app.db.DatabaseSession import get_db
 from app.dto.ActionPlanDTO import (
     ActionPlanDTO,
@@ -9,6 +10,7 @@ from app.dto.ActionPlanDTO import (
 )
 from app.dto.BaseDTO import ApiResponse
 from app.exception.CustomException import NotFoundException
+from app.model.UserModel import User
 from app.service.ActionPlanService import ActionPlanService
 
 router = APIRouter(prefix="/actionPlans", tags=["ActionPlans"])
@@ -29,12 +31,13 @@ async def get_current_plan(
 async def approve_plan(
     plan_id: str,
     request: PlanApprovalRequestDTO,
+    current_user: User = Depends(require_roles(["HR"])),
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[ActionPlanDTO]:
     service = ActionPlanService(db)
     try:
         plan = await service.approve_plan(plan_id, request)
-        return ApiResponse(data=plan, message="Rencana aksi disetujui, jendela undo 60 detik diaktifkan")
+        return ApiResponse(data=plan, message="Rencana aksi disetujui oleh HR, jendela undo 60 detik diaktifkan")
     except ValueError as e:
         raise NotFoundException(str(e)) from e
 
@@ -43,11 +46,13 @@ async def approve_plan(
 async def undo_plan(
     plan_id: str,
     request: PlanUndoRequestDTO,
+    current_user: User = Depends(require_roles(["HR"])),
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[ActionPlanDTO]:
     service = ActionPlanService(db)
     try:
         plan = await service.undo_plan(plan_id, request)
-        return ApiResponse(data=plan, message="Aksi berhasil dibatalkan dalam batas jendela undo")
+        return ApiResponse(data=plan, message="Aksi berhasil dibatalkan oleh HR dalam batas jendela undo")
     except ValueError as e:
         raise NotFoundException(str(e)) from e
+

@@ -6,7 +6,7 @@ import InputField from "@/components/form/input/InputField";
 import TextArea from "@/components/form/input/TextArea";
 import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
-import { Modal } from "@/components/ui/modal";
+import { Modal, ConfirmationModal } from "@/components/ui/modal";
 import {
   Table,
   TableBody,
@@ -17,12 +17,18 @@ import {
 import { PlusIcon, TrashBinIcon } from "@/icons";
 import { masterService } from "@/services";
 import { CompetencyItem, RubricProfile } from "@/types/master";
-import { useEffect, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/context/ToastContext";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 
 export default function RubricsPage() {
-  const [profiles, setProfiles] = useState<RubricProfile[]>([]);
+  const { role } = useAuth();
+  const { showSuccess, showError } = useToast();
   const [activeProfileId, setActiveProfileId] = useState<string>("");
-  const [isLoading, setIsLoading] = useState(true);
+
+  // Confirmation Modals
+  const [deleteTargetComp, setDeleteTargetComp] = useState<CompetencyItem | null>(null);
 
   // Add Competency Modal
   const [isAddCompOpen, setIsAddCompOpen] = useState(false);
@@ -32,44 +38,27 @@ export default function RubricsPage() {
   const [newCompWeight, setNewCompWeight] = useState(25);
   const [newCompTarget, setNewCompTarget] = useState(4);
 
-  useEffect(() => {
-    let cancelled = false;
+  // TanStack Query: Caches rubrics in memory with 1-min freshness and 0ms navigation
+  const queryClient = useQueryClient();
+  const { data: rubricsData, isLoading } = useQuery({
+    queryKey: ["rubrics"],
+    queryFn: async () => {
+      const apiProfiles = await masterService.listRubrics();
+      return (Array.isArray(apiProfiles) ? apiProfiles : []).map((profile) => ({
+        ...profile,
+        competencies: Array.isArray(profile.competencies) ? profile.competencies : [],
+      }));
+    },
+  });
 
-    const loadRubrics = async () => {
-      try {
-        const apiProfiles = await masterService.listRubrics();
-        if (cancelled) return;
-
-        const normalizedProfiles = (Array.isArray(apiProfiles) ? apiProfiles : []).map((profile) => ({
-          ...profile,
-          competencies: Array.isArray(profile.competencies) ? profile.competencies : [],
-        }));
-
-        setProfiles(normalizedProfiles);
-        if (normalizedProfiles.length > 0) {
-          setActiveProfileId(normalizedProfiles[0].id);
-        }
-      } catch (error) {
-        console.error("Failed to fetch rubrics:", error);
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    };
-
-    void loadRubrics();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
+  const profiles = useMemo(() => rubricsData || [], [rubricsData]);
   const activeProfile = profiles.find((p) => p.id === activeProfileId) || profiles[0];
 
   // Add Competency (Client-side state — no sub-item CRUD endpoint on backend, Ledger U-04)
   const handleAddCompetency = () => {
     if (!activeProfile) return;
     if (!newCompCode.trim() || !newCompName.trim()) {
-      alert("Harap lengkapi kode dan nama kompetensi.");
+      showError("Validasi Gagal", "Harap lengkapi kode dan nama indikator kompetensi.");
       return;
     }
 
@@ -82,14 +71,18 @@ export default function RubricsPage() {
       target_score: newCompTarget,
     };
 
-    setProfiles(
-      profiles.map((p) =>
-        p.id === activeProfile.id
-          ? { ...p, competencies: [...p.competencies, newItem] }
-          : p
-      )
+    queryClient.setQueryData(
+      ["rubrics"],
+      (old: RubricProfile[] | undefined) =>
+        (old || []).map((p) =>
+          p.id === activeProfile.id
+            ? { ...p, competencies: [...p.competencies, newItem] }
+            : p
+        )
     );
 
+    showSuccess("Kompetensi Ditambahkan", `Indikator kompetensi "${newCompName}" berhasil ditambahkan.`);
+    void queryClient.invalidateQueries({ queryKey: ["rubrics"] });
     setNewCompCode("");
     setNewCompName("");
     setNewCompDesc("");
@@ -98,16 +91,23 @@ export default function RubricsPage() {
     setIsAddCompOpen(false);
   };
 
-  // Delete Competency (Client-side state — no sub-item CRUD endpoint on backend, Ledger U-04)
-  const handleDeleteCompetency = (compId: string) => {
-    if (!activeProfile) return;
-    setProfiles(
-      profiles.map((p) =>
-        p.id === activeProfile.id
-          ? { ...p, competencies: p.competencies.filter((c) => c.id !== compId) }
-          : p
-      )
+  // Delete Competency upon confirmation
+  const handleConfirmDeleteCompetency = () => {
+    if (!activeProfile || !deleteTargetComp) return;
+    const compName = deleteTargetComp.name;
+    const targetCompId = deleteTargetComp.id;
+    queryClient.setQueryData(
+      ["rubrics"],
+      (old: RubricProfile[] | undefined) =>
+        (old || []).map((p) =>
+          p.id === activeProfile.id
+            ? { ...p, competencies: p.competencies.filter((c) => c.id !== targetCompId) }
+            : p
+        )
     );
+    void queryClient.invalidateQueries({ queryKey: ["rubrics"] });
+    setDeleteTargetComp(null);
+    showSuccess("Kompetensi Dihapus", `Indikator kompetensi "${compName}" telah dihapus dari profil rubrik.`);
   };
 
   const totalWeight = activeProfile?.competencies.reduce((sum, c) => sum + c.weight, 0) || 0;
@@ -190,7 +190,8 @@ export default function RubricsPage() {
             size="sm"
             startIcon={<PlusIcon/>}
             onClick={() => setIsAddCompOpen(true)}
-            disabled={!activeProfile}
+            disabled={!activeProfile || role !== "HR"}
+            title={role !== "HR" ? "Hanya HR Admin yang berwenang menambahkan indikator kompetensi." : undefined}
           >
             Add Competency Indicator
           </Button>
@@ -260,14 +261,18 @@ export default function RubricsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="pe-5 ps-3 py-3.5 text-end whitespace-nowrap">
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteCompetency(comp.id)}
-                        className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-theme-xs hover:border-error-300 hover:bg-error-50 hover:text-error-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-error-500/30 dark:hover:bg-error-500/15 dark:hover:text-error-400 transition-all"
-                        title="Delete Competency"
-                      >
-                        <TrashBinIcon/>
-                      </button>
+                      {role === "HR" ? (
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTargetComp(comp)}
+                          className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-theme-xs hover:border-error-300 hover:bg-error-50 hover:text-error-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-error-500/30 dark:hover:bg-error-500/15 dark:hover:text-error-400 transition-all"
+                          title="Delete Competency"
+                        >
+                          <TrashBinIcon/>
+                        </button>
+                      ) : (
+                        <span className="text-xs text-gray-400 italic">Read-only</span>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))
@@ -354,6 +359,18 @@ export default function RubricsPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Delete Competency Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={!!deleteTargetComp}
+        onClose={() => setDeleteTargetComp(null)}
+        onConfirm={handleConfirmDeleteCompetency}
+        title="Confirm Delete Competency"
+        description={`Are you sure you want to delete competency indicator "${deleteTargetComp?.name}" (${deleteTargetComp?.code}) from ${activeProfile?.round_name}?`}
+        confirmText="Yes, Delete"
+        cancelText="Cancel"
+        variant="danger"
+      />
     </div>
   );
 }

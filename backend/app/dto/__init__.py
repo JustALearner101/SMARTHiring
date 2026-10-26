@@ -8,6 +8,7 @@ from app.dto.ActionPlanDTO import (
     SourceCitationDTO,
 )
 from app.dto.AuditLogDTO import AuditEventDTO
+from app.dto.AuthDTO import LoginRequestDTO, LoginResponseDTO, UserDTO
 from app.dto.BaseDTO import (
     ApiResponse,
     BaseDTO,
@@ -102,6 +103,8 @@ __all__ = [
     "InterviewerCreateDTO",
     "InterviewerUpdateDTO",
     "JobStatus",
+    "LoginRequestDTO",
+    "LoginResponseDTO",
     "MessageSenderRole",
     "NationalHolidayCreateDTO",
     "NationalHolidayDTO",
@@ -131,4 +134,5 @@ __all__ = [
     "TimestampedDTO",
     "Timezone",
     "TranscriptSegmentDTO",
+    "UserDTO",
 ]

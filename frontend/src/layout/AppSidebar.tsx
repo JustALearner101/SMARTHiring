@@ -3,7 +3,8 @@
 import { Link, usePathname } from "@/i18n/navigation";
 import { cn } from "@/utils";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "../context/AuthContext";
 import { useSidebar } from "../context/SidebarContext";
 import {
   BoltIcon,
@@ -20,11 +21,13 @@ type NavItem = {
   key: string;
   icon: React.ReactNode;
   path?: string;
+  roles?: ("HR" | "USER_INTERVIEWER" | "TECH_INTERVIEWER" | "AUDITOR")[];
   new?: boolean;
   target?: string;
   subItems?: {
     key: string;
     path: string;
+    roles?: ("HR" | "USER_INTERVIEWER" | "TECH_INTERVIEWER" | "AUDITOR")[];
     pro?: boolean;
     new?: boolean;
     target?: string;
@@ -40,52 +43,73 @@ const navItems: NavItem[] = [
   {
     icon: <BoltIcon />,
     key: "orchestration",
+    roles: ["HR", "USER_INTERVIEWER"],
     subItems: [
-      { key: "scheduling", path: "/orchestration/scheduling" },
-      { key: "triageThreads", path: "/orchestration/threads" },
-      { key: "calendarMatrix", path: "/orchestration/calendar" },
+      { key: "scheduling", path: "/orchestration/scheduling", roles: ["HR"] },
+      { key: "triageThreads", path: "/orchestration/threads", roles: ["HR"] },
+      { key: "calendarMatrix", path: "/orchestration/calendar", roles: ["HR", "USER_INTERVIEWER"] },
     ],
   },
   {
     icon: <PageIcon />,
     key: "interviews",
+    roles: ["HR", "USER_INTERVIEWER", "AUDITOR"],
     subItems: [
-      { key: "interviewSessions", path: "/interviews/sessions" },
-      { key: "reviewEvidence", path: "/interviews/review" },
+      { key: "interviewSessions", path: "/interviews/sessions", roles: ["HR", "USER_INTERVIEWER"] },
+      { key: "reviewEvidence", path: "/interviews/review", roles: ["HR", "USER_INTERVIEWER", "AUDITOR"] },
     ],
   },
   {
     icon: <FolderIcon />,
     key: "masterData",
+    roles: ["HR"],
     subItems: [
-      { key: "candidates", path: "/master/candidates" },
-      { key: "contacts", path: "/master/contacts" },
-      { key: "rubrics", path: "/master/rubrics" },
-      { key: "operationalRules", path: "/master/operational-rules" },
+      { key: "candidates", path: "/master/candidates", roles: ["HR"] },
+      { key: "contacts", path: "/master/contacts", roles: ["HR"] },
+      { key: "rubrics", path: "/master/rubrics", roles: ["HR"] },
+      { key: "operationalRules", path: "/master/operational-rules", roles: ["HR"] },
     ],
   },
   {
     icon: <ChatIcon />,
     key: "simulator",
+    roles: ["HR", "USER_INTERVIEWER"],
     subItems: [
-      { key: "interviewerEmail", path: "/simulator/email" },
-      { key: "candidateWhatsapp", path: "/simulator/whatsapp" },
+      { key: "interviewerEmail", path: "/simulator/email", roles: ["HR", "USER_INTERVIEWER"] },
+      { key: "candidateWhatsapp", path: "/simulator/whatsapp", roles: ["HR"] },
     ],
   },
   {
     icon: <DocsIcon />,
     key: "auditSecurity",
+    roles: ["HR", "AUDITOR"],
     subItems: [
-      { key: "auditLogs", path: "/audit/logs" },
-      { key: "guardrailAlerts", path: "/audit/guardrail" },
+      { key: "auditLogs", path: "/audit/logs", roles: ["HR", "AUDITOR"] },
+      { key: "guardrailAlerts", path: "/audit/guardrail", roles: ["HR", "AUDITOR"] },
     ],
   },
 ];
 
 const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
+  const { role } = useAuth();
   const pathname = usePathname();
   const t = useTranslations("sidebar");
+
+  const filteredNavItems = useMemo(() => {
+    if (!role) return navItems;
+
+    return navItems
+      .filter((item) => !item.roles || item.roles.includes(role))
+      .map((item) => {
+        if (!item.subItems) return item;
+        const validSubs = item.subItems.filter(
+          (sub) => !sub.roles || sub.roles.includes(role)
+        );
+        return { ...item, subItems: validSubs };
+      })
+      .filter((item) => !item.subItems || item.subItems.length > 0);
+  }, [role]);
 
   const renderMenuItems = (
     navItems: NavItem[],
@@ -252,7 +276,7 @@ const AppSidebar: React.FC = () => {
   useEffect(() => {
     // Check if the current path matches any submenu item
     let submenuMatched = false;
-    navItems.forEach((nav, index) => {
+    filteredNavItems.forEach((nav, index) => {
       if (nav.subItems) {
         nav.subItems.forEach((subItem) => {
           if (isActive(subItem.path)) {
@@ -271,7 +295,7 @@ const AppSidebar: React.FC = () => {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- collapse submenu when the route no longer matches
       setOpenSubmenu(null);
     }
-  }, [pathname, isActive]);
+  }, [pathname, isActive, filteredNavItems]);
 
   useEffect(() => {
     // Set the height of the submenu items when the submenu is opened
@@ -352,7 +376,7 @@ const AppSidebar: React.FC = () => {
                   <HorizontaLDots />
                 )}
               </h2>
-              {renderMenuItems(navItems, "main")}
+              {renderMenuItems(filteredNavItems, "main")}
             </div>
           </div>
         </nav>

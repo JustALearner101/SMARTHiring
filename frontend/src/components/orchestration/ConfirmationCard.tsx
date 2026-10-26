@@ -13,6 +13,7 @@ import {
   InfoIcon,
   ShootingStarIcon,
 } from "@/icons";
+import { useAuth } from "@/context/AuthContext";
 import { ActionPlan } from "@/types/orchestration";
 import React, { useState } from "react";
 
@@ -31,6 +32,8 @@ export default function ConfirmationCard({
   onEdit,
   isApproving = false,
 }: ConfirmationCardProps) {
+  const { role } = useAuth();
+  const isHr = role === "HR";
   const [activeTab, setActiveTab] = useState<"email" | "whatsapp" | "calendar">("whatsapp");
   const [isCopied, setIsCopied] = useState(false);
 
@@ -313,25 +316,33 @@ export default function ConfirmationCard({
         </div>
 
         <div className="flex items-center gap-2.5 justify-end">
-          <Button variant="outline" size="md" onClick={onReject}>
+          <Button variant="outline" size="md" onClick={onReject} disabled={!isHr || isApproving}>
             Reject Plan
           </Button>
 
           {onEdit && (
-            <Button variant="secondary" size="md" onClick={onEdit}>
+            <Button variant="secondary" size="md" onClick={onEdit} disabled={!isHr || isApproving}>
               Edit Draft
             </Button>
           )}
 
-          <Button
-            variant="primary"
-            size="md"
-            isLoading={isApproving}
-            onClick={onApprove}
-            startIcon={<BoltIcon className="text-white" />}
-          >
-            Approve & Dispatch (+60s Undo)
-          </Button>
+          <div className="flex items-center gap-2">
+            {!isHr && (
+              <span className="text-[11px] font-semibold text-warning-600 dark:text-warning-400">
+                🔒 HR Approval Only
+              </span>
+            )}
+            <Button
+              variant="primary"
+              size="md"
+              isLoading={isApproving}
+              disabled={!isHr || isApproving}
+              onClick={onApprove}
+              startIcon={<BoltIcon className="text-white" />}
+            >
+              {isHr ? "Approve & Dispatch (+60s Undo)" : "HR Approval Required"}
+            </Button>
+          </div>
         </div>
       </div>
     </div>

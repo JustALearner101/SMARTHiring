@@ -1,5 +1,6 @@
 from app.controller.ActionPlanController import router as action_plan_router
 from app.controller.AuditLogController import router as audit_log_router
+from app.controller.AuthController import router as auth_router
 from app.controller.CalendarMatrixController import router as calendar_matrix_router
 from app.controller.CandidateController import router as candidate_router
 from app.controller.ContactController import router as contact_router
@@ -34,6 +35,7 @@ from app.controller.SlotConflictCheckerController import (
 __all__ = [
     "action_plan_router",
     "audit_log_router",
+    "auth_router",
     "calendar_matrix_router",
     "candidate_router",
     "contact_router",

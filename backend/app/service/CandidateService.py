@@ -9,6 +9,7 @@ from app.dto.CandidateDTO import (
     CandidateUpdateDTO,
 )
 from app.model.CandidateModel import Candidate
+from app.model.UserModel import User
 from app.repository.CandidateRepository import CandidateRepository
 
 
@@ -18,7 +19,8 @@ class CandidateService:
         self.candidate_repo = CandidateRepository(session)
 
     @staticmethod
-    def _to_candidate_dto(candidate: Candidate) -> CandidateDTO:
+    def _to_candidate_dto(candidate: Candidate, current_user: User | None = None) -> CandidateDTO:
+        is_hr = current_user is not None and current_user.vrole == "HR"
         return CandidateDTO(
             id=str(candidate.nid),
             candidate_code=candidate.vcandidate_code,
@@ -31,6 +33,8 @@ class CandidateService:
             timezone=candidate.vtimezone,  # type: ignore[arg-type]
             resume_url=candidate.vresume_url,
             notes=candidate.vnotes,
+            current_salary=candidate.ncurrent_salary if is_hr else None,
+            expected_salary=candidate.nexpected_salary if is_hr else None,
             created_at=candidate.dcrea.isoformat() if candidate.dcrea else datetime.now(UTC).isoformat(),
         )
 
@@ -39,23 +43,28 @@ class CandidateService:
         query: str | None = None,
         status: str | None = None,
         params: PaginationParams | None = None,
+        current_user: User | None = None,
     ) -> PaginatedResponse[CandidateDTO]:
         p = params or PaginationParams()
         items, total = await self.candidate_repo.search(
             query=query, status=status, offset=p.offset, limit=p.limit
         )
         return PaginatedResponse.create(
-            items=[self._to_candidate_dto(c) for c in items],
+            items=[self._to_candidate_dto(c, current_user=current_user) for c in items],
             total=total,
             page=p.page,
             page_size=p.page_size,
         )
 
-    async def get_candidate_by_id(self, candidate_id: str) -> CandidateDTO | None:
+    async def get_candidate_by_id(
+        self, candidate_id: str, current_user: User | None = None
+    ) -> CandidateDTO | None:
         candidate = await self.candidate_repo.get_by_id(candidate_id)
-        return self._to_candidate_dto(candidate) if candidate else None
+        return self._to_candidate_dto(candidate, current_user=current_user) if candidate else None
 
-    async def create_candidate(self, dto: CandidateCreateDTO) -> CandidateDTO:
+    async def create_candidate(
+        self, dto: CandidateCreateDTO, current_user: User | None = None
+    ) -> CandidateDTO:
         total = await self.candidate_repo.count()
         code = f"CAND-2026-{(total + 1):03d}"
         candidate_data = {
@@ -69,11 +78,15 @@ class CandidateService:
             "vtimezone": dto.timezone,
             "vresume_url": dto.resume_url,
             "vnotes": dto.notes,
+            "ncurrent_salary": dto.current_salary,
+            "nexpected_salary": dto.expected_salary,
         }
         candidate = await self.candidate_repo.create(candidate_data)
-        return self._to_candidate_dto(candidate)
+        return self._to_candidate_dto(candidate, current_user=current_user)
 
-    async def update_candidate(self, candidate_id: str, dto: CandidateUpdateDTO) -> CandidateDTO | None:
+    async def update_candidate(
+        self, candidate_id: str, dto: CandidateUpdateDTO, current_user: User | None = None
+    ) -> CandidateDTO | None:
         candidate = await self.candidate_repo.get_by_id(candidate_id)
         if not candidate:
             return None
@@ -96,6 +109,10 @@ class CandidateService:
             updates["vresume_url"] = dto.resume_url
         if dto.notes is not None:
             updates["vnotes"] = dto.notes
+        if dto.current_salary is not None:
+            updates["ncurrent_salary"] = dto.current_salary
+        if dto.expected_salary is not None:
+            updates["nexpected_salary"] = dto.expected_salary
 
         updated = await self.candidate_repo.update(candidate, updates)
-        return self._to_candidate_dto(updated)
+        return self._to_candidate_dto(updated, current_user=current_user)

@@ -28,6 +28,8 @@ export interface Candidate {
   timezone: Timezone;
   resume_url?: string;
   notes?: string;
+  current_salary?: number | null;
+  expected_salary?: number | null;
   created_at: string;
 }
 
@@ -39,7 +41,10 @@ export type Department =
   | "Product"
   | "Finance"
   | "People Operations"
-  | "Operations";
+  | "Human Resources"
+  | "Internal Audit"
+  | "Operations"
+  | string;
 
 export interface InterviewerContact {
   id: string;

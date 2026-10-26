@@ -6,7 +6,7 @@ import InputField from "@/components/form/input/InputField";
 import Select from "@/components/form/Select";
 import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
-import { Modal } from "@/components/ui/modal";
+import { Modal, ConfirmationModal } from "@/components/ui/modal";
 import {
   Table,
   TableBody,
@@ -17,17 +17,22 @@ import {
 import { PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
 import { masterService } from "@/services";
 import { Department, InterviewerContact, Timezone } from "@/types/master";
-import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/context/ToastContext";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 
 export default function ContactsPage() {
-  const [contacts, setContacts] = useState<InterviewerContact[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { role } = useAuth();
+  const { showSuccess, showError } = useToast();
+  const [isSaving, setIsSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDept, setSelectedDept] = useState<string>("ALL");
   const [selectedTimezone, setSelectedTimezone] = useState<string>("ALL");
 
   // Modals
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
+  const [isSaveConfirmOpen, setIsSaveConfirmOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [activeContact, setActiveContact] = useState<InterviewerContact | null>(null);
 
@@ -43,27 +48,14 @@ export default function ContactsPage() {
     working_hours: "09:00 - 17:00",
   });
 
-  // Hydrate strictly from Backend API
-  useEffect(() => {
-    let cancelled = false;
+  // TanStack Query: Caches contacts in memory with 1-min freshness and 0ms navigation
+  const queryClient = useQueryClient();
+  const { data: contactsData, isLoading } = useQuery({
+    queryKey: ["contacts"],
+    queryFn: () => masterService.listContacts(),
+  });
 
-    masterService
-      .listContacts()
-      .then((result) => {
-        if (cancelled) return;
-        setContacts(Array.isArray(result) ? result : []);
-      })
-      .catch((error: unknown) => {
-        console.error("Failed to fetch contacts:", error);
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const contacts = useMemo(() => (Array.isArray(contactsData) ? contactsData : []), [contactsData]);
 
   // Filtered List
   const filteredContacts = useMemo(() => {
@@ -114,14 +106,19 @@ export default function ContactsPage() {
     setIsFormModalOpen(true);
   };
 
-  // Unified Save Contact (Add or Edit)
-  const handleSaveContact = async () => {
-    if (!formData.name.trim() || !formData.email.trim() || !formData.role.trim()) {
-      alert("Please fill in the interviewer's name, email, and position.");
+  // Step 1: Pre-save validation & trigger Confirmation Modal
+  const handlePreSaveContact = () => {
+    if (!formData.name.trim() || !formData.email.trim() || !formData.role.trim() || !formData.phone.trim()) {
+      showError("Validasi Gagal", "Mohon lengkapi nama, email, nomor telepon, dan posisi interviewer.");
       return;
     }
+    setIsSaveConfirmOpen(true);
+  };
 
+  // Step 2: Execute Save Contact upon user confirmation in Modal
+  const handleExecuteSaveContact = async () => {
     const editing = activeContact;
+    setIsSaving(true);
 
     try {
       if (editing) {
@@ -134,7 +131,12 @@ export default function ContactsPage() {
           timezone: formData.timezone,
           working_hours: formData.working_hours,
         });
-        setContacts((prev) => prev.map((c) => (c.id === editing.id ? updated : c)));
+        queryClient.setQueryData(
+          ["contacts"],
+          (old: InterviewerContact[] | undefined) =>
+            (old || []).map((c) => (c.id === editing.id ? updated : c))
+        );
+        showSuccess("Berhasil Diperbarui", `Data interviewer "${formData.name}" berhasil diperbarui.`);
       } else {
         const created = await masterService.createContact({
           employee_id: formData.employee_id,
@@ -146,19 +148,37 @@ export default function ContactsPage() {
           timezone: formData.timezone,
           working_hours: formData.working_hours,
         });
-        setContacts((prev) => [created, ...prev]);
+        queryClient.setQueryData(
+          ["contacts"],
+          (old: InterviewerContact[] | undefined) => [created, ...(old || [])]
+        );
+        showSuccess("Berhasil Ditambahkan", `Interviewer baru "${formData.name}" berhasil didaftarkan ke sistem.`);
       }
+      void queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      setIsSaveConfirmOpen(false);
       setIsFormModalOpen(false);
     } catch (error) {
       console.error("Failed to save contact:", error);
+      showError(
+        "Gagal Menyimpan",
+        error instanceof Error ? error.message : "Terjadi kesalahan sistem saat menyimpan data kontak interviewer."
+      );
+    } finally {
+      setIsSaving(false);
     }
   };
 
   // Confirm Delete (Client-side state — no DELETE endpoint on backend, Ledger U-02)
   const handleConfirmDelete = () => {
     if (!activeContact) return;
-    setContacts(contacts.filter((c) => c.id !== activeContact.id));
+    const deletedName = activeContact.name;
+    queryClient.setQueryData(
+      ["contacts"],
+      (old: InterviewerContact[] | undefined) => (old || []).filter((c) => c.id !== activeContact.id)
+    );
+    void queryClient.invalidateQueries({ queryKey: ["contacts"] });
     setIsDeleteModalOpen(false);
+    showSuccess("Berhasil Dihapus", `Kontak "${deletedName}" telah dinonaktifkan dari daftar aktif.`);
   };
 
   // Department Badge Colors
@@ -198,6 +218,8 @@ export default function ContactsPage() {
             size="sm"
             startIcon={<PlusIcon/>}
             onClick={handleOpenAdd}
+            disabled={role !== "HR"}
+            title={role !== "HR" ? "Hanya HR Admin yang berhak mendaftarkan interviewer baru." : undefined}
           >
             Add Interviewer
           </Button>
@@ -223,6 +245,8 @@ export default function ContactsPage() {
                 { value: "Product", label: "Product" },
                 { value: "Finance", label: "Finance" },
                 { value: "People Operations", label: "People Operations" },
+                { value: "Human Resources", label: "Human Resources" },
+                { value: "Internal Audit", label: "Internal Audit" },
                 { value: "Operations", label: "Operations" },
               ]}
               value={selectedDept}
@@ -335,27 +359,31 @@ export default function ContactsPage() {
 
                     {/* Actions */}
                     <TableCell className="pe-5 ps-3 py-3.5 text-end whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEdit(item)}
-                          className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-theme-xs hover:border-brand-300 hover:bg-gray-50 hover:text-brand-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-brand-500/30 dark:hover:bg-gray-700/60 dark:hover:text-brand-400 transition-all"
-                          title="Edit Kontak"
-                        >
-                          <PencilIcon/>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveContact(item);
-                            setIsDeleteModalOpen(true);
-                          }}
-                          className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-theme-xs hover:border-error-300 hover:bg-error-50 hover:text-error-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-error-500/30 dark:hover:bg-error-500/15 dark:hover:text-error-400 transition-all"
-                          title="Hapus Kontak"
-                        >
-                          <TrashBinIcon/>
-                        </button>
-                      </div>
+                      {role === "HR" ? (
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit(item)}
+                            className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-theme-xs hover:border-brand-300 hover:bg-gray-50 hover:text-brand-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-brand-500/30 dark:hover:bg-gray-700/60 dark:hover:text-brand-400 transition-all"
+                            title="Edit Kontak"
+                          >
+                            <PencilIcon/>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveContact(item);
+                              setIsDeleteModalOpen(true);
+                            }}
+                            className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-theme-xs hover:border-error-300 hover:bg-error-50 hover:text-error-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-error-500/30 dark:hover:bg-error-500/15 dark:hover:text-error-400 transition-all"
+                            title="Hapus Kontak"
+                          >
+                            <TrashBinIcon/>
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400 italic">Read-only</span>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))
@@ -432,6 +460,8 @@ export default function ContactsPage() {
                     { value: "Product", label: "Product" },
                     { value: "Finance", label: "Finance" },
                     { value: "People Operations", label: "People Operations" },
+                    { value: "Human Resources", label: "Human Resources" },
+                    { value: "Internal Audit", label: "Internal Audit" },
                     { value: "Operations", label: "Operations" },
                   ]}
                   value={formData.department}
@@ -475,40 +505,41 @@ export default function ContactsPage() {
             <Button variant="outline" onClick={() => setIsFormModalOpen(false)}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleSaveContact}>
+            <Button variant="primary" onClick={handlePreSaveContact} disabled={isSaving}>
               {activeContact ? "Update" : "Save"}
             </Button>
           </div>
         </div>
       </Modal>
 
-      {/* Delete Confirmation Modal */}
-      <Modal isOpen={isDeleteModalOpen} onClose={() => setIsDeleteModalOpen(false)}>
-        <div className="p-6 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-error-50 text-error-500 dark:bg-error-500/10 mb-3">
-            <TrashBinIcon/>
-          </div>
-          <h3 className="text-base font-semibold text-gray-900 dark:text-white">
-            Delete Interviewer?
-          </h3>
-          <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-            Are you sure you want to delete{" "}
-            <span className="font-semibold text-gray-800 dark:text-gray-200">
-              {activeContact?.name}
-            </span>{" "}
-            ({activeContact?.role})?
-          </p>
+      {/* Save Confirmation Modal (Add or Edit) */}
+      <ConfirmationModal
+        isOpen={isSaveConfirmOpen}
+        onClose={() => setIsSaveConfirmOpen(false)}
+        onConfirm={handleExecuteSaveContact}
+        isLoading={isSaving}
+        title={activeContact ? "Confirm Update Interviewer" : "Confirm Add Interviewer"}
+        description={
+          activeContact
+            ? "Are you sure you want to update this interviewer's information? Please verify the changes before saving."
+            : "Are you sure you want to register this interviewer? Please verify the details before saving."
+        }
+        confirmText={activeContact ? "Yes, Save Changes" : "Yes, Add Interviewer"}
+        cancelText="Cancel"
+        variant="primary"
+      />
 
-          <div className="mt-6 flex justify-center gap-2.5">
-            <Button variant="outline" onClick={() => setIsDeleteModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="danger" onClick={handleConfirmDelete}>
-              Delete
-            </Button>
-          </div>
-        </div>
-      </Modal>
+      {/* Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={handleConfirmDelete}
+        title="Confirm Delete Interviewer"
+        description={`Are you sure you want to delete interviewer "${activeContact?.name}" (${activeContact?.role})?`}
+        confirmText="Yes, Delete"
+        cancelText="Cancel"
+        variant="danger"
+      />
     </div>
   );
 }

@@ -3,13 +3,7 @@ from typing import Literal
 from app.dto.BaseDTO import BaseDTO
 
 Timezone = Literal["WIB", "WITA", "WIT"]
-Department = Literal[
-    "Engineering",
-    "Product",
-    "Finance",
-    "People Operations",
-    "Operations",
-]
+Department = str
 
 
 class InterviewerContactDTO(BaseDTO):

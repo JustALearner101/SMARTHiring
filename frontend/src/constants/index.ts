@@ -4,6 +4,11 @@
 export const API_ENDPOINTS = {
   HEALTH: "/health",
 
+  // Authentication & Users
+  AUTH_LOGIN: "/auth/login",
+  AUTH_ME: "/auth/me",
+  AUTH_USERS: "/auth/users",
+
   // Master data
   CANDIDATES: "/candidates",
   CONTACTS: "/contacts",

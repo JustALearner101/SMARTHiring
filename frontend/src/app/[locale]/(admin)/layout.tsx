@@ -1,11 +1,13 @@
 "use client";
 
+import { useAuth } from "@/context/AuthContext";
 import { useSidebar } from "@/context/SidebarContext";
 import { SimulatorProvider } from "@/context/SimulatorContext";
+import { useRouter } from "@/i18n/navigation";
 import AppHeader from "@/layout/AppHeader";
 import AppSidebar from "@/layout/AppSidebar";
 import Backdrop from "@/layout/Backdrop";
-import React from "react";
+import React, { useEffect } from "react";
 
 export default function AdminLayout({
   children,
@@ -13,6 +15,31 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const { isExpanded, isHovered, isMobileOpen } = useSidebar();
+  const { token, isLoading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoading && !token) {
+      router.replace("/signin");
+    }
+  }, [isLoading, token, router]);
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="flex flex-col items-center gap-3">
+          <div className="size-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">
+            Memverifikasi sesi kerja...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!token) {
+    return null;
+  }
 
   // Dynamic class for main content margin based on sidebar state
   const mainContentMargin = isMobileOpen

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.AppSecurity import require_roles
 from app.db.DatabaseSession import get_db
 from app.dto.BaseDTO import ApiResponse
 from app.dto.ContactDTO import (
@@ -9,6 +10,7 @@ from app.dto.ContactDTO import (
     InterviewerUpdateDTO,
 )
 from app.exception.CustomException import NotFoundException
+from app.model.UserModel import User
 from app.service.ContactService import ContactService
 
 router = APIRouter(prefix="/contacts", tags=["ContactsDirectory"])
@@ -27,6 +29,7 @@ async def list_interviewers(
 @router.post("", response_model=ApiResponse[InterviewerContactDTO], status_code=status.HTTP_201_CREATED)
 async def create_interviewer(
     dto: InterviewerCreateDTO,
+    _current_user: User = Depends(require_roles(["HR"])),
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[InterviewerContactDTO]:
     service = ContactService(db)
@@ -38,6 +41,7 @@ async def create_interviewer(
 async def update_interviewer(
     user_id: str,
     dto: InterviewerUpdateDTO,
+    _current_user: User = Depends(require_roles(["HR"])),
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[InterviewerContactDTO]:
     service = ContactService(db)
@@ -45,3 +49,4 @@ async def update_interviewer(
     if not updated:
         raise NotFoundException("Kontak tidak ditemukan")
     return ApiResponse(data=updated, message="Kontak pewawancara berhasil diperbarui")
+

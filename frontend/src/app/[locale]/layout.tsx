@@ -1,5 +1,8 @@
+import { AuthProvider } from "@/context/AuthContext";
+import { QueryProvider } from "@/context/QueryProvider";
 import { SidebarProvider } from "@/context/SidebarContext";
 import { ThemeProvider } from "@/context/ThemeContext";
+import { ToastProvider } from "@/context/ToastContext";
 import { isRtl } from "@/i18n/languages";
 import { type Locale, routing } from "@/i18n/routing";
 import "flatpickr/dist/flatpickr.css";
@@ -38,9 +41,15 @@ export default async function RootLayout({
     <html lang={locale} dir={isRtl(locale as Locale) ? "rtl" : "ltr"} suppressHydrationWarning>
       <body suppressHydrationWarning className={`${outfit.className} dark:bg-gray-900`}>
         <NextIntlClientProvider>
-          <ThemeProvider>
-            <SidebarProvider>{children}</SidebarProvider>
-          </ThemeProvider>
+          <QueryProvider>
+            <ThemeProvider>
+              <SidebarProvider>
+                <AuthProvider>
+                  <ToastProvider>{children}</ToastProvider>
+                </AuthProvider>
+              </SidebarProvider>
+            </ThemeProvider>
+          </QueryProvider>
         </NextIntlClientProvider>
       </body>
     </html>

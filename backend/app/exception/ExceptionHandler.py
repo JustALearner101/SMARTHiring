@@ -6,18 +6,32 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.core.AppConfig import settings
 from app.exception.CustomException import AppException
 
 logger = logging.getLogger("heketon.api")
+
+
+def _cors_headers(request: Request) -> dict[str, str]:
+    origin = request.headers.get("origin")
+    if origin and (origin in settings.BACKEND_CORS_ORIGINS or "*" in settings.BACKEND_CORS_ORIGINS):
+        return {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Headers": "*",
+        }
+    return {}
 
 
 def register_exception_handlers(app: FastAPI) -> None:
     """Register uniform global exception handlers for the FastAPI application."""
 
     @app.exception_handler(AppException)
-    async def app_exception_handler(_request: Request, exc: AppException) -> JSONResponse:
+    async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
+            headers=_cors_headers(request),
             content={
                 "success": False,
                 "message": exc.message,
@@ -26,7 +40,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(StarletteHTTPException)
-    async def http_exception_handler(_request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         detail_msg = exc.detail if isinstance(exc.detail, str) else "Terjadi kesalahan pada request"
         data_payload: Any = None
         if isinstance(exc.detail, dict):
@@ -35,6 +49,7 @@ def register_exception_handlers(app: FastAPI) -> None:
 
         return JSONResponse(
             status_code=exc.status_code,
+            headers=_cors_headers(request),
             content={
                 "success": False,
                 "message": detail_msg,
@@ -43,7 +58,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(RequestValidationError)
-    async def validation_exception_handler(_request: Request, exc: RequestValidationError) -> JSONResponse:
+    async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
         formatted_errors = []
         for error in exc.errors():
             loc = " -> ".join([str(part) for part in error.get("loc", []) if part != "body"])
@@ -62,6 +77,7 @@ def register_exception_handlers(app: FastAPI) -> None:
 
         return JSONResponse(
             status_code=422,
+            headers=_cors_headers(request),
             content={
                 "success": False,
                 "message": summary_msg,
@@ -74,6 +90,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         logger.exception("Unhandled server exception at %s %s: %s", request.method, request.url.path, str(exc))
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            headers=_cors_headers(request),
             content={
                 "success": False,
                 "message": "Terjadi kesalahan internal pada server. Silakan hubungi admin.",

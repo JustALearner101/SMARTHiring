@@ -1,5 +1,6 @@
 from app.service.ActionPlanService import ActionPlanService
 from app.service.AuditLogService import AuditLogService
+from app.service.AuthService import AuthService
 from app.service.CalendarMatrixService import CalendarMatrixService
 from app.service.CandidateService import CandidateService
 from app.service.ContactService import ContactService
@@ -18,6 +19,7 @@ from app.service.SlotConflictCheckerService import SlotConflictCheckerService
 __all__ = [
     "ActionPlanService",
     "AuditLogService",
+    "AuthService",
     "CalendarMatrixService",
     "CandidateService",
     "ContactService",

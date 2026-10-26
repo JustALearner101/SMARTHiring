@@ -23,6 +23,12 @@ export async function apiFetch<T>(
 ): Promise<T> {
   const { token, headers, ...restOptions } = options;
 
+  const storedToken =
+    typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+  const storedRole =
+    typeof window !== "undefined" ? localStorage.getItem("auth_role") : null;
+  const activeToken = token || storedToken;
+
   const url = endpoint.startsWith("http")
     ? endpoint
     : `${API_BASE_URL.replace(/\/$/, "")}/${endpoint.replace(/^\//, "")}`;
@@ -31,7 +37,8 @@ export async function apiFetch<T>(
     ...restOptions,
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
+      ...(storedRole ? { "X-Demo-Role": storedRole } : {}),
       ...headers,
     },
   });

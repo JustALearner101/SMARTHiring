@@ -27,6 +27,8 @@ class CandidateDTO(BaseDTO):
     timezone: Timezone
     resume_url: str | None = None
     notes: str | None = None
+    current_salary: int | None = None
+    expected_salary: int | None = None
     created_at: datetime | str
 
 
@@ -40,6 +42,8 @@ class CandidateCreateDTO(BaseDTO):
     timezone: Timezone = "WIB"
     resume_url: str | None = None
     notes: str | None = None
+    current_salary: int | None = None
+    expected_salary: int | None = None
 
 
 class CandidateUpdateDTO(BaseDTO):
@@ -52,3 +56,5 @@ class CandidateUpdateDTO(BaseDTO):
     timezone: Timezone | None = None
     resume_url: str | None = None
     notes: str | None = None
+    current_salary: int | None = None
+    expected_salary: int | None = None

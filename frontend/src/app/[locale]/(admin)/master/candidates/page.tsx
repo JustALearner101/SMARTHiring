@@ -7,7 +7,7 @@ import TextArea from "@/components/form/input/TextArea";
 import Select from "@/components/form/Select";
 import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
-import { Modal } from "@/components/ui/modal";
+import { Modal, ConfirmationModal } from "@/components/ui/modal";
 import {
   Table,
   TableBody,
@@ -24,17 +24,22 @@ import {
 } from "@/icons";
 import { masterService } from "@/services";
 import { ApplicationStatus, Candidate, PreferredChannel, Timezone } from "@/types/master";
-import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/context/ToastContext";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 
 export default function CandidatesPage() {
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { role } = useAuth();
+  const { showSuccess, showError } = useToast();
+  const [isSaving, setIsSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [timezoneFilter, setTimezoneFilter] = useState<string>("ALL");
 
   // Modals
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
+  const [isSaveConfirmOpen, setIsSaveConfirmOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [activeCandidate, setActiveCandidate] = useState<Candidate | null>(null);
 
@@ -49,29 +54,18 @@ export default function CandidatesPage() {
     timezone: "WIB" as Timezone,
     resume_url: "",
     notes: "",
+    current_salary: "" as string | number,
+    expected_salary: "" as string | number,
   });
 
-  // Hydrate strictly from Backend API
-  useEffect(() => {
-    let cancelled = false;
+  // TanStack Query: Caches candidates in memory with 1-min freshness and 0ms navigation
+  const queryClient = useQueryClient();
+  const { data: candidatesData, isLoading } = useQuery({
+    queryKey: ["candidates"],
+    queryFn: () => masterService.listCandidates({ page_size: 100 }),
+  });
 
-    masterService
-      .listCandidates({ page_size: 100 })
-      .then((result) => {
-        if (cancelled) return;
-        setCandidates(Array.isArray(result?.items) ? result.items : []);
-      })
-      .catch((error: unknown) => {
-        console.error("Failed to fetch candidates:", error);
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const candidates = useMemo(() => candidatesData?.items || [], [candidatesData]);
 
   // Filtered List
   const filteredCandidates = useMemo(() => {
@@ -103,6 +97,8 @@ export default function CandidatesPage() {
       timezone: "WIB",
       resume_url: "",
       notes: "",
+      current_salary: "",
+      expected_salary: "",
     });
     setIsFormModalOpen(true);
   };
@@ -120,18 +116,38 @@ export default function CandidatesPage() {
       timezone: cand.timezone,
       resume_url: cand.resume_url || "",
       notes: cand.notes || "",
+      current_salary: cand.current_salary ?? "",
+      expected_salary: cand.expected_salary ?? "",
     });
     setIsFormModalOpen(true);
   };
 
-  // Unified Save Candidate (Add or Edit)
-  const handleSaveCandidate = async () => {
+  // Step 1: Pre-save validation & trigger Confirmation Modal
+  const handlePreSaveCandidate = () => {
     if (!formData.name.trim() || !formData.email.trim() || !formData.applied_position.trim()) {
-      alert("Please fill in candidate name, email, and applied position.");
+      showError(
+        "Validasi Form Gagal",
+        "Harap lengkapi nama kandidat, email, dan posisi yang dilamar sebelum menyimpan."
+      );
       return;
     }
+    // Open confirmation dialog — form modal remains open in the background so user can go back if needed
+    setIsSaveConfirmOpen(true);
+  };
 
+  // Step 2: Execute Save Candidate upon user confirmation in Modal
+  const handleExecuteSaveCandidate = async () => {
     const editing = activeCandidate;
+    const currentSalaryNum =
+      formData.current_salary !== "" && !Number.isNaN(Number(formData.current_salary))
+        ? Number(formData.current_salary)
+        : undefined;
+    const expectedSalaryNum =
+      formData.expected_salary !== "" && !Number.isNaN(Number(formData.expected_salary))
+        ? Number(formData.expected_salary)
+        : undefined;
+
+    setIsSaving(true);
 
     try {
       if (editing) {
@@ -145,8 +161,23 @@ export default function CandidatesPage() {
           timezone: formData.timezone,
           resume_url: formData.resume_url,
           notes: formData.notes,
+          current_salary: currentSalaryNum,
+          expected_salary: expectedSalaryNum,
         });
-        setCandidates((prev) => prev.map((c) => (c.id === editing.id ? updated : c)));
+        queryClient.setQueryData(
+          ["candidates"],
+          (old: { items: Candidate[]; total: number; page: number; page_size: number; total_pages: number } | undefined) => ({
+            items: (old?.items || []).map((c) => (c.id === editing.id ? updated : c)),
+            total: old?.total || 0,
+            page: old?.page || 1,
+            page_size: old?.page_size || 100,
+            total_pages: old?.total_pages || 1,
+          })
+        );
+        showSuccess(
+          "Kandidat Diperbarui",
+          `Data kandidat ${formData.name} berhasil disimpan ke database.`
+        );
       } else {
         const created = await masterService.createCandidate({
           name: formData.name,
@@ -158,20 +189,54 @@ export default function CandidatesPage() {
           timezone: formData.timezone,
           resume_url: formData.resume_url,
           notes: formData.notes,
+          current_salary: currentSalaryNum,
+          expected_salary: expectedSalaryNum,
         });
-        setCandidates((prev) => [created, ...prev]);
+        queryClient.setQueryData(
+          ["candidates"],
+          (old: { items: Candidate[]; total: number; page: number; page_size: number; total_pages: number } | undefined) => ({
+            items: [created, ...(old?.items || [])],
+            total: (old?.total || 0) + 1,
+            page: old?.page || 1,
+            page_size: old?.page_size || 100,
+            total_pages: old?.total_pages || 1,
+          })
+        );
+        showSuccess(
+          "Kandidat Ditambahkan",
+          `Kandidat ${formData.name} (${created.candidate_code}) berhasil ditambahkan ke antrean.`
+        );
       }
+      void queryClient.invalidateQueries({ queryKey: ["candidates"] });
+      setIsSaveConfirmOpen(false);
       setIsFormModalOpen(false);
     } catch (error) {
       console.error("Failed to save candidate:", error);
+      const msg =
+        error instanceof Error ? error.message : "Terjadi kesalahan saat menyimpan data kandidat ke server.";
+      showError("Gagal Menyimpan Data", msg);
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  // Confirm Delete (Client-side state — no DELETE endpoint on backend, Ledger U-01)
+  // Confirm Delete
   const handleConfirmDelete = () => {
     if (!activeCandidate) return;
-    setCandidates(candidates.filter((c) => c.id !== activeCandidate.id));
+    const targetName = activeCandidate.name;
+    queryClient.setQueryData(
+      ["candidates"],
+      (old: { items: Candidate[]; total: number; page: number; page_size: number; total_pages: number } | undefined) => ({
+        items: (old?.items || []).filter((c) => c.id !== activeCandidate.id),
+        total: Math.max(0, (old?.total || 1) - 1),
+        page: old?.page || 1,
+        page_size: old?.page_size || 100,
+        total_pages: old?.total_pages || 1,
+      })
+    );
+    void queryClient.invalidateQueries({ queryKey: ["candidates"] });
     setIsDeleteModalOpen(false);
+    showSuccess("Kandidat Dihapus", `Data kandidat ${targetName} telah dihapus dari antrean.`);
   };
 
   // Render Status Badge
@@ -213,6 +278,8 @@ export default function CandidatesPage() {
             size="sm"
             startIcon={<PlusIcon/>}
             onClick={handleOpenAdd}
+            disabled={role !== "HR"}
+            title={role !== "HR" ? "Hanya HR Admin yang berwenang menambah kandidat" : "Tambah kandidat baru"}
           >
             Add Candidate
           </Button>
@@ -273,6 +340,9 @@ export default function CandidatesPage() {
                   Applied Position
                 </TableCell>
                 <TableCell isHeader className="px-3 py-3 text-start text-xs font-semibold text-gray-600 dark:text-gray-300">
+                  Salary (Cur / Exp)
+                </TableCell>
+                <TableCell isHeader className="px-3 py-3 text-start text-xs font-semibold text-gray-600 dark:text-gray-300">
                   Preferred Channel
                 </TableCell>
                 <TableCell isHeader className="px-3 py-3 text-start text-xs font-semibold text-gray-600 dark:text-gray-300">
@@ -325,6 +395,28 @@ export default function CandidatesPage() {
                       {cand.applied_position}
                     </TableCell>
 
+                    {/* Salary (Role Guarded: Visible only to HR) */}
+                    <TableCell className="px-3 py-3.5">
+                      {role === "HR" ? (
+                        cand.current_salary != null || cand.expected_salary != null ? (
+                          <div className="flex flex-col text-xs font-mono">
+                            <span className="font-semibold text-gray-800 dark:text-gray-200">
+                              Exp: {cand.expected_salary ? `Rp ${(cand.expected_salary / 1000000).toLocaleString("id-ID")}M` : "-"}
+                            </span>
+                            <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                              Cur: {cand.current_salary ? `Rp ${(cand.current_salary / 1000000).toLocaleString("id-ID")}M` : "-"}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400">-</span>
+                        )
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                          🔒 Confidential (HR)
+                        </span>
+                      )}
+                    </TableCell>
+
                     {/* Preferred Channel */}
                     <TableCell className="px-3 py-3.5">
                       <div className="flex flex-col gap-0.5">
@@ -370,28 +462,31 @@ export default function CandidatesPage() {
                           <span>Escalate</span>
                         </Link>
 
-                        {/* Edit button */}
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEdit(cand)}
-                          className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-theme-xs hover:border-brand-300 hover:bg-gray-50 hover:text-brand-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-brand-500/30 dark:hover:bg-gray-700/60 dark:hover:text-brand-400 transition-all"
-                          title="Edit Kandidat"
-                        >
-                          <PencilIcon/>
-                        </button>
+                        {/* Edit & Delete: HR only */}
+                        {role === "HR" && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEdit(cand)}
+                              className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-theme-xs hover:border-brand-300 hover:bg-gray-50 hover:text-brand-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-brand-500/30 dark:hover:bg-gray-700/60 dark:hover:text-brand-400 transition-all"
+                              title="Edit Kandidat"
+                            >
+                              <PencilIcon/>
+                            </button>
 
-                        {/* Delete button */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveCandidate(cand);
-                            setIsDeleteModalOpen(true);
-                          }}
-                          className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-theme-xs hover:border-error-300 hover:bg-error-50 hover:text-error-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-error-500/30 dark:hover:bg-error-500/15 dark:hover:text-error-400 transition-all"
-                          title="Hapus Kandidat"
-                        >
-                          <TrashBinIcon/>
-                        </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveCandidate(cand);
+                                setIsDeleteModalOpen(true);
+                              }}
+                              className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-theme-xs hover:border-error-300 hover:bg-error-50 hover:text-error-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-error-500/30 dark:hover:bg-error-500/15 dark:hover:text-error-400 transition-all"
+                              title="Hapus Kandidat"
+                            >
+                              <TrashBinIcon/>
+                            </button>
+                          </>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -498,6 +593,29 @@ export default function CandidatesPage() {
               </FormField>
             </div>
 
+            {/* Salary Data (HR Only) */}
+            {role === "HR" && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-xl border border-brand-100 bg-brand-50/40 dark:border-brand-900/40 dark:bg-brand-950/20">
+                <FormField label="Current Salary (IDR)" hint="Confidential - HR Only">
+                  <InputField
+                    type="number"
+                    placeholder="e.g. 20000000"
+                    value={formData.current_salary}
+                    onChange={(e) => setFormData({ ...formData, current_salary: e.target.value })}
+                  />
+                </FormField>
+
+                <FormField label="Expected Salary (IDR)" hint="Confidential - HR Only">
+                  <InputField
+                    type="number"
+                    placeholder="e.g. 26000000"
+                    value={formData.expected_salary}
+                    onChange={(e) => setFormData({ ...formData, expected_salary: e.target.value })}
+                  />
+                </FormField>
+              </div>
+            )}
+
             <FormField label="Additional Notes" hint="Notes will be referenced by AI when composing the invitation draft.">
               <TextArea
                 rows={2}
@@ -509,43 +627,44 @@ export default function CandidatesPage() {
           </div>
 
           <div className="mt-6 flex justify-end gap-2.5 pt-3 border-t border-gray-100 dark:border-gray-800">
-            <Button variant="outline" onClick={() => setIsFormModalOpen(false)}>
+            <Button variant="outline" disabled={isSaving} onClick={() => setIsFormModalOpen(false)}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleSaveCandidate}>
+            <Button variant="primary" disabled={isSaving} onClick={handlePreSaveCandidate}>
               {activeCandidate ? "Update" : "Save"}
             </Button>
           </div>
         </div>
       </Modal>
 
-      {/* Delete Confirmation Modal */}
-      <Modal isOpen={isDeleteModalOpen} onClose={() => setIsDeleteModalOpen(false)}>
-        <div className="p-6 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-error-50 text-error-500 dark:bg-error-500/10 mb-3">
-            <TrashBinIcon/>
-          </div>
-          <h3 className="text-base font-semibold text-gray-900 dark:text-white">
-            Delete Candidate?
-          </h3>
-          <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-            Are you sure you want to delete candidate{" "}
-            <span className="font-semibold text-gray-800 dark:text-gray-200">
-              {activeCandidate?.name}
-            </span>{" "}
-            ({activeCandidate?.candidate_code})? This action cannot be undone.
-          </p>
+      {/* Save Confirmation Modal (Add or Edit) */}
+      <ConfirmationModal
+        isOpen={isSaveConfirmOpen}
+        onClose={() => setIsSaveConfirmOpen(false)}
+        onConfirm={handleExecuteSaveCandidate}
+        isLoading={isSaving}
+        title={activeCandidate ? "Confirm Update Candidate" : "Confirm Add Candidate"}
+        description={
+          activeCandidate
+            ? "Are you sure you want to update this candidate's information? Please make sure the changes are correct."
+            : "Are you sure you want to register this candidate? Please ensure the entered information is accurate."
+        }
+        confirmText={activeCandidate ? "Yes, Save Changes" : "Yes, Add Candidate"}
+        cancelText="Cancel"
+        variant="primary"
+      />
 
-          <div className="mt-6 flex justify-center gap-2.5">
-            <Button variant="outline" onClick={() => setIsDeleteModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="danger" onClick={handleConfirmDelete}>
-              Delete
-            </Button>
-          </div>
-        </div>
-      </Modal>
+      {/* Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={handleConfirmDelete}
+        title="Confirm Delete Candidate"
+        description={`Are you sure you want to delete candidate "${activeCandidate?.name}"? This action cannot be undone.`}
+        confirmText="Yes, Delete"
+        cancelText="Cancel"
+        variant="danger"
+      />
     </div>
   );
 }

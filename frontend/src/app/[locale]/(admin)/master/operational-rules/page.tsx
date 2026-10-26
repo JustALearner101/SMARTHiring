@@ -5,7 +5,7 @@ import FormField from "@/components/form/FormField";
 import InputField from "@/components/form/input/InputField";
 import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
-import { Modal } from "@/components/ui/modal";
+import { Modal, ConfirmationModal } from "@/components/ui/modal";
 import {
   Table,
   TableBody,
@@ -20,7 +20,10 @@ import {
 } from "@/icons";
 import { masterService } from "@/services";
 import { NationalHoliday, OperationalPolicy } from "@/types/master";
-import { useEffect, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/context/ToastContext";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 
 const EMPTY_POLICY_DEFAULTS: OperationalPolicy = {
   work_start_time: "09:00",
@@ -61,74 +64,96 @@ const sortHolidays = (items: NationalHoliday[]): NationalHoliday[] =>
   [...items].sort((a, b) => a.date.localeCompare(b.date));
 
 export default function OperationalRulesPage() {
-  const [policy, setPolicy] = useState<OperationalPolicy>(EMPTY_POLICY_DEFAULTS);
-  const [holidays, setHolidays] = useState<NationalHoliday[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { role } = useAuth();
+  const { showSuccess, showError } = useToast();
+  const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Confirmation Modals
+  const [isConfirmPolicyOpen, setIsConfirmPolicyOpen] = useState(false);
+  const [deleteTargetHoliday, setDeleteTargetHoliday] = useState<NationalHoliday | null>(null);
 
   // Add Holiday Modal
   const [isAddHolidayOpen, setIsAddHolidayOpen] = useState(false);
+  const [isAddingHoliday, setIsAddingHoliday] = useState(false);
   const [newHolidayDate, setNewHolidayDate] = useState("");
   const [newHolidayName, setNewHolidayName] = useState("");
   const [newHolidayJointLeave, setNewHolidayJointLeave] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
+  // TanStack Query: Caches operational rules in memory with 1-min freshness and 0ms navigation
+  const queryClient = useQueryClient();
+  const { data: rulesData, isLoading } = useQuery({
+    queryKey: ["operationalRules"],
+    queryFn: async () => {
+      const [apiPolicy, apiHolidays] = await Promise.all([
+        masterService.getOperationalPolicy(),
+        masterService.listHolidays(2026),
+      ]);
+      return {
+        policy: apiPolicy && !Array.isArray(apiPolicy) ? normalizePolicy(apiPolicy) : null,
+        holidays: Array.isArray(apiHolidays) ? sortHolidays(apiHolidays) : [],
+      };
+    },
+  });
 
-    const loadOperationalRules = async () => {
-      try {
-        const [apiPolicy, apiHolidays] = await Promise.all([
-          masterService.getOperationalPolicy(),
-          masterService.listHolidays(2026),
-        ]);
+  const [formPolicy, setFormPolicy] = useState<OperationalPolicy | null>(null);
+  const policy = formPolicy ?? rulesData?.policy ?? EMPTY_POLICY_DEFAULTS;
+  const holidays = useMemo(() => rulesData?.holidays || [], [rulesData]);
 
-        if (cancelled) return;
+  const setPolicy = (
+    val: OperationalPolicy | ((prev: OperationalPolicy) => OperationalPolicy)
+  ) => {
+    if (typeof val === "function") {
+      setFormPolicy((curr) => val(curr ?? rulesData?.policy ?? EMPTY_POLICY_DEFAULTS));
+    } else {
+      setFormPolicy(val);
+    }
+  };
 
-        if (apiPolicy && !Array.isArray(apiPolicy)) {
-          setPolicy(normalizePolicy(apiPolicy));
-        }
+  // Step 1: Trigger policy update confirmation
+  const handleSavePolicy = () => {
+    setIsConfirmPolicyOpen(true);
+  };
 
-        if (Array.isArray(apiHolidays)) {
-          setHolidays(sortHolidays(apiHolidays));
-        }
-      } catch (error) {
-        console.error("Failed to fetch operational rules:", error);
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    };
-
-    void loadOperationalRules();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Save Policy Handler
-  const handleSavePolicy = async () => {
+  // Step 2: Execute policy update upon user confirmation
+  const handleExecuteSavePolicy = async () => {
     const normalizedPolicy = normalizePolicy(policy);
+    setIsSaving(true);
     try {
       const savedPolicy = await masterService.updateOperationalPolicy(normalizedPolicy);
-      if (savedPolicy && !Array.isArray(savedPolicy)) {
-        setPolicy(normalizePolicy(savedPolicy));
-      } else {
-        setPolicy(normalizedPolicy);
-      }
+      const finalPolicy = savedPolicy && !Array.isArray(savedPolicy) ? normalizePolicy(savedPolicy) : normalizedPolicy;
+      queryClient.setQueryData(
+        ["operationalRules"],
+        (old: { policy: OperationalPolicy | null; holidays: NationalHoliday[] } | undefined) => ({
+          policy: finalPolicy,
+          holidays: old?.holidays || [],
+        })
+      );
+      setFormPolicy(null);
       setSaveSuccess(true);
+      showSuccess("Berhasil Disimpan", "Kebijakan operasional & limits AI Orchestrator berhasil diperbarui.");
+      void queryClient.invalidateQueries({ queryKey: ["operationalRules"] });
+      setIsConfirmPolicyOpen(false);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (error) {
       console.error("Failed to update operational policy:", error);
+      showError(
+        "Gagal Menyimpan",
+        error instanceof Error ? error.message : "Terjadi kesalahan saat memperbarui kebijakan operasional."
+      );
+    } finally {
+      setIsSaving(false);
     }
   };
 
   // Add Holiday Handler
   const handleAddHoliday = async () => {
     if (!newHolidayDate || !newHolidayName.trim()) {
-      alert("Harap isi tanggal dan nama hari libur.");
+      showError("Validasi Gagal", "Harap isi tanggal dan nama hari libur secara lengkap.");
       return;
     }
 
+    setIsAddingHoliday(true);
     try {
       const createdHoliday = await masterService.createHoliday({
         date: newHolidayDate,
@@ -136,20 +161,51 @@ export default function OperationalRulesPage() {
         is_joint_leave: newHolidayJointLeave,
       });
       if (createdHoliday) {
-        setHolidays((current) => sortHolidays([...current, createdHoliday]));
+        queryClient.setQueryData(
+          ["operationalRules"],
+          (old: { policy: OperationalPolicy | null; holidays: NationalHoliday[] } | undefined) => ({
+            policy: old?.policy || null,
+            holidays: sortHolidays([...(old?.holidays || []), createdHoliday]),
+          })
+        );
       }
+      showSuccess("Hari Libur Ditambahkan", `Hari libur "${newHolidayName}" berhasil didaftarkan ke kalender.`);
+      void queryClient.invalidateQueries({ queryKey: ["operationalRules"] });
       setNewHolidayDate("");
       setNewHolidayName("");
       setNewHolidayJointLeave(false);
       setIsAddHolidayOpen(false);
     } catch (error) {
       console.error("Failed to create holiday:", error);
+      showError(
+        "Gagal Menambahkan",
+        error instanceof Error ? error.message : "Terjadi kesalahan saat menambahkan hari libur."
+      );
+    } finally {
+      setIsAddingHoliday(false);
     }
   };
 
-  // Delete Holiday Handler (Client-side state — no DELETE endpoint on backend, Ledger U-03)
-  const handleDeleteHoliday = (id: string) => {
-    setHolidays(holidays.filter((h) => h.id !== id));
+  // Step 1: Open Holiday Delete Confirmation
+  const handleOpenDeleteHoliday = (item: NationalHoliday) => {
+    setDeleteTargetHoliday(item);
+  };
+
+  // Step 2: Confirm Delete Holiday
+  const handleConfirmDeleteHoliday = () => {
+    if (!deleteTargetHoliday) return;
+    const deletedName = deleteTargetHoliday.name;
+    const targetId = deleteTargetHoliday.id;
+    queryClient.setQueryData(
+      ["operationalRules"],
+      (old: { policy: OperationalPolicy | null; holidays: NationalHoliday[] } | undefined) => ({
+        policy: old?.policy || null,
+        holidays: (old?.holidays || []).filter((h) => h.id !== targetId),
+      })
+    );
+    void queryClient.invalidateQueries({ queryKey: ["operationalRules"] });
+    setDeleteTargetHoliday(null);
+    showSuccess("Hari Libur Dihapus", `Hari libur "${deletedName}" telah dihapus dari kalender.`);
   };
 
   return (
@@ -268,8 +324,14 @@ export default function OperationalRulesPage() {
               </div>
 
               <div className="pt-2">
-                <Button variant="primary" className="w-full" onClick={handleSavePolicy}>
-                  Save Operational Rules
+                <Button
+                  variant="primary"
+                  className="w-full"
+                  onClick={handleSavePolicy}
+                  disabled={role !== "HR" || isSaving}
+                  title={role !== "HR" ? "Hanya HR Admin yang berwenang memperbarui aturan operasional." : undefined}
+                >
+                  {isSaving ? "Menyimpan Perubahan..." : "Save Operational Rules"}
                 </Button>
               </div>
             </div>
@@ -293,6 +355,8 @@ export default function OperationalRulesPage() {
                 size="sm"
                 startIcon={<PlusIcon/>}
                 onClick={() => setIsAddHolidayOpen(true)}
+                disabled={role !== "HR"}
+                title={role !== "HR" ? "Hanya HR Admin yang berwenang menambahkan hari libur." : undefined}
               >
                 Add Holiday
               </Button>
@@ -347,14 +411,18 @@ export default function OperationalRulesPage() {
                           )}
                         </TableCell>
                         <TableCell className="pe-5 ps-3 py-3 text-end whitespace-nowrap">
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteHoliday(h.id)}
-                            className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-theme-xs hover:border-error-300 hover:bg-error-50 hover:text-error-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-error-500/30 dark:hover:bg-error-500/15 dark:hover:text-error-400 transition-all"
-                            title="Delete Holiday"
-                          >
-                            <TrashBinIcon/>
-                          </button>
+                          {role === "HR" ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenDeleteHoliday(h)}
+                              className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-theme-xs hover:border-error-300 hover:bg-error-50 hover:text-error-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-error-500/30 dark:hover:bg-error-500/15 dark:hover:text-error-400 transition-all"
+                              title="Delete Holiday"
+                            >
+                              <TrashBinIcon/>
+                            </button>
+                          ) : (
+                            <span className="text-xs text-gray-400 italic">Read-only</span>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))
@@ -416,12 +484,37 @@ export default function OperationalRulesPage() {
             <Button variant="outline" onClick={() => setIsAddHolidayOpen(false)}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleAddHoliday}>
-              Add to Calendar
+            <Button variant="primary" onClick={handleAddHoliday} disabled={isAddingHoliday}>
+              {isAddingHoliday ? "Menambahkan..." : "Add to Calendar"}
             </Button>
           </div>
         </div>
       </Modal>
+
+      {/* Policy Save Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={isConfirmPolicyOpen}
+        onClose={() => setIsConfirmPolicyOpen(false)}
+        onConfirm={handleExecuteSavePolicy}
+        isLoading={isSaving}
+        title="Confirm Update Operational Rules"
+        description="Are you sure you want to apply these operational policies and AI limits? The changes will immediately affect interview slot screening."
+        confirmText="Yes, Apply Changes"
+        cancelText="Cancel"
+        variant="primary"
+      />
+
+      {/* Holiday Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={!!deleteTargetHoliday}
+        onClose={() => setDeleteTargetHoliday(null)}
+        onConfirm={handleConfirmDeleteHoliday}
+        title="Confirm Delete Holiday"
+        description={`Are you sure you want to remove "${deleteTargetHoliday?.name}" from the calendar? The AI will resume scheduling interviews on this date.`}
+        confirmText="Yes, Delete"
+        cancelText="Cancel"
+        variant="danger"
+      />
     </div>
   );
 }

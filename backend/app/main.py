@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.controller import (
     action_plan_router,
     audit_log_router,
+    auth_router,
     calendar_matrix_router,
     candidate_router,
     contact_router,
@@ -34,6 +35,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 TAGS_METADATA = [
+    {"name": "Authentication", "description": "Internal user login, JWT tokens, and demo role switching."},
     {"name": "CandidateManagement", "description": "Candidate profile management, ATS codes, and application status."},
     {"name": "ContactsDirectory", "description": "Interviewer contacts directory, department filters, and working profiles."},
     {"name": "NationalHolidays", "description": "National holidays and collective leaves (cuti bersama) calendar."},
@@ -77,7 +79,8 @@ async def health_check() -> dict[str, str]:
     return {"status": "ok", "service": settings.PROJECT_NAME}
 
 
-# Mount all 16 modular API v1 domain routers
+# Mount all 17 modular API v1 domain routers
+app.include_router(auth_router, prefix=settings.API_V1_STR)
 app.include_router(candidate_router, prefix=settings.API_V1_STR)
 app.include_router(contact_router, prefix=settings.API_V1_STR)
 app.include_router(holiday_router, prefix=settings.API_V1_STR)

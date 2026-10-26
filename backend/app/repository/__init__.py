@@ -11,6 +11,7 @@ from app.repository.InterviewTranscriptRepository import InterviewTranscriptRepo
 from app.repository.NegotiationThreadRepository import NegotiationThreadRepository
 from app.repository.OperationalPolicyRepository import OperationalPolicyRepository
 from app.repository.RubricRepository import RubricRepository
+from app.repository.UserRepository import UserRepository
 
 __all__ = [
     "ActionPlanRepository",
@@ -26,4 +27,6 @@ __all__ = [
     "NegotiationThreadRepository",
     "OperationalPolicyRepository",
     "RubricRepository",
+    "UserRepository",
 ]
+
