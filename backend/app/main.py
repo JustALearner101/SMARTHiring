@@ -27,6 +27,9 @@ from app.core.AppConfig import settings
 from app.db.DatabaseSession import engine
 from app.exception import register_exception_handlers
 
+from app.middleware.SystemLogMiddleware import SystemLogMiddleware
+from app.controller import system_log_router
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -52,6 +55,7 @@ TAGS_METADATA = [
     {"name": "CalendarMatrix", "description": "Interviewer calendar matrix and cross-timezone slot availability."},
     {"name": "SlotConflictChecker", "description": "Pre-flight slot conflict detection, prayer blackout checks, and 15-minute buffer enforcement."},
     {"name": "AuditLogs", "description": "Immutable SHA-256 hash-chained system audit logs and chain-of-custody tracking."},
+    {"name": "SystemLogs", "description": "Technical system access, error stacktraces, and mutation logs."} 
 ]
 
 app = FastAPI(
@@ -61,6 +65,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(SystemLogMiddleware) 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.BACKEND_CORS_ORIGINS,
@@ -79,7 +84,7 @@ async def health_check() -> dict[str, str]:
     return {"status": "ok", "service": settings.PROJECT_NAME}
 
 
-# Mount all 17 modular API v1 domain routers
+# Mount all 18 modular API v1 domain routers
 app.include_router(auth_router, prefix=settings.API_V1_STR)
 app.include_router(candidate_router, prefix=settings.API_V1_STR)
 app.include_router(contact_router, prefix=settings.API_V1_STR)
@@ -97,3 +102,4 @@ app.include_router(interview_decision_router, prefix=settings.API_V1_STR)
 app.include_router(calendar_matrix_router, prefix=settings.API_V1_STR)
 app.include_router(slot_conflict_checker_router, prefix=settings.API_V1_STR)
 app.include_router(audit_log_router, prefix=settings.API_V1_STR)
+app.include_router(system_log_router, prefix=settings.API_V1_STR)
