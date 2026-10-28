@@ -50,10 +50,14 @@ export interface ActionPlan {
   candidate_id: string;
   candidate_name: string;
   candidate_position: string;
+  candidate_email?: string;
+  candidate_phone?: string;
   interviewer_id: string;
   interviewer_name: string;
   interviewer_role: string;
   interviewer_dept: string;
+  interviewer_email?: string;
+  interviewer_phone?: string;
   raw_command: string;
   negotiation_round: number; // 1 to 3
   max_rounds: number;

@@ -1,19 +1,50 @@
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent.GuardrailNode import GuardrailNode
 from app.dto.SimulatorWhatsAppDTO import (
     QuickReplyPresetDTO,
     SimulatedWhatsAppMessageDTO,
     SimulatorNotificationDTO,
 )
+from app.model.OrchestrationModel import NegotiationThread, ThreadMessage
+from app.service.AuditLogService import AuditLogService
 
 
 class SimulatorWhatsAppService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+        self.audit_service = AuditLogService(session)
 
     async def list_whatsapp_messages(self, thread_id: str | None = None) -> list[SimulatedWhatsAppMessageDTO]:
+        stmt = (
+            select(ThreadMessage)
+            .where(ThreadMessage.vchannel == "whatsapp")
+            .order_by(ThreadMessage.nid)
+        )
+        if thread_id and thread_id.isdigit():
+            stmt = stmt.where(ThreadMessage.nid_thread == int(thread_id))
+
+        messages = (await self.session.execute(stmt)).scalars().all()
+        if messages:
+            return [
+                SimulatedWhatsAppMessageDTO(
+                    id=f"wa-{m.nid}",
+                    thread_id=str(m.nid_thread),
+                    sender="bot" if m.vsender_role == "AI_ORCHESTRATOR" else "candidate",  # type: ignore[arg-type]
+                    sender_name=m.vsender_name,
+                    text=m.vcontent,
+                    timestamp=m.dcrea.isoformat(),
+                    status="read",
+                    action_trigger="REQUEST_RESCHEDULE" if m.bis_rejection else "CONFIRM_SCHEDULE",
+                    action_metadata={"proposed_slot": m.vproposed_slot} if m.vproposed_slot else None,
+                )
+                for m in messages
+            ]
+
+        # Baseline demo fallback
         now_str = datetime.now(UTC).isoformat()
         return [
             SimulatedWhatsAppMessageDTO(
@@ -21,7 +52,7 @@ class SimulatorWhatsAppService:
                 thread_id="th-001",
                 sender="bot",
                 sender_name="SmartHiring Bot",
-                text="Halo Kak Rina Kusuma! Selamat, Anda lolos seleksi awal di posisi Senior Frontend Engineer. Kami mengundang Anda untuk sesi User Interview pada Rabu, 26 Okt 2026 pukul 10:00 WIB via Google Meet. Apakah jadwal ini sesuai?",
+                text="Halo Kak Rina Kusuma! Selamat, Anda lolos seleksi awal di posisi Senior Frontend Engineer. Kami mengundang Anda untuk sesi User Interview pada Rabu, 28 Okt 2026 pukul 10:00 WIB via Google Meet. Apakah jadwal ini sesuai?",
                 timestamp=now_str,
                 status="read",
             ),
@@ -30,7 +61,7 @@ class SimulatorWhatsAppService:
                 thread_id="th-001",
                 sender="candidate",
                 sender_name="Rina Kusuma",
-                text="Halo kak! Maaf sekali, hari Rabu tanggal 26 saya ada jadwal presentasi di kantor lama. Kalau digeser ke hari Jumat siang apakah memungkinkan?",
+                text="Halo kak! Maaf sekali, hari Rabu tanggal 28 saya ada jadwal presentasi di kantor lama. Kalau digeser ke hari Jumat siang apakah memungkinkan?",
                 timestamp=now_str,
                 status="delivered",
                 action_trigger="REQUEST_RESCHEDULE",
@@ -49,20 +80,90 @@ class SimulatorWhatsAppService:
         sender: str = "candidate",
     ) -> SimulatedWhatsAppMessageDTO:
         now_str = datetime.now(UTC).isoformat()
-        injection_keywords = ["ignore previous", "abort", "system prompt", "bypass", "send salary"]
-        flagged = any(kw in text.lower() for kw in injection_keywords)
+
+        # 1. Guardrail Scan (Pilar PERMISSIONS & RECORD)
+        is_safe, guardrail_note = GuardrailNode.scan_text(text)
+        is_flagged = not is_safe
+
+        # Find or use active thread
+        t_id = int(thread_id) if thread_id.isdigit() else None
+        thread = None
+        if t_id:
+            th_stmt = select(NegotiationThread).where(NegotiationThread.nid == t_id)
+            thread = (await self.session.execute(th_stmt)).scalars().first()
+        if not thread:
+            th_stmt = select(NegotiationThread).order_by(NegotiationThread.nid.desc())
+            thread = (await self.session.execute(th_stmt)).scalars().first()
+
+        th_nid = thread.nid if thread else 1
+
+        if is_flagged:
+            await self.audit_service.log_event(
+                event_type="GUARDRAIL_BLOCKED",
+                actor="CANDIDATE_WHATSAPP",
+                actor_type="AGENT",
+                title="WhatsApp Injection Intercepted",
+                description=f"Instruksi liar dalam WhatsApp diblokir: {guardrail_note}",
+                metadata={"text": text, "thread_id": th_nid},
+            )
+            return SimulatedWhatsAppMessageDTO(
+                id=f"wa-{int(datetime.now().timestamp())}",
+                thread_id=str(th_nid),
+                sender=sender,  # type: ignore[arg-type]
+                sender_name="Rina Kusuma" if sender == "candidate" else "SmartHiring Bot",
+                text=text,
+                timestamp=now_str,
+                status="delivered",
+                is_guardrail_flagged=True,
+                guardrail_reason=guardrail_note,
+                action_trigger="SECURITY_ALERT",
+            )
+
+        # 2. Persist safe message to tblt_thread_message
+        is_rejection = any(kw in text.lower() for kw in ["maaf", "tidak bisa", "reschedule", "geser", "ganti", "sidang", "undur"])
+        new_msg = ThreadMessage(
+            nid_thread=th_nid,
+            nround_number=thread.ncurrent_round if thread else 1,
+            vsender_role="CANDIDATE" if sender == "candidate" else "HR_ADMIN",
+            vsender_name="Rina Kusuma" if sender == "candidate" else "HR Admin",
+            vchannel="whatsapp",
+            vcontent=text,
+            bis_rejection=is_rejection,
+        )
+        self.session.add(new_msg)
+
+        # 3. Autonomous Triage Loop
+        if thread and is_rejection:
+            if thread.ncurrent_round >= thread.nmax_rounds:
+                thread.vstatus = "DEADLOCK_ESCALATED"
+                thread.vescalation_reason = f"Batas negosiasi {thread.nmax_rounds} putaran terlampaui."
+                self.session.add(thread)
+                await self.audit_service.log_event(
+                    event_type="DEADLOCK_ESCALATED",
+                    actor="AI_ORCHESTRATOR",
+                    actor_type="AGENT",
+                    title="Reschedule Negotiation Deadlock",
+                    description=f"Thread #{thread.nid} dialihkan ke eskalasi HR manual.",
+                    metadata={"thread_id": thread.nid, "round": thread.ncurrent_round},
+                )
+            else:
+                thread.ncurrent_round += 1
+                thread.dlast_activity_at = datetime.now(UTC)
+                self.session.add(thread)
+
+        await self.session.commit()
 
         return SimulatedWhatsAppMessageDTO(
-            id=f"wa-{int(datetime.now().timestamp())}",
-            thread_id=thread_id,
+            id=f"wa-{new_msg.nid}",
+            thread_id=str(th_nid),
             sender=sender,  # type: ignore[arg-type]
             sender_name="Rina Kusuma" if sender == "candidate" else "SmartHiring Bot",
             text=text,
             timestamp=now_str,
             status="delivered",
-            is_guardrail_flagged=flagged,
-            guardrail_reason="Terdeteksi indikasi prompt injection pada pesan kandidat." if flagged else None,
-            action_trigger="SECURITY_ALERT" if flagged else "CONFIRM_SCHEDULE",
+            is_guardrail_flagged=False,
+            guardrail_reason=None,
+            action_trigger="REQUEST_RESCHEDULE" if is_rejection else "CONFIRM_SCHEDULE",
         )
 
     async def list_quick_presets(self) -> list[QuickReplyPresetDTO]:

@@ -52,10 +52,14 @@ class ActionPlanDTO(BaseDTO):
     candidate_id: str
     candidate_name: str
     candidate_position: str
+    candidate_email: str | None = None
+    candidate_phone: str | None = None
     interviewer_id: str
     interviewer_name: str
     interviewer_role: str
     interviewer_dept: str
+    interviewer_email: str | None = None
+    interviewer_phone: str | None = None
     raw_command: str
     negotiation_round: int
     max_rounds: int = 3
@@ -75,6 +79,7 @@ class ActionPlanDTO(BaseDTO):
 class PlanApprovalRequestDTO(BaseDTO):
     approved_by: str = "HR Admin"
     send_immediately: bool = False
+    customized_items: list[ActionItemDraftDTO] | None = None
 
 
 class PlanUndoRequestDTO(BaseDTO):

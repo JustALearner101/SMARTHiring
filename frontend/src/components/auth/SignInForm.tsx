@@ -5,8 +5,8 @@ import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
 import Button from "@/components/ui/button/Button";
 import { useAuth } from "@/context/AuthContext";
-import { Link, useRouter } from "@/i18n/navigation";
-import { ChevronLeftIcon, EyeCloseIcon, EyeIcon } from "@/icons";
+import { useRouter } from "@/i18n/navigation";
+import { EyeCloseIcon, EyeIcon } from "@/icons";
 import React, { useState } from "react";
 
 export default function SignInForm() {

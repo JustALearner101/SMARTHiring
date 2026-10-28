@@ -36,7 +36,7 @@ import {
   PresetScenario,
 } from "@/types/orchestration";
 import { useSearchParams } from "next/navigation";
-import React, { Suspense, useEffect, useRef, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 function formatAuditTimestamp(raw: string): string {
   if (!raw.includes("T")) return raw;
@@ -82,6 +82,24 @@ function SchedulingContent() {
       ? apiCandidate
       : candidatesQueue.find((c) => c.id === candidateId) ?? candidatesQueue[0] ?? null;
 
+  const [lastExecutedCommand, setLastExecutedCommand] = useState<string>("");
+
+  const modalCandidate = useMemo(() => {
+    const prompt = (lastExecutedCommand || "").toLowerCase();
+    if (prompt && candidatesQueue.length > 0) {
+      for (const cand of candidatesQueue) {
+        if (prompt.includes(cand.name.toLowerCase())) {
+          return cand;
+        }
+        const tokens = cand.name.toLowerCase().split(/\s+/).filter((t) => t.length >= 3);
+        if (tokens.some((t) => prompt.includes(t))) {
+          return cand;
+        }
+      }
+    }
+    return targetCandidate;
+  }, [candidatesQueue, targetCandidate, lastExecutedCommand]);
+
   // Orchestrator State
   const [status, setStatus] = useState<PlanStatus>("IDLE");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -110,7 +128,7 @@ function SchedulingContent() {
     ).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
 
     const newEvent: AuditEvent = {
-      id: `aud-${Date.now().toString().slice(-5)}`,
+      id: `aud-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       timestamp: timeStr,
       event_type: eventType,
       title,
@@ -229,6 +247,7 @@ function SchedulingContent() {
   const handleExecuteCommand = async (prompt: string, scenarioId?: string) => {
     if (isProcessing) return;
 
+    setLastExecutedCommand(prompt);
     setIsProcessing(true);
     setStatus("ANALYZING");
     finalizedRef.current = false;
@@ -288,8 +307,18 @@ function SchedulingContent() {
     setStatus("ANALYZING");
     finalizedRef.current = false;
 
-    const candidateName = targetCandidate?.name ?? "Rina Kusuma";
-    const followUpCommand = `Schedule an interview for ${candidateName} with ${chosenBudi.name} (${chosenBudi.department}, ${chosenBudi.timezone})`;
+    const originalPrompt = lastExecutedCommand || "";
+    let followUpCommand = "";
+
+    if (originalPrompt && /budi/i.test(originalPrompt)) {
+      followUpCommand = originalPrompt.replace(
+        /(?:mr\.?\s+|pak\s+)?budi(?:\s+santoso|\s+hartono)?/gi,
+        `${chosenBudi.name} (${chosenBudi.department}, ${chosenBudi.timezone})`
+      );
+    } else {
+      const candidateName = modalCandidate?.name ?? "Rina Kusuma";
+      followUpCommand = `Schedule an interview for ${candidateName} with ${chosenBudi.name} (${chosenBudi.department}, ${chosenBudi.timezone})`;
+    }
 
     try {
       const result = await executeCommand({ command: followUpCommand, scenario_id: null });
@@ -311,22 +340,32 @@ function SchedulingContent() {
   };
 
   // 3. Human Approval (Enters 60s Undo Window)
-  const handleApprove = async () => {
-    if (!activePlan || isApprovingPlan) return;
+  const handleApprove = async (customizedPlan?: ActionPlan) => {
+    const planToApprove = customizedPlan || activePlan;
+    if (!planToApprove || isApprovingPlan) return;
 
     setIsApprovingPlan(true);
+
+    const candRoleItem = planToApprove.items?.find((i) => i.recipient_role.toLowerCase().includes("candidate"));
+    const interRoleItem = planToApprove.items?.find(
+      (i) => !i.recipient_role.toLowerCase().includes("candidate") && i.channel !== "calendar"
+    );
+    const candCh = candRoleItem?.channel?.toUpperCase() || "EMAIL";
+    const interCh = interRoleItem?.channel?.toUpperCase() || "EMAIL";
+
     pushAudit(
       "HUMAN_APPROVED",
       "Human-in-the-Loop Approval Granted",
-      "HR approved the Action Plan. The 60-second grace period begins before external dispatch.",
+      `HR approved the Action Plan (Candidate: ${candCh}, Interviewer: ${interCh}). The 60-second grace period begins before external dispatch.`,
       "HR Admin (You)",
       "success"
     );
 
     try {
-      const approvedPlan = await approveActionPlan(activePlan.id, {
+      const approvedPlan = await approveActionPlan(planToApprove.id, {
         approved_by: "HR Admin (You)",
         send_immediately: false,
+        customized_items: planToApprove.items,
       });
 
       finalizedRef.current = false;
@@ -390,14 +429,22 @@ function SchedulingContent() {
       const executedPlan = await approveActionPlan(plan.id, {
         approved_by: "HR Admin (You)",
         send_immediately: true,
+        customized_items: plan.items,
       });
       setActivePlan(executedPlan);
       setStatus("EXECUTED");
 
+      const candItem = plan.items?.find((i) => i.recipient_role.toLowerCase().includes("candidate"));
+      const interItem = plan.items?.find(
+        (i) => !i.recipient_role.toLowerCase().includes("candidate") && i.channel !== "calendar"
+      );
+      const candCh = candItem?.channel?.toLowerCase() === "whatsapp" ? "WhatsApp" : "Email";
+      const interCh = interItem?.channel?.toLowerCase() === "whatsapp" ? "WhatsApp" : "Email";
+
       pushAudit(
         "ACTION_DISPATCHED",
-        "Email & WhatsApp Sent",
-        "Email sent to Hiring Manager, WhatsApp sent to Candidate, and calendar booked in PostgreSQL.",
+        `${interCh} & ${candCh} Sent`,
+        `${interCh} sent to Hiring Manager, ${candCh} sent to Candidate, and calendar booked in PostgreSQL.`,
         "Channel & Calendar Executor",
         "success"
       );
@@ -509,32 +556,77 @@ function SchedulingContent() {
                       DISPATCH_COMPLETE
                     </span>
                   </div>
-                  <p className="mt-1 text-xs text-success-800 dark:text-success-400 leading-relaxed">
-                    All actions have been distributed to external servers:
-                    <br />
-                    • <strong>Email</strong> sent to {activePlan?.interviewer_name} ({activePlan?.items[0]?.recipient_contact})
-                    <br />
-                    • <strong>WhatsApp</strong> sent to {activePlan?.candidate_name} ({activePlan?.items[1]?.recipient_contact})
-                    <br />
-                    • <strong>Calendar Slot</strong> locked at {activePlan?.proposed_slot?.formatted_wib}
-                  </p>
+                  <div className="mt-2 space-y-2">
+                    <p className="text-xs font-medium text-success-800 dark:text-success-400">
+                      All actions have been distributed to external servers:
+                    </p>
+                    <div className="space-y-1.5">
+                      {activePlan?.items
+                        ?.filter((i) => i.channel !== "calendar")
+                        .map((item) => {
+                          const isEmail = item.channel === "email";
+                          return (
+                            <div
+                              key={item.id}
+                              className="flex items-center gap-2 rounded-xl bg-white/70 p-2.5 dark:bg-gray-900/70 border border-success-200/80 dark:border-success-900/40 shadow-2xs"
+                            >
+                              <span
+                                className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-bold ${
+                                  isEmail
+                                    ? "bg-brand-50 text-brand-700 border border-brand-200 dark:bg-brand-500/15 dark:text-brand-300 dark:border-brand-500/30"
+                                    : "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30"
+                                }`}
+                              >
+                                {isEmail ? (
+                                  <>
+                                    <EnvelopeIcon className="h-3.5 w-3.5" />
+                                    <span>Email</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <ChatIcon className="h-3.5 w-3.5" />
+                                    <span>WhatsApp</span>
+                                  </>
+                                )}
+                              </span>
+                              <span className="text-xs text-gray-800 dark:text-gray-200">
+                                sent to <strong>{item.recipient_name}</strong> ({item.recipient_contact}) via{" "}
+                                <span className="font-mono text-[11px] text-gray-600 dark:text-gray-400">
+                                  {isEmail ? "Sumopod SMTP (SSL 465)" : "WhatsApp Gateway"}
+                                </span>
+                              </span>
+                            </div>
+                          );
+                        })}
+                      {activePlan?.proposed_slot?.formatted_wib && (
+                        <div className="flex items-center gap-2 rounded-xl bg-white/70 p-2.5 dark:bg-gray-900/70 border border-success-200/80 dark:border-success-900/40 shadow-2xs">
+                          <span className="inline-flex items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-2 py-1 text-[11px] font-bold text-purple-700 dark:border-purple-500/30 dark:bg-purple-500/15 dark:text-purple-300">
+                            📅 Calendar
+                          </span>
+                          <span className="text-xs text-gray-800 dark:text-gray-200">
+                            Slot locked at <strong>{activePlan.proposed_slot.formatted_wib}</strong> (PostgreSQL Checked)
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                   <div className="mt-4 flex flex-wrap items-center gap-2.5">
                     <Button variant="primary" size="sm" onClick={handleReset}>
                       Start New Orchestration
                     </Button>
                     <Link
-                      href="/simulator/whatsapp"
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 transition-colors hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
-                    >
-                      <ChatIcon className="text-emerald-600" />
-                      <span>View in WhatsApp Simulator</span>
-                    </Link>
-                    <Link
                       href="/simulator/email"
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-brand-300 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-800 transition-colors hover:bg-brand-100 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-brand-300 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-800 transition-colors hover:bg-brand-100 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300 shadow-2xs"
                     >
                       <EnvelopeIcon className="text-brand-600" />
                       <span>View in Email Simulator</span>
+                    </Link>
+                    <Link
+                      href="/simulator/whatsapp"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 transition-colors hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300 shadow-2xs"
+                    >
+                      <ChatIcon className="text-emerald-600" />
+                      <span>View in WhatsApp Simulator</span>
                     </Link>
                   </div>
                 </div>
@@ -755,8 +847,8 @@ function SchedulingContent() {
           setStatus("IDLE");
         }}
         onSelectInterviewer={handleResolveDisambiguation}
-        candidateName={targetCandidate?.name ?? "Candidate"}
-        targetPosition={targetCandidate?.applied_position ?? "Applied Position"}
+        candidateName={modalCandidate?.name ?? "Candidate"}
+        targetPosition={modalCandidate?.applied_position ?? "Applied Position"}
         profiles={disambiguationProfiles}
       />
     </div>

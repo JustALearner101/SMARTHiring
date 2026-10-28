@@ -69,11 +69,21 @@ export default function CommandBar({
             placeholder="Example: Schedule Rina Kusuma's interview with Mr. Budi for next week..."
             value={commandText}
             onChange={(e) => setCommandText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleSubmit(e);
+              }
+            }}
             disabled={isProcessing}
           />
           <div className="absolute inset-y-0 end-2 flex items-center">
             <Button
-              type="submit"
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                handleSubmit(e);
+              }}
               variant="primary"
               size="sm"
               isLoading={isProcessing}

@@ -52,7 +52,7 @@ async def test_auth_list_demo_users(client: AsyncClient):
 async def test_salary_masking_for_interviewer_vs_hr(client: AsyncClient):
     # 1. Access candidates as HR -> Salary MUST be exposed
     hr_res = await client.get(
-        "/api/v1/candidates",
+        "/api/v1/candidates?query=CAND-2026-001",
         headers={"X-Demo-Role": "HR"},
     )
     assert hr_res.status_code == 200
@@ -64,7 +64,7 @@ async def test_salary_masking_for_interviewer_vs_hr(client: AsyncClient):
 
     # 2. Access candidates as Interviewer -> Salary MUST be masked (None)
     interviewer_res = await client.get(
-        "/api/v1/candidates",
+        "/api/v1/candidates?query=CAND-2026-001",
         headers={"X-Demo-Role": "USER_INTERVIEWER"},
     )
     assert interviewer_res.status_code == 200

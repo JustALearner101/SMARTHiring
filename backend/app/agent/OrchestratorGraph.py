@@ -1,0 +1,77 @@
+from typing import Any
+
+from langgraph.graph import END, START, StateGraph
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.agent.AgentState import OrchestratorAgentState
+from app.agent.ContextRetrieverNode import ContextRetrieverNode
+from app.agent.GuardrailNode import GuardrailNode
+from app.agent.PlannerTriageNode import PlannerTriageNode
+from app.agent.SecondaryValidatorNode import SecondaryValidatorNode
+
+
+def build_orchestrator_graph(session: AsyncSession) -> Any:
+    """Builds and compiles the Pipeline 1 StateGraph."""
+    retriever_node = ContextRetrieverNode(session)
+
+    graph = StateGraph(OrchestratorAgentState)
+
+    # 1. Add Nodes
+    graph.add_node("guardrail", GuardrailNode.run)
+    graph.add_node("retriever", retriever_node.run)
+    graph.add_node("planner", PlannerTriageNode.run)
+    graph.add_node("validator", SecondaryValidatorNode.run)
+
+    # 2. Routing Logic
+    def route_after_guardrail(state: OrchestratorAgentState) -> str:
+        if state.get("injection_detected", False):
+            return END
+        return "retriever"
+
+    def route_after_retriever(state: OrchestratorAgentState) -> str:
+        if state.get("is_disambiguation_needed", False):
+            return END
+        return "planner"
+
+    def route_after_planner(state: OrchestratorAgentState) -> str:
+        if state.get("status") == "DEADLOCK_ESCALATED":
+            return END
+        return "validator"
+
+    # 3. Add Edges
+    graph.add_edge(START, "guardrail")
+    graph.add_conditional_edges("guardrail", route_after_guardrail, ["retriever", END])
+    graph.add_conditional_edges("retriever", route_after_retriever, ["planner", END])
+    graph.add_conditional_edges("planner", route_after_planner, ["validator", END])
+    graph.add_edge("validator", END)
+
+    return graph.compile()
+
+
+async def run_orchestrator_pipeline(
+    session: AsyncSession,
+    command: str,
+    scenario_id: str | None = None,
+    sender_role: str = "HR",
+    channel: str = "internal",
+    thread_id: int | None = None,
+    negotiation_round: int = 1,
+    max_rounds: int = 3,
+) -> OrchestratorAgentState:
+    """Convenience runner for Pipeline 1."""
+    app = build_orchestrator_graph(session)
+
+    initial_state: OrchestratorAgentState = {
+        "command": command,
+        "scenario_id": scenario_id,
+        "sender_role": sender_role,
+        "channel": channel,
+        "thread_id": thread_id,
+        "negotiation_round": negotiation_round,
+        "max_rounds": max_rounds,
+        "status": "ANALYZING",
+        "audit_entries": [],
+    }
+
+    result = await app.ainvoke(initial_state)
+    return result  # type: ignore[return-value]

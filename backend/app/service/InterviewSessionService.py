@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent.InterviewAnalyzerGraph import run_interview_analyzer_pipeline
 from app.dto.BaseDTO import PaginatedResponse, PaginationParams
 from app.dto.InterviewDecisionDTO import HrDecisionDTO
 from app.dto.InterviewSessionDTO import (
@@ -160,6 +161,20 @@ class InterviewSessionService:
         )
         self.session.add(job)
         await self.session.commit()
+
+        # Run Pipeline 2: Post-Interview Transcript & Rubric Analyzer
+        if dto.consent_status == "GRANTED":
+            await run_interview_analyzer_pipeline(
+                session=self.session,
+                interview_id=interview.nid,
+                candidate_id=cand_id,
+                profile_id=prof_id,
+                consent_status=dto.consent_status,
+                notes=dto.notes,
+                audio_url=sf.vurl,
+                audio_duration=sf.vduration,
+                job_id=job.nid,
+            )
 
         detail = await self.interview_repo.get_interview_detail(interview.nid)
         return self._to_session_dto(detail or interview)

@@ -9,12 +9,14 @@ from app.dto.NegotiationThreadDTO import (
 )
 from app.model.OrchestrationModel import NegotiationThread
 from app.repository.NegotiationThreadRepository import NegotiationThreadRepository
+from app.service.AuditLogService import AuditLogService
 
 
 class NegotiationThreadService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.negotiation_repo = NegotiationThreadRepository(session)
+        self.audit_service = AuditLogService(session)
 
     @staticmethod
     def _to_thread_dto(t: NegotiationThread) -> NegotiationThreadDTO:
@@ -114,6 +116,17 @@ class NegotiationThreadService:
             "bis_rejection": False,
         }
         msg = await self.negotiation_repo.append_message(t_id, msg_data)
+
+        # Log audit
+        await self.audit_service.log_event(
+            event_type="THREAD_REPLY_SENT",
+            actor=sender_role,
+            actor_type="HUMAN",
+            title="Negotiation Thread Reply",
+            description=f"Balasan dikirimkan pada thread #{t_id} via {channel.upper()}: {content[:80]}...",
+            metadata={"thread_id": t_id, "channel": channel, "sender_role": sender_role},
+        )
+
         return ThreadMessageDTO(
             id=str(msg.nid),
             round_number=msg.nround_number,

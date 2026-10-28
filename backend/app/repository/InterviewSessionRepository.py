@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 from app.model.CandidateModel import Candidate
 from app.model.InterviewModel import Interview, SourceFile
 from app.model.JobModel import Job
-from app.model.SummaryModel import HrDecision
+from app.model.SummaryModel import HrDecision, SummaryEvidence, SummaryPoint
 from app.repository.BaseRepository import BaseRepository
 
 
@@ -28,7 +28,13 @@ class InterviewSessionRepository(BaseRepository[Interview]):
                 selectinload(Interview.profile),
                 selectinload(Interview.source_files)
                 .selectinload(SourceFile.jobs)
-                .selectinload(Job.summary_points),
+                .selectinload(Job.summary_points)
+                .selectinload(SummaryPoint.competency),
+                selectinload(Interview.source_files)
+                .selectinload(SourceFile.jobs)
+                .selectinload(Job.summary_points)
+                .selectinload(SummaryPoint.evidences)
+                .selectinload(SummaryEvidence.transcript),
                 selectinload(Interview.source_files)
                 .selectinload(SourceFile.jobs)
                 .selectinload(Job.hr_decisions)
@@ -54,7 +60,13 @@ class InterviewSessionRepository(BaseRepository[Interview]):
                 selectinload(Interview.profile),
                 selectinload(Interview.source_files)
                 .selectinload(SourceFile.jobs)
-                .selectinload(Job.summary_points),
+                .selectinload(Job.summary_points)
+                .selectinload(SummaryPoint.competency),
+                selectinload(Interview.source_files)
+                .selectinload(SourceFile.jobs)
+                .selectinload(Job.summary_points)
+                .selectinload(SummaryPoint.evidences)
+                .selectinload(SummaryEvidence.transcript),
                 selectinload(Interview.source_files)
                 .selectinload(SourceFile.jobs)
                 .selectinload(Job.hr_decisions)

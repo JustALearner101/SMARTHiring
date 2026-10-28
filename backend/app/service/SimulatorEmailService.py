@@ -1,8 +1,10 @@
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dto.SimulatorEmailDTO import SimulatedEmailDTO
+from app.model.OrchestrationModel import ThreadMessage
 
 
 class SimulatorEmailService:
@@ -10,6 +12,41 @@ class SimulatorEmailService:
         self.session = session
 
     async def list_emails(self, folder: str = "inbox") -> list[SimulatedEmailDTO]:
+        stmt = (
+            select(ThreadMessage)
+            .where(ThreadMessage.vchannel == "email")
+            .order_by(ThreadMessage.nid.desc())
+        )
+        messages = (await self.session.execute(stmt)).scalars().all()
+        if messages:
+            return [
+                SimulatedEmailDTO(
+                    id=f"em-{m.nid}",
+                    thread_id=str(m.nid_thread),
+                    sender_name=m.vsender_name,
+                    sender_email="budi.santoso@company.com" if m.vsender_role != "AI_ORCHESTRATOR" else "orchestrator@smarthiring.ai",
+                    sender_role="Hiring Manager" if m.vsender_role != "AI_ORCHESTRATOR" else "AI System",
+                    recipient_name="Budi Santoso",
+                    recipient_email="budi.santoso@company.com",
+                    subject=f"[Undangan] User Technical Interview — Ronde #{m.nround_number}",
+                    body_text=m.vcontent,
+                    sent_at=m.dcrea.isoformat(),
+                    is_read=True,
+                    is_starred=False,
+                    folder=folder,
+                    tags=["Invitation", "High-Impact"],
+                    meeting_details={
+                        "platform": "Google Meet",
+                        "meeting_link": "https://meet.google.com/hkt-ops-2026",
+                        "date_formatted": "Rabu, 28 Oktober 2026",
+                        "time_wib": "10:00 - 11:00 WIB",
+                        "time_wita": "11:00 - 12:00 WITA",
+                        "calendar_ref": m.vsource_citation or "[cal-budi-01]",
+                    },
+                )
+                for m in messages
+            ]
+
         now_str = datetime.now(UTC).isoformat()
         return [
             SimulatedEmailDTO(
@@ -30,7 +67,7 @@ class SimulatorEmailService:
                 meeting_details={
                     "platform": "Google Meet",
                     "meeting_link": "https://meet.google.com/hkt-ops-2026",
-                    "date_formatted": "Rabu, 26 Oktober 2026",
+                    "date_formatted": "Rabu, 28 Oktober 2026",
                     "time_wib": "10:00 - 11:00 WIB",
                     "time_wita": "11:00 - 12:00 WITA",
                     "calendar_ref": "[cal-budi-01]",
@@ -45,7 +82,7 @@ class SimulatorEmailService:
                 recipient_name="SmartHiring AI Orchestrator",
                 recipient_email="orchestrator@smarthiring.ai",
                 subject="Re: [Undangan] User Technical Interview — Rina Kusuma",
-                body_text="Halo tim, slot Rabu 26 Oktober jam 10:00 WIB aman di kalender saya. Silakan konfirmasi ke kandidat.",
+                body_text="Halo tim, slot Rabu 28 Oktober jam 10:00 WIB aman di kalender saya. Silakan konfirmasi ke kandidat.",
                 sent_at=now_str,
                 is_read=True,
                 is_starred=True,

@@ -1,6 +1,16 @@
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, String, Text
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    String,
+    Text,
+)
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.model.BaseModel import TableBaseModel
@@ -59,8 +69,19 @@ class FollowupPlan(TableBaseModel):
         nullable=True,
         index=True,
     )
+    nid_thread: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("tblt_negotiation_thread.nid", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    vagent_metadata: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"),
+        nullable=True,
+    )
 
     job: Mapped["Job | None"] = relationship("Job", back_populates="followup_plans")  # noqa: F821
+    thread: Mapped["NegotiationThread | None"] = relationship("NegotiationThread")  # noqa: F821
     approved_by: Mapped["User | None"] = relationship("User")  # noqa: F821
     recipients: Mapped[list["ActionRecipient"]] = relationship(
         "ActionRecipient",
