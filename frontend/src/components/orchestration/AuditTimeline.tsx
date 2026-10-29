@@ -209,7 +209,7 @@ export default function AuditTimeline({ logs, maxHeight }: AuditTimelineProps) {
       </div>
 
       {/* Scrollable Timeline Stream (flex-1 + custom-scrollbar) */}
-      <div className="mt-4 flex-1 overflow-y-auto custom-scrollbar pr-1">
+      <div className="mt-4 flex-1 overflow-y-auto custom-scrollbar pe-1">
         {filteredLogs.length === 0 ? (
           <div className="flex h-full min-h-[220px] flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 p-6 text-center dark:border-gray-800">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100 text-gray-400 dark:bg-gray-800">

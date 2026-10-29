@@ -5,20 +5,19 @@ import AuditTimeline from "@/components/orchestration/AuditTimeline";
 import CommandBar from "@/components/orchestration/CommandBar";
 import ConfirmationCard from "@/components/orchestration/ConfirmationCard";
 import DisambiguationModal from "@/components/orchestration/DisambiguationModal";
+import OrchestrationPipelineLoader from "@/components/orchestration/OrchestrationPipelineLoader";
 import UndoBufferBanner from "@/components/orchestration/UndoBufferBanner";
 import Button from "@/components/ui/button/Button";
+import { useToast } from "@/context/ToastContext";
 import {
   BoltIcon,
+  CalenderIcon,
   ChatIcon,
   CheckCircleIcon,
   CloseIcon,
   EnvelopeIcon,
-  InfoIcon,
-  ShootingStarIcon,
-  CalenderIcon,
 } from "@/icons";
 import { Link } from "@/i18n/navigation";
-import { listAuditLogs } from "@/services/auditService";
 import { getCandidate, listCandidates } from "@/services/masterService";
 import {
   approveActionPlan,
@@ -37,40 +36,7 @@ import {
   PresetScenario,
 } from "@/types/orchestration";
 import { useSearchParams } from "next/navigation";
-import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
-
-function formatAuditTimestamp(raw: string): string {
-  if (!raw.includes("T")) return raw;
-  const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) return raw;
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${pad(parsed.getHours())}:${pad(parsed.getMinutes())}:${pad(parsed.getSeconds())}`;
-}
-
-function toAuditEvent(event: AuditEvent): AuditEvent {
-  return {
-    id: event.id,
-    timestamp: formatAuditTimestamp(event.timestamp),
-    event_type: event.event_type,
-    title: event.title,
-    description: event.description,
-    actor: event.actor,
-    status_badge: event.status_badge,
-    metadata: event.metadata,
-  };
-}
-
-function mapPlanStatus(planStatus: PlanStatus): PlanStatus {
-  switch (planStatus) {
-    case "PENDING_APPROVAL":
-    case "UNDO_WINDOW":
-    case "EXECUTED":
-    case "UNDONE":
-      return planStatus;
-    default:
-      return "IDLE";
-  }
-}
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 function SchedulingContent() {
   const searchParams = useSearchParams();
@@ -78,6 +44,7 @@ function SchedulingContent() {
   const slotStart = searchParams.get("slot_start");
   const interviewerName = searchParams.get("interviewer_name");
   const threadId = searchParams.get("thread_id");
+  const { showError } = useToast();
 
   const [candidatesQueue, setCandidatesQueue] = useState<Candidate[]>([]);
   const [apiCandidate, setApiCandidate] = useState<Candidate | null>(null);
@@ -147,33 +114,37 @@ function SchedulingContent() {
   // Prevents the 60s countdown and the "Send Now" button from double-dispatching.
   const finalizedRef = useRef(false);
 
-  // Helper to add timestamped audit event
-  const pushAudit = (
-    eventType: AuditEvent["event_type"],
-    title: string,
-    description: string,
-    actor: string,
-    badge: AuditEvent["status_badge"]
-  ) => {
-    const now = new Date();
-    const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(
-      now.getMinutes()
-    ).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
+  // Helper to add timestamped session audit event
+  const pushAudit = useCallback(
+    (
+      eventType: AuditEvent["event_type"],
+      title: string,
+      description: string,
+      actor: string,
+      badge: AuditEvent["status_badge"],
+      resetSession = false
+    ) => {
+      const now = new Date();
+      const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(
+        now.getMinutes()
+      ).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
 
-    const newEvent: AuditEvent = {
-      id: `aud-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      timestamp: timeStr,
-      event_type: eventType,
-      title,
-      description,
-      actor,
-      status_badge: badge,
-    };
+      const newEvent: AuditEvent = {
+        id: `aud-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        timestamp: timeStr,
+        event_type: eventType,
+        title,
+        description,
+        actor,
+        status_badge: badge,
+      };
 
-    setAuditLogs((prev) => [newEvent, ...prev]);
-  };
+      setAuditLogs((prev) => (resetSession ? [newEvent] : [newEvent, ...prev]));
+    },
+    []
+  );
 
-  // Initial hydration strictly from Backend API
+  // Initial hydration strictly for CommandBar context & active 60s Undo safety window
   useEffect(() => {
     let cancelled = false;
 
@@ -194,34 +165,28 @@ function SchedulingContent() {
         console.error("Failed to fetch preset scenarios:", error);
       }
 
-      try {
-        const page = await listAuditLogs({ page_size: 50 });
-        if (!cancelled && Array.isArray(page?.items)) {
-          setAuditLogs(page.items.map(toAuditEvent));
-        }
-      } catch (error) {
-        console.error("Failed to fetch audit logs:", error);
-      }
-
+      // Only restore an action plan automatically if it is actively counting down in the 60s Undo Window
       try {
         const plan = await getCurrentActionPlan();
-        if (!cancelled && plan) {
-          setActivePlan(plan);
-          const mappedStatus = mapPlanStatus(plan.status);
-          if (mappedStatus === "UNDO_WINDOW") {
-            const expiresAt = plan.undo_expires_at;
-            if (typeof expiresAt === "number" && expiresAt > Date.now()) {
-              setUndoSeconds(Math.max(1, Math.ceil((expiresAt - Date.now()) / 1000)));
-              setStatus("UNDO_WINDOW");
-            } else {
-              setStatus("EXECUTED");
-            }
-          } else {
-            setStatus(mappedStatus);
+        if (!cancelled && plan && plan.status === "UNDO_WINDOW") {
+          const expiresAt = plan.undo_expires_at;
+          if (typeof expiresAt === "number" && expiresAt > Date.now()) {
+            const remaining = Math.max(1, Math.ceil((expiresAt - Date.now()) / 1000));
+            setActivePlan(plan);
+            setUndoSeconds(remaining);
+            setStatus("UNDO_WINDOW");
+            pushAudit(
+              "UNDO_BUFFER_STARTED",
+              "Active 60-Second Undo Buffer Restored",
+              `Plan #${plan.id} sedang dalam masa tunda (${remaining} detik tersisa) sebelum pengiriman eksternal.`,
+              "Approval Gate Node",
+              "warning",
+              true
+            );
           }
         }
       } catch (error) {
-        console.error("Failed to fetch current action plan:", error);
+        console.error("Failed to check active undo window:", error);
       }
     };
 
@@ -230,7 +195,7 @@ function SchedulingContent() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [pushAudit]);
 
   // Candidate context from ?candidateId=...
   useEffect(() => {
@@ -281,6 +246,7 @@ function SchedulingContent() {
     if (isProcessing) return;
 
     setLastExecutedCommand(prompt);
+    setActivePlan(null);
     setIsProcessing(true);
     setStatus("ANALYZING");
     finalizedRef.current = false;
@@ -290,7 +256,8 @@ function SchedulingContent() {
       "Perintah Scheduling Diterima",
       `Prompt: "${prompt}"`,
       "HR Admin (You)",
-      "info"
+      "info",
+      true
     );
 
     try {
@@ -319,8 +286,12 @@ function SchedulingContent() {
       applyPlan(result);
     } catch (error) {
       console.error("Failed to execute scheduling command:", error);
+      const errMsg =
+        error instanceof Error ? error.message : "Gagal mengeksekusi perintah orkestrasi.";
+      showError("AI Orchestration Failed", errMsg);
       setIsProcessing(false);
       setStatus("IDLE");
+      setAuditLogs([]);
     }
   };
 
@@ -367,8 +338,12 @@ function SchedulingContent() {
       applyPlan(result);
     } catch (error) {
       console.error("Failed to resolve disambiguation command:", error);
+      const errMsg =
+        error instanceof Error ? error.message : "Gagal memproses klarifikasi kontak.";
+      showError("Disambiguation Failed", errMsg);
       setIsProcessing(false);
       setStatus("IDLE");
+      setAuditLogs([]);
     }
   };
 
@@ -379,7 +354,9 @@ function SchedulingContent() {
 
     setIsApprovingPlan(true);
 
-    const candRoleItem = planToApprove.items?.find((i) => i.recipient_role.toLowerCase().includes("candidate"));
+    const candRoleItem = planToApprove.items?.find((i) =>
+      i.recipient_role.toLowerCase().includes("candidate")
+    );
     const interRoleItem = planToApprove.items?.find(
       (i) => !i.recipient_role.toLowerCase().includes("candidate") && i.channel !== "calendar"
     );
@@ -467,7 +444,9 @@ function SchedulingContent() {
       setActivePlan(executedPlan);
       setStatus("EXECUTED");
 
-      const candItem = plan.items?.find((i) => i.recipient_role.toLowerCase().includes("candidate"));
+      const candItem = plan.items?.find((i) =>
+        i.recipient_role.toLowerCase().includes("candidate")
+      );
       const interItem = plan.items?.find(
         (i) => !i.recipient_role.toLowerCase().includes("candidate") && i.channel !== "calendar"
       );
@@ -499,38 +478,19 @@ function SchedulingContent() {
     );
   };
 
-  // 7. Reset to Idle
+  // 7. Reset to Clean Idle State
   const handleReset = () => {
     finalizedRef.current = false;
     setStatus("IDLE");
     setActivePlan(null);
+    setAuditLogs([]);
     setIsApprovingPlan(false);
+    setIsDisambiguationOpen(false);
   };
 
   return (
     <div>
       <PageBreadcrumb pageTitle="Autonomous Scheduling" />
-
-          {/* 5 Pillars Badges */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="rounded-md bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
-              1. SOURCES Cited
-            </span>
-            <span className="rounded-md bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
-              2. PERMISSIONS (WIB/WITA/WIT)
-            </span>
-            <span className="rounded-md bg-brand-50 px-2 py-1 text-[10px] font-bold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
-              3. APPROVAL Gate
-            </span>
-            <span className="rounded-md bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
-              4. LIMITS (Disambiguasi)
-            </span>
-            <span className="rounded-md bg-purple-50 px-2 py-1 text-[10px] font-bold text-purple-700 dark:bg-purple-500/15 dark:text-purple-300">
-              5. RECORD Audit
-            </span>
-          </div>
-        </div>
-      </div>
 
       {/* Cross-Page Context Banner (Milestone 3 Integration) */}
       {threadId && (
@@ -539,7 +499,7 @@ function SchedulingContent() {
             <div className="text-warning-600 dark:text-warning-400">
               <BoltIcon className="h-4 w-4" />
             </div>
-            <div className="text-xs">
+            <div className="text-xs text-start">
               <span className="font-bold text-warning-900 dark:text-warning-200">
                 Konteks Triage Thread #{threadId} Aktif:
               </span>{" "}
@@ -557,7 +517,7 @@ function SchedulingContent() {
             <div className="text-brand-600 dark:text-brand-400">
               <BoltIcon className="h-4 w-4" />
             </div>
-            <div className="text-xs">
+            <div className="text-xs text-start">
               <span className="font-bold text-brand-900 dark:text-brand-200">
                 Konteks Slot Calendar Matrix Aktif:
               </span>{" "}
@@ -590,329 +550,197 @@ function SchedulingContent() {
         </div>
       )}
 
-      {/* Main Orchestration Workspace */}
-      <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-12">
-        {/* Left Column: Confirmation Card / Execution Results */}
-        <div className="lg:col-span-8 space-y-5">
-          {/* Status: EXECUTED */}
-          {status === "EXECUTED" && (
-            <div className="rounded-2xl border-2 border-success-400 bg-success-50/50 p-6 dark:border-success-500/40 dark:bg-success-500/10 shadow-theme-xs">
-              <div className="flex items-start gap-3.5">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-success-500 text-white shadow-theme-xs">
-                  <CheckCircleIcon/>
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-base font-bold text-success-900 dark:text-success-300">
-                      Action Plan Successfully Executed & Sent!
-                    </h3>
-                    <span className="rounded-full bg-success-100 px-2.5 py-0.5 text-[10px] font-mono font-bold text-success-800 dark:bg-success-500/20 dark:text-success-300">
-                      DISPATCH_COMPLETE
-                    </span>
+      {/* Main Orchestration Workspace — Only rendered after AI Orchestration is triggered */}
+      {status !== "IDLE" && (
+        <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-12">
+          {/* Left Column: Pipeline Loader / Confirmation Card / Execution Results */}
+          <div className="lg:col-span-8 space-y-5">
+            {/* Status: ANALYZING or CLARIFICATION_NEEDED */}
+            {(status === "ANALYZING" || status === "CLARIFICATION_NEEDED") && (
+              <OrchestrationPipelineLoader
+                status={status}
+                commandPrompt={lastExecutedCommand}
+                onReopenDisambiguation={() => setIsDisambiguationOpen(true)}
+                onCancel={handleReset}
+              />
+            )}
+
+            {/* Status: EXECUTED */}
+            {status === "EXECUTED" && (
+              <div className="rounded-2xl border-2 border-success-400 bg-success-50/50 p-6 dark:border-success-500/40 dark:bg-success-500/10 shadow-theme-xs">
+                <div className="flex items-start gap-3.5">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-success-500 text-white shadow-theme-xs">
+                    <CheckCircleIcon />
                   </div>
-                  <div className="mt-2 space-y-2">
-                    <p className="text-xs font-medium text-success-800 dark:text-success-400">
-                      All actions have been distributed to external servers:
-                    </p>
-                    <div className="space-y-1.5">
-                      {activePlan?.items
-                        ?.filter((i) => i.channel !== "calendar")
-                        .map((item) => {
-                          const isEmail = item.channel === "email";
-                          return (
-                            <div
-                              key={item.id}
-                              className="flex items-center gap-2 rounded-xl bg-white/70 p-2.5 dark:bg-gray-900/70 border border-success-200/80 dark:border-success-900/40 shadow-2xs"
-                            >
-                              <span
-                                className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-bold ${
-                                  isEmail
-                                    ? "bg-brand-50 text-brand-700 border border-brand-200 dark:bg-brand-500/15 dark:text-brand-300 dark:border-brand-500/30"
-                                    : "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30"
-                                }`}
-                              >
-                                {isEmail ? (
-                                  <>
-                                    <EnvelopeIcon/>
-                                    <span>Email</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <ChatIcon/>
-                                    <span>WhatsApp</span>
-                                  </>
-                                )}
-                              </span>
-                              <span className="text-xs text-gray-800 dark:text-gray-200">
-                                sent to <strong>{item.recipient_name}</strong> ({item.recipient_contact}) via{" "}
-                                <span className="font-mono text-[11px] text-gray-600 dark:text-gray-400">
-                                  {isEmail ? "Sumopod SMTP (SSL 465)" : "WhatsApp Gateway"}
-                                </span>
-                              </span>
-                            </div>
-                          );
-                        })}
-                      {activePlan?.proposed_slot?.formatted_wib && (
-                        <div className="flex items-center gap-2 rounded-xl bg-white/70 p-2.5 dark:bg-gray-900/70 border border-success-200/80 dark:border-success-900/40 shadow-2xs">
-                          <span className="inline-flex items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-2 py-1 text-[11px] font-bold text-purple-700 dark:border-purple-500/30 dark:bg-purple-500/15 dark:text-purple-300">
-                            <CalenderIcon/>
-                            Calendar
-                          </span>
-                          <span className="text-xs text-gray-800 dark:text-gray-200">
-                            Slot locked at <strong>{activePlan.proposed_slot.formatted_wib}</strong> (PostgreSQL Checked)
-                          </span>
-                        </div>
-                      )}
+                  <div className="flex-1 text-start">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-base font-bold text-success-900 dark:text-success-300">
+                        Action Plan Successfully Executed & Sent!
+                      </h3>
+                      <span className="rounded-full bg-success-100 px-2.5 py-0.5 text-[10px] font-mono font-bold text-success-800 dark:bg-success-500/20 dark:text-success-300">
+                        DISPATCH_COMPLETE
+                      </span>
                     </div>
-                  </div>
-                  <div className="mt-4 flex flex-wrap items-center gap-2.5">
-                    <Button variant="primary" size="sm" onClick={handleReset}>
-                      Start New Orchestration
-                    </Button>
-                    <Link
-                      href="/orchestration/calendar"
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-purple-300 bg-purple-50 px-3 py-2 text-xs font-semibold text-purple-800 transition-colors hover:bg-purple-100 dark:border-purple-500/30 dark:bg-purple-500/10 dark:text-purple-300 shadow-2xs"
-                    >
-                      <span>📅 Calendar Matrix</span>
-                    </Link>
-                    <Link
-                      href="/orchestration/threads"
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300 shadow-2xs"
-                    >
-                      <span>📋 Triage Threads</span>
-                    </Link>
-                    <Link
-                      href="/simulator/email"
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-brand-300 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-800 transition-colors hover:bg-brand-100 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300 shadow-2xs"
-                    >
-                      <EnvelopeIcon className="text-brand-600" />
-                      <span>Email Simulator</span>
-                    </Link>
-                    <Link
-                      href="/simulator/whatsapp"
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 transition-colors hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300 shadow-2xs"
-                    >
-                      <ChatIcon className="text-emerald-600" />
-                      <span>WhatsApp Simulator</span>
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Status: UNDONE */}
-          {status === "UNDONE" && (
-            <div className="rounded-2xl border-2 border-error-300 bg-error-50/50 p-6 dark:border-error-500/40 dark:bg-error-500/10 shadow-theme-xs">
-              <div className="flex items-start gap-3.5">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-error-500 text-white shadow-theme-xs">
-                  <CloseIcon/>
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-base font-bold text-error-900 dark:text-error-300">
-                    Action Plan Canceled
-                  </h3>
-                  <p className="mt-1 text-xs text-error-700 dark:text-error-400 leading-relaxed">
-                    The submission request was withdrawn before the 60-second grace period expired. No emails or WhatsApp messages were sent to the candidate or interviewer. The cancellation note is stored in the audit log.
-                  </p>
-                  <div className="mt-4">
-                    <Button variant="outline" size="sm" onClick={handleReset}>
-                      Back to Command Bar
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Status: REJECTED */}
-          {status === "REJECTED" && (
-            <div className="rounded-2xl border border-gray-200 bg-gray-50 p-6 dark:border-gray-800 dark:bg-gray-800/40 text-center">
-              <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-error-50 text-error-500 dark:bg-error-500/10 mb-2">
-                <CloseIcon />
-              </div>
-              <h3 className="mt-2 text-sm font-semibold text-gray-800 dark:text-white">
-                Action Plan Rejected by HR
-              </h3>
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                This action plan will not be processed further.
-              </p>
-              <div className="mt-3">
-                <Button variant="primary" size="sm" onClick={handleReset}>
-                  Create New Action Plan
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* Status: PENDING_APPROVAL or UNDO_WINDOW -> Confirmation Card */}
-          {(status === "PENDING_APPROVAL" || status === "UNDO_WINDOW") && activePlan && (
-            <ConfirmationCard
-              plan={activePlan}
-              onApprove={handleApprove}
-              onReject={handleReject}
-              isApproving={status === "UNDO_WINDOW" || isApprovingPlan}
-            />
-          )}
-
-          {/* Status: IDLE -> Welcome Dashboard & Architecture Overview */}
-          {status === "IDLE" && (
-            <div className="rounded-2xl border border-gray-200 bg-white p-6 xl:p-8 dark:border-gray-800 dark:bg-gray-900 shadow-theme-xs">
-              <div className="flex items-center gap-3 pb-4 border-b border-gray-100 dark:border-gray-800">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
-                  <ShootingStarIcon/>
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-gray-900 dark:text-white">
-                    Waiting for Orchestration Command
-                  </h3>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    {targetCandidate ? (
-                      <>
-                        Selected Candidate: <strong>{targetCandidate.name}</strong> ({targetCandidate.applied_position})
-                      </>
-                    ) : (
-                      "Loading candidate directory from database..."
-                    )}
-                  </p>
-                </div>
-              </div>
-
-              {/* How it works 4-step cards */}
-              <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-3.5 dark:border-gray-800 dark:bg-gray-800/40">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-500 text-[11px] font-bold text-white">
-                      1
-                    </span>
-                    <h4 className="text-xs font-bold text-gray-800 dark:text-white">
-                      Scan Guardrail & Injection
-                    </h4>
-                  </div>
-                  <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
-                    Every instruction and CV document is scanned to detect malicious manipulation instructions (*prompt injection*).
-                  </p>
-                </div>
-
-                <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-3.5 dark:border-gray-800 dark:bg-gray-800/40">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-500 text-[11px] font-bold text-white">
-                      2
-                    </span>
-                    <h4 className="text-xs font-bold text-gray-800 dark:text-white">
-                      Retrieve Slot & Rules
-                    </h4>
-                  </div>
-                  <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
-                    Matching empty calendar slots, WIB/WITA time zones, and blocking Friday prayer times.
-                  </p>
-                </div>
-
-                <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-3.5 dark:border-gray-800 dark:bg-gray-800/40">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-500 text-[11px] font-bold text-white">
-                      3
-                    </span>
-                    <h4 className="text-xs font-bold text-gray-800 dark:text-white">
-                      Human Approval Gate
-                    </h4>
-                  </div>
-                  <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
-                    AI must stop displaying the complete draft message with source citations.
-                  </p>
-                </div>
-
-                <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-3.5 dark:border-gray-800 dark:bg-gray-800/40">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-500 text-[11px] font-bold text-white">
-                      4
-                    </span>
-                    <h4 className="text-xs font-bold text-gray-800 dark:text-white">
-                      60-Second Undo Window
-                    </h4>
-                  </div>
-                  <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
-                    Providing a 60-second window for HR to cancel the shipment before the external gateway execution.
-                  </p>
-                </div>
-              </div>
-
-              {/* Fast Start Action Banner */}
-              <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between rounded-xl bg-brand-500/10 p-4 border border-brand-500/20 text-xs text-brand-900 dark:text-brand-300">
-                <div className="flex items-center gap-2">
-                  <InfoIcon className="text-brand-600 shrink-0" />
-                  <span>
-                    Ready to try the scenario? Click the <strong>AI Orchestration</strong> button above or select one of the <strong>Quick Test Scenarios</strong>.
-                  </span>
-                </div>
-              </div>
-
-              {/* Candidates Awaiting Interview Escalation */}
-              <div className="mt-5 rounded-xl border border-gray-100 bg-gray-50/60 p-4 dark:border-gray-800 dark:bg-gray-800/30">
-                <div className="flex items-center justify-between border-b border-gray-200/60 pb-3 dark:border-gray-800">
-                  <div className="flex items-center gap-2">
-                    <h4 className="text-xs font-bold text-gray-900 dark:text-white">
-                      Candidates Awaiting Interview Escalation
-                    </h4>
-                    <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-mono font-semibold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
-                      {candidatesQueue.slice(0, 3).length} in Queue
-                    </span>
-                  </div>
-                </div>
-
-                <div className="mt-3 divide-y divide-gray-200/50 dark:divide-gray-800">
-                  {candidatesQueue.slice(0, 3).map((cand) => (
-                    <div
-                      key={cand.id}
-                      className="flex flex-wrap items-center justify-between gap-3 py-2.5 first:pt-1 last:pb-1"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-semibold text-xs text-gray-900 dark:text-white">
-                              {cand.name}
+                    <div className="mt-2 space-y-2">
+                      <p className="text-xs font-medium text-success-800 dark:text-success-400">
+                        All actions have been distributed to external servers:
+                      </p>
+                      <div className="space-y-1.5">
+                        {activePlan?.items
+                          ?.filter((i) => i.channel !== "calendar")
+                          .map((item) => {
+                            const isEmail = item.channel === "email";
+                            return (
+                              <div
+                                key={item.id}
+                                className="flex items-center gap-2 rounded-xl bg-white/70 p-2.5 dark:bg-gray-900/70 border border-success-200/80 dark:border-success-900/40 shadow-2xs"
+                              >
+                                <span
+                                  className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-bold ${
+                                    isEmail
+                                      ? "bg-brand-50 text-brand-700 border border-brand-200 dark:bg-brand-500/15 dark:text-brand-300 dark:border-brand-500/30"
+                                      : "bg-success-50 text-success-700 border border-success-200 dark:bg-success-500/15 dark:text-success-300 dark:border-success-500/30"
+                                  }`}
+                                >
+                                  {isEmail ? (
+                                    <>
+                                      <EnvelopeIcon />
+                                      <span>Email</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <ChatIcon />
+                                      <span>WhatsApp</span>
+                                    </>
+                                  )}
+                                </span>
+                                <span className="text-xs text-gray-800 dark:text-gray-200">
+                                  sent to <strong>{item.recipient_name}</strong> ({item.recipient_contact}) via{" "}
+                                  <span className="font-mono text-[11px] text-gray-600 dark:text-gray-400">
+                                    {isEmail ? "Sumopod SMTP (SSL 465)" : "WhatsApp Gateway"}
+                                  </span>
+                                </span>
+                              </div>
+                            );
+                          })}
+                        {activePlan?.proposed_slot?.formatted_wib && (
+                          <div className="flex items-center gap-2 rounded-xl bg-white/70 p-2.5 dark:bg-gray-900/70 border border-success-200/80 dark:border-success-900/40 shadow-2xs">
+                            <span className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-2 py-1 text-[11px] font-bold text-brand-700 dark:border-brand-500/30 dark:bg-brand-500/15 dark:text-brand-300">
+                              <CalenderIcon />
+                              Calendar
                             </span>
-                            <span className="rounded bg-gray-200/70 px-1.5 py-0.2 text-[10px] font-medium text-gray-700 dark:bg-gray-700 dark:text-gray-300">
-                              {cand.timezone}
+                            <span className="text-xs text-gray-800 dark:text-gray-200">
+                              Slot locked at <strong>{activePlan.proposed_slot.formatted_wib}</strong> (PostgreSQL Checked)
                             </span>
                           </div>
-                          <span className="text-[11px] text-gray-500 dark:text-gray-400">
-                            {cand.applied_position} &bull; Channel: {cand.preferred_channel.toUpperCase()}
-                          </span>
-                        </div>
+                        )}
                       </div>
-
-                      <button
-                        type="button"
-                        onClick={() => handleExecuteCommand(`Schedule an interview for ${cand.name} with Mr. Budi next week`)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-brand-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-50 dark:border-brand-500/30 dark:bg-gray-800 dark:text-brand-300 shadow-2xs transition-colors"
-                      >
-                        <BoltIcon/>
-                        <span>Escalate Now</span>
-                      </button>
                     </div>
-                  ))}
+                    <div className="mt-4 flex flex-wrap items-center gap-2.5">
+                      <Button variant="primary" size="sm" onClick={handleReset}>
+                        Start New Orchestration
+                      </Button>
+                      <Link
+                        href="/orchestration/calendar"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-800 transition-colors hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-200 shadow-2xs"
+                      >
+                        <CalenderIcon />
+                        <span>Calendar Matrix</span>
+                      </Link>
+                      <Link
+                        href="/orchestration/threads"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-warning-300 bg-warning-50 px-3 py-2 text-xs font-semibold text-warning-800 transition-colors hover:bg-warning-100 dark:border-warning-500/30 dark:bg-warning-500/10 dark:text-warning-300 shadow-2xs"
+                      >
+                        <span>Triage Threads</span>
+                      </Link>
+                      <Link
+                        href="/simulator/email"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-brand-300 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-800 transition-colors hover:bg-brand-100 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300 shadow-2xs"
+                      >
+                        <EnvelopeIcon className="text-brand-600" />
+                        <span>Email Simulator</span>
+                      </Link>
+                      <Link
+                        href="/simulator/whatsapp"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-success-300 bg-success-50 px-3 py-2 text-xs font-semibold text-success-800 transition-colors hover:bg-success-100 dark:border-success-500/30 dark:bg-success-500/10 dark:text-success-300 shadow-2xs"
+                      >
+                        <ChatIcon className="text-success-600" />
+                        <span>WhatsApp Simulator</span>
+                      </Link>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
 
-        {/* Right Column: Live Immutable Audit Trail */}
-        <div className="lg:col-span-4">
-          <div className="sticky top-20">
-            <AuditTimeline logs={auditLogs} />
+            {/* Status: UNDONE */}
+            {status === "UNDONE" && (
+              <div className="rounded-2xl border-2 border-error-300 bg-error-50/50 p-6 dark:border-error-500/40 dark:bg-error-500/10 shadow-theme-xs">
+                <div className="flex items-start gap-3.5">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-error-500 text-white shadow-theme-xs">
+                    <CloseIcon />
+                  </div>
+                  <div className="flex-1 text-start">
+                    <h3 className="text-base font-bold text-error-900 dark:text-error-300">
+                      Action Plan Canceled
+                    </h3>
+                    <p className="mt-1 text-xs text-error-700 dark:text-error-400 leading-relaxed">
+                      The submission request was withdrawn before the 60-second grace period expired. No emails or WhatsApp messages were sent to the candidate or interviewer. The cancellation note is stored in the audit log.
+                    </p>
+                    <div className="mt-4">
+                      <Button variant="outline" size="sm" onClick={handleReset}>
+                        Back to Command Bar
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Status: REJECTED */}
+            {status === "REJECTED" && (
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 p-6 dark:border-gray-800 dark:bg-gray-800/40 text-center">
+                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-error-50 text-error-500 dark:bg-error-500/10 mb-2">
+                  <CloseIcon />
+                </div>
+                <h3 className="mt-2 text-sm font-semibold text-gray-800 dark:text-white">
+                  Action Plan Rejected by HR
+                </h3>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  This action plan will not be processed further.
+                </p>
+                <div className="mt-3">
+                  <Button variant="primary" size="sm" onClick={handleReset}>
+                    Create New Action Plan
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Status: PENDING_APPROVAL or UNDO_WINDOW -> Confirmation Card */}
+            {(status === "PENDING_APPROVAL" || status === "UNDO_WINDOW") && activePlan && (
+              <ConfirmationCard
+                plan={activePlan}
+                onApprove={handleApprove}
+                onReject={handleReject}
+                isApproving={status === "UNDO_WINDOW" || isApprovingPlan}
+              />
+            )}
+          </div>
+
+          {/* Right Column: Session-Scoped Live Immutable Audit Trail */}
+          <div className="lg:col-span-4">
+            <div className="sticky top-20">
+              <AuditTimeline logs={auditLogs} />
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Disambiguation Modal */}
       <DisambiguationModal
         isOpen={isDisambiguationOpen}
-        onClose={() => {
-          setIsDisambiguationOpen(false);
-          setStatus("IDLE");
-        }}
+        onClose={() => setIsDisambiguationOpen(false)}
         onSelectInterviewer={handleResolveDisambiguation}
         candidateName={modalCandidate?.name ?? "Candidate"}
         targetPosition={modalCandidate?.applied_position ?? "Applied Position"}

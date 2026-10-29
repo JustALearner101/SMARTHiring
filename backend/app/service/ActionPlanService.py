@@ -14,6 +14,7 @@ from app.dto.ActionPlanDTO import (
     SourceCitationDTO,
 )
 from app.exception.CustomException import ConflictException, NotFoundException
+from app.model.FollowupModel import FollowupPlan
 from app.repository.ActionPlanRepository import ActionPlanRepository
 from app.service.AuditLogService import AuditLogService
 
@@ -29,44 +30,8 @@ class ActionPlanService:
         self.audit_service = AuditLogService(session)
         self.executor_node = ExecutorNode(session)
 
-    async def get_current_plan(self) -> ActionPlanDTO | None:
-        plan = await self.action_plan_repo.get_latest_plan()
-        if not plan:
-            return None
-
+    def _to_action_plan_dto(self, plan: FollowupPlan) -> ActionPlanDTO:
         now = datetime.now(UTC)
-
-        # Lazy auto-execution if 60-second undo window expired
-        dundo = plan.dundo_deadline
-        if dundo and dundo.tzinfo is None:
-            dundo = dundo.replace(tzinfo=UTC)
-
-        if plan.vapproval_status == "APPROVED" and dundo and now >= dundo:
-            try:
-                meta = plan.vagent_metadata or {}
-                cand_item = next((it for it in meta.get("items", []) if "candidate" in str(it.get("recipient_role", "")).lower()), None)
-                candidate_channel = cand_item.get("channel", "email") if cand_item else meta.get("candidate_channel", "email")
-                state: OrchestratorAgentState = {
-                    "proposed_slot": meta.get("proposed_slot"),
-                    "candidate_id": int(meta.get("candidate_id", 1)),
-                    "candidate_name": meta.get("candidate_name", "Rina Kusuma"),
-                    "candidate_channel": candidate_channel,
-                    "interviewer_id": int(meta.get("interviewer_id", 1)),
-                    "interviewer_name": meta.get("interviewer_name", "Budi Santoso"),
-                    "items": meta.get("items", []),
-                    "negotiation_round": meta.get("negotiation_round", 1),
-                    "max_rounds": 3,
-                    "sources_cited": meta.get("sources_cited", []),
-                    "thread_id": plan.nid_thread or (int(meta["thread_id"]) if meta.get("thread_id") else None),
-                }
-                await self.executor_node.execute_plan(state, approved_by="HR Admin (Auto-Dispatch)")
-                await self.action_plan_repo.update_plan_status(plan.nid, status="EXECUTED")
-                refreshed = await self.action_plan_repo.get_action_plan(plan.nid)
-                if refreshed:
-                    plan = refreshed
-            except Exception:
-                logger.exception("Failed lazy execution of action plan #%s", plan.nid)
-
         meta = plan.vagent_metadata or {}
         slot_data = meta.get("proposed_slot") or {
             "title": "User Technical Interview (Round 1)",
@@ -115,12 +80,12 @@ class ActionPlanService:
 
         return ActionPlanDTO(
             id=str(plan.nid),
-            candidate_id=meta.get("candidate_id", "1"),
+            candidate_id=str(meta.get("candidate_id", "1")),
             candidate_name=meta.get("candidate_name", "Rina Kusuma"),
             candidate_position=meta.get("candidate_position", "Senior Frontend Engineer (Next.js)"),
             candidate_email=meta.get("candidate_email", "akhtar.ramadhan01@gmail.com"),
             candidate_phone=meta.get("candidate_phone", "+6281234567890"),
-            interviewer_id=meta.get("interviewer_id", "1"),
+            interviewer_id=str(meta.get("interviewer_id", "1")),
             interviewer_name=meta.get("interviewer_name", "Budi Santoso"),
             interviewer_role=meta.get("interviewer_role", "VP of Engineering"),
             interviewer_dept=meta.get("interviewer_dept", "Engineering"),
@@ -141,6 +106,50 @@ class ActionPlanService:
             created_at=plan.dcrea.isoformat() if plan.dcrea else now.isoformat(),
             undo_expires_at=undo_exp,
         )
+
+    async def get_current_plan(self) -> ActionPlanDTO | None:
+        plan = await self.action_plan_repo.get_latest_plan()
+        if not plan:
+            return None
+
+        now = datetime.now(UTC)
+
+        # Lazy auto-execution if 60-second undo window expired
+        dundo = plan.dundo_deadline
+        if dundo and dundo.tzinfo is None:
+            dundo = dundo.replace(tzinfo=UTC)
+
+        if plan.vapproval_status == "APPROVED" and dundo and now >= dundo:
+            try:
+                meta = plan.vagent_metadata or {}
+                cand_item = next(
+                    (it for it in meta.get("items", []) if "candidate" in str(it.get("recipient_role", "")).lower()),
+                    None,
+                )
+                candidate_channel = cand_item.get("channel", "email") if cand_item else meta.get("candidate_channel", "email")
+                state: OrchestratorAgentState = {
+                    "proposed_slot": meta.get("proposed_slot"),
+                    "candidate_id": int(meta.get("candidate_id", 1)),
+                    "candidate_name": meta.get("candidate_name", "Rina Kusuma"),
+                    "candidate_channel": candidate_channel,
+                    "interviewer_id": int(meta.get("interviewer_id", 1)),
+                    "interviewer_name": meta.get("interviewer_name", "Budi Santoso"),
+                    "items": meta.get("items", []),
+                    "negotiation_round": meta.get("negotiation_round", 1),
+                    "max_rounds": 3,
+                    "sources_cited": meta.get("sources_cited", []),
+                    "thread_id": plan.nid_thread or (int(meta["thread_id"]) if meta.get("thread_id") else None),
+                }
+                await self.executor_node.execute_plan(state, approved_by="HR Admin (Auto-Dispatch)")
+                await self.action_plan_repo.update_plan_status(plan.nid, status="EXECUTED")
+                return None
+            except Exception:
+                logger.exception("Failed lazy execution of action plan #%s", plan.nid)
+
+        if plan.vapproval_status in ("EXECUTED", "UNDONE", "REJECTED"):
+            return None
+
+        return self._to_action_plan_dto(plan)
 
     async def approve_plan(self, plan_id: str, request: PlanApprovalRequestDTO) -> ActionPlanDTO:
         p_id = int(plan_id) if plan_id.isdigit() else 1
@@ -174,7 +183,10 @@ class ActionPlanService:
                 f"Plan #{plan_id} tidak dapat disetujui karena status saat ini: {status_desc}."
             )
 
-        cand_item = next((it for it in meta.get("items", []) if "candidate" in str(it.get("recipient_role", "")).lower()), None)
+        cand_item = next(
+            (it for it in meta.get("items", []) if "candidate" in str(it.get("recipient_role", "")).lower()),
+            None,
+        )
         candidate_channel = cand_item.get("channel", "email") if cand_item else meta.get("candidate_channel", "email")
 
         if request.send_immediately:
@@ -211,13 +223,14 @@ class ActionPlanService:
                 metadata={"plan_id": p_id, "undo_window_seconds": 60},
             )
 
-        current = await self.get_current_plan()
-        if current:
-            if not request.send_immediately:
-                current.status = "UNDO_WINDOW"
-                current.undo_expires_at = int(time.time() + 60)
-            return current
-        raise ValueError("Gagal memperbarui status plan.")
+        updated = await self.action_plan_repo.get_action_plan(p_id)
+        if not updated:
+            raise ValueError("Gagal memperbarui status plan.")
+        dto = self._to_action_plan_dto(updated)
+        if not request.send_immediately:
+            dto.status = "UNDO_WINDOW"
+            dto.undo_expires_at = int(time.time() + 60)
+        return dto
 
     async def undo_plan(self, plan_id: str, request: PlanUndoRequestDTO) -> ActionPlanDTO:
         p_id = int(plan_id) if plan_id.isdigit() else 1
@@ -242,9 +255,10 @@ class ActionPlanService:
             metadata={"plan_id": p_id, "reason": request.reason},
         )
 
-        current = await self.get_current_plan()
-        if current:
-            current.status = "UNDONE"
-            current.undo_expires_at = None
-            return current
-        raise ValueError("Gagal membatalkan plan.")
+        updated = await self.action_plan_repo.get_action_plan(p_id)
+        if not updated:
+            raise ValueError("Gagal membatalkan plan.")
+        dto = self._to_action_plan_dto(updated)
+        dto.status = "UNDONE"
+        dto.undo_expires_at = None
+        return dto
