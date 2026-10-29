@@ -1,6 +1,6 @@
 import logging
-from typing import Any
 import traceback
+from typing import Any
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -94,7 +94,7 @@ def register_exception_handlers(app: FastAPI) -> None:
 
         await SystemLogRepository.log_direct(
             vlog_level="ERROR",
-            vlog_message=f"Internal Server Error: {str(exc)}",
+            vlog_message=f"Internal Server Error: {exc!s}",
             vlog_stacktrace=stacktrace_str,
             vlog_source="EXCEPTION_HANDLER",
             vlog_path=request.url.path,
