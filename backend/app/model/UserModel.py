@@ -5,12 +5,12 @@ from app.model.BaseModel import TableBaseModel
 
 
 class User(TableBaseModel):
-    """Internal system users: HR, Interviewers, and Auditors (tblm_user)."""
+    """Internal system users: HR, Admin, and Interviewers (tblm_user)."""
 
     __tablename__ = "tblm_user"
     __table_args__ = (
         CheckConstraint(
-            "vrole IN ('HR', 'USER_INTERVIEWER', 'TECH_INTERVIEWER', 'AUDITOR')",
+            "vrole IN ('HR', 'ADMIN', 'INTERVIEWER')",
             name="ck_tblm_user_vrole",
         ),
         CheckConstraint(
@@ -31,7 +31,7 @@ class User(TableBaseModel):
     vphone_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
     vposition: Mapped[str | None] = mapped_column(String(100), nullable=True)
     vdepartment: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    vrole: Mapped[str] = mapped_column(String(50), nullable=False, default="USER_INTERVIEWER")
+    vrole: Mapped[str] = mapped_column(String(50), nullable=False, default="INTERVIEWER")
     vtimezone: Mapped[str] = mapped_column(String(10), nullable=False, default="WIB")
     vworking_hours: Mapped[str | None] = mapped_column(String(50), nullable=True, default="09:00 - 17:00")
     vstatus: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE")
@@ -45,7 +45,7 @@ class Permission(TableBaseModel):
     __table_args__ = (
         UniqueConstraint("vrole", "vvisibility_class", name="uq_tblm_permission_role_visibility"),
         CheckConstraint(
-            "vrole IN ('HR', 'USER_INTERVIEWER', 'TECH_INTERVIEWER', 'AUDITOR')",
+            "vrole IN ('HR', 'ADMIN', 'INTERVIEWER')",
             name="ck_tblm_permission_vrole",
         ),
         CheckConstraint(

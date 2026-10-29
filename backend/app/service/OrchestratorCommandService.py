@@ -84,7 +84,7 @@ class OrchestratorCommandService:
             max_rounds=3,
         )
 
-        # 1. Disambiguation Gate (Pilar LIMITS)
+        # 1. Disambiguation Gate
         if agent_state.get("is_disambiguation_needed", False):
             return {
                 "status": "CLARIFICATION_NEEDED",
@@ -98,7 +98,7 @@ class OrchestratorCommandService:
                 ],
             }
 
-        # 2. Deadlock Escalation Gate (Pilar LIMITS)
+        # 2. Deadlock Escalation Gate
         if agent_state.get("status") == "DEADLOCK_ESCALATED":
             return {
                 "status": "DEADLOCK_ESCALATED",
@@ -207,10 +207,6 @@ class OrchestratorCommandService:
         )
 
     async def handle_inbound_reply(self, request: InboundReplyRequestDTO) -> ActionPlanDTO | dict[str, Any]:
-        """Processes inbound replies from Candidate or Interviewer via WhatsApp/Email.
-
-        Enforces autonomous triage, 3-round negotiation limits, and out-of-scope escalation.
-        """
         reply = request.reply_text.strip()
         reply_lower = reply.lower()
         thread_id = request.thread_id or 1

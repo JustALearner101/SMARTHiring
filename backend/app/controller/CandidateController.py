@@ -7,6 +7,7 @@ from app.dto.BaseDTO import ApiResponse, PaginatedResponse, PaginationParams
 from app.dto.CandidateDTO import (
     CandidateCreateDTO,
     CandidateDTO,
+    CandidateReapplyDTO,
     CandidateUpdateDTO,
 )
 from app.exception.CustomException import NotFoundException
@@ -45,7 +46,7 @@ async def get_candidate(
 @router.post("", response_model=ApiResponse[CandidateDTO], status_code=status.HTTP_201_CREATED)
 async def create_candidate(
     dto: CandidateCreateDTO,
-    current_user: User = Depends(require_roles(["HR"])),
+    current_user: User = Depends(require_roles(["HR", "ADMIN"])),
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[CandidateDTO]:
     service = CandidateService(db)
@@ -57,7 +58,7 @@ async def create_candidate(
 async def update_candidate(
     candidate_id: str,
     dto: CandidateUpdateDTO,
-    current_user: User = Depends(require_roles(["HR"])),
+    current_user: User = Depends(require_roles(["HR", "ADMIN"])),
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[CandidateDTO]:
     service = CandidateService(db)
@@ -65,5 +66,28 @@ async def update_candidate(
     if not updated:
         raise NotFoundException("Kandidat tidak ditemukan")
     return ApiResponse(data=updated, message="Kandidat berhasil diperbarui")
+
+
+@router.post("/{candidate_id}/reapply", response_model=ApiResponse[CandidateDTO], status_code=status.HTTP_201_CREATED)
+async def reapply_candidate(
+    candidate_id: str,
+    dto: CandidateReapplyDTO,
+    current_user: User = Depends(require_roles(["HR", "ADMIN"])),
+    db: AsyncSession = Depends(get_db),
+) -> ApiResponse[CandidateDTO]:
+    service = CandidateService(db)
+    created = await service.reapply_candidate(candidate_id, dto, current_user=current_user)
+    return ApiResponse(data=created, message="Siklus lamaran baru berhasil dibuat dengan status SCREENING")
+
+
+@router.delete("/{candidate_id}", response_model=ApiResponse[dict[str, str]])
+async def delete_candidate(
+    candidate_id: str,
+    current_user: User = Depends(require_roles(["HR", "ADMIN"])),
+    db: AsyncSession = Depends(get_db),
+) -> ApiResponse[dict[str, str]]:
+    service = CandidateService(db)
+    await service.delete_candidate(candidate_id, current_user=current_user)
+    return ApiResponse(data={"deleted_id": candidate_id}, message="Kandidat berhasil dihapus")
 
 

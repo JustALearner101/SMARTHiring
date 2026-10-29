@@ -44,8 +44,8 @@ async def test_auth_list_demo_users(client: AsyncClient):
     users = res.json()["data"]
     roles = [u["role"] for u in users]
     assert "HR" in roles
-    assert "USER_INTERVIEWER" in roles
-    assert "AUDITOR" in roles
+    assert "INTERVIEWER" in roles
+    assert "ADMIN" in roles
 
 
 # ------------------ Salary Masking (Permissions Pillar) ------------------ #
@@ -62,10 +62,21 @@ async def test_salary_masking_for_interviewer_vs_hr(client: AsyncClient):
     assert rina_hr["current_salary"] == 22_000_000
     assert rina_hr["expected_salary"] == 28_000_000
 
-    # 2. Access candidates as Interviewer -> Salary MUST be masked (None)
+    # 2. Access candidates as ADMIN -> Salary MUST be exposed
+    admin_res = await client.get(
+        "/api/v1/candidates?query=CAND-2026-001",
+        headers={"X-Demo-Role": "ADMIN"},
+    )
+    assert admin_res.status_code == 200
+    admin_items = admin_res.json()["data"]["items"]
+    rina_admin = next((c for c in admin_items if c["candidate_code"] == "CAND-2026-001"), None)
+    assert rina_admin is not None
+    assert rina_admin["current_salary"] == 22_000_000
+
+    # 3. Access candidates as Interviewer -> Salary MUST be masked (None)
     interviewer_res = await client.get(
         "/api/v1/candidates?query=CAND-2026-001",
-        headers={"X-Demo-Role": "USER_INTERVIEWER"},
+        headers={"X-Demo-Role": "INTERVIEWER"},
     )
     assert interviewer_res.status_code == 200
     interviewer_items = interviewer_res.json()["data"]["items"]
@@ -75,7 +86,7 @@ async def test_salary_masking_for_interviewer_vs_hr(client: AsyncClient):
     assert rina_intv["expected_salary"] is None
 
 
-# ------------------ Approval Gate Enforcement (Approval Pillar) ------------------ #
+# ------------------ Approval Gate Enforcement & 3-Role RBAC ------------------ #
 async def test_action_plan_approval_gate_rbac(client: AsyncClient):
     # Trigger plan creation
     await client.post("/api/v1/orchestrator/command", json={"command": "Review plan test rbac"})
@@ -87,7 +98,7 @@ async def test_action_plan_approval_gate_rbac(client: AsyncClient):
     forbidden_res = await client.post(
         f"/api/v1/actionPlans/{plan_id}/approve",
         json={"approved_by": "Budi Santoso"},
-        headers={"X-Demo-Role": "USER_INTERVIEWER"},
+        headers={"X-Demo-Role": "INTERVIEWER"},
     )
     assert forbidden_res.status_code == 403
     assert forbidden_res.json()["success"] is False
@@ -100,3 +111,33 @@ async def test_action_plan_approval_gate_rbac(client: AsyncClient):
     )
     assert hr_res.status_code == 200
     assert hr_res.json()["data"]["status"] == "UNDO_WINDOW"
+
+
+async def test_rbac_master_write_and_audit_log_guards(client: AsyncClient):
+    # Interviewer blocked from writing Master Candidates, Contacts, Holidays, and reading Audit Logs
+    cand_block = await client.post(
+        "/api/v1/candidates",
+        json={
+            "name": "Unauthorized Cand",
+            "email": "unauth.cand@example.com",
+            "phone": "+62811111111",
+            "preferred_channel": "email",
+            "applied_position": "Backend Engineer",
+            "timezone": "WIB",
+        },
+        headers={"X-Demo-Role": "INTERVIEWER"},
+    )
+    assert cand_block.status_code == 403
+
+    audit_block = await client.get(
+        "/api/v1/auditLogs",
+        headers={"X-Demo-Role": "INTERVIEWER"},
+    )
+    assert audit_block.status_code == 403
+
+    # ADMIN has full access to Audit Logs
+    audit_admin = await client.get(
+        "/api/v1/auditLogs",
+        headers={"X-Demo-Role": "ADMIN"},
+    )
+    assert audit_admin.status_code == 200

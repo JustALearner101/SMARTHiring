@@ -48,7 +48,8 @@ class NegotiationThreadService:
         ]
 
         last_preview = t.messages[-1].vcontent if t.messages else "Belum ada pesan."
-        last_activity = t.dmodi.isoformat() if t.dmodi else t.dcrea.isoformat()
+        activity_candidates = [ts for ts in (t.dlast_activity_at, t.dmodi, t.dcrea) if ts is not None]
+        last_activity = max(activity_candidates).isoformat() if activity_candidates else datetime.now(UTC).isoformat()
 
         return NegotiationThreadDTO(
             id=str(t.nid),

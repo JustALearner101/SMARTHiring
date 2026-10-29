@@ -7,39 +7,64 @@ import Button from "@/components/ui/button/Button";
 import FormField from "@/components/form/FormField";
 import InputField from "@/components/form/input/InputField";
 import Select from "@/components/form/Select";
-import { InterviewSession, ConsentStatus } from "@/types/interview";
+import { ConsentStatus, InterviewSession } from "@/types/interview";
+import { UserRole } from "@/types/auth";
+import { Candidate, InterviewerContact, RubricProfile } from "@/types/master";
 import { getInterviewSessionStatus } from "@/services/interviewService";
+import { listRubrics } from "@/services/masterService";
 import {
-  AudioIcon,
   AlertIcon,
-  LockIcon,
-  UploadIcon,
+  AudioIcon,
+  BoltIcon,
   CheckCircleIcon,
   DocsIcon,
+  LockIcon,
   TimeIcon,
-  BoltIcon,
+  UploadIcon,
 } from "@/icons";
 
 interface AudioUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (session: InterviewSession, file?: File | null) => Promise<InterviewSession | null>;
+  onSubmit: (
+    session: InterviewSession,
+    file?: File | null
+  ) => Promise<InterviewSession | null>;
+  candidates: Candidate[];
+  rubrics: RubricProfile[];
+  interviewers: InterviewerContact[];
+  preselectedCandidateId?: string | null;
+  currentUserId?: string | null;
+  currentUserName?: string | null;
+  currentRole?: UserRole | null;
 }
 
 export default function AudioUploadModal({
   isOpen,
   onClose,
   onSubmit,
+  candidates,
+  rubrics,
+  interviewers,
+  preselectedCandidateId,
+  currentUserId,
+  currentUserName,
+  currentRole,
 }: AudioUploadModalProps) {
-  const [candidateName, setCandidateName] = useState("Rina Kusuma");
-  const [candidateCode, setCandidateCode] = useState("K-014");
-  const [position, setPosition] = useState("Senior Frontend Developer");
-  const [roundName, setRoundName] = useState("User Technical Interview (Round 1)");
-  const [interviewerName, setInterviewerName] = useState("Budi Santoso");
-  const [interviewerRole, setInterviewerRole] = useState("VP of Engineering");
+  const defaultCandidate =
+    (preselectedCandidateId
+      ? candidates.find((c) => c.id === preselectedCandidateId)
+      : undefined) ??
+    candidates.find((c) => c.status === "INTERVIEW_SCHEDULED") ??
+    candidates[0];
+
+  const [chosenCandidateId, setChosenCandidateId] = useState<string>("");
+  const [chosenProfileId, setChosenProfileId] = useState<string>("");
+  const [chosenInterviewerId, setChosenInterviewerId] = useState<string>("");
+  const [scopedRubrics, setScopedRubrics] = useState<RubricProfile[] | null>(null);
   const [consentGranted, setConsentGranted] = useState(true);
   const [audioDuration, setAudioDuration] = useState("45:20");
-  const [fileName, setFileName] = useState("interview_rina_kusuma_round1.mp3");
+  const [customFileName, setCustomFileName] = useState<string>("");
   const [fileSize, setFileSize] = useState("42.8 MB");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
@@ -49,7 +74,67 @@ export default function AudioUploadModal({
   const [progress, setProgress] = useState(15);
   const [statusMessage, setStatusMessage] = useState("Mengunggah berkas rekaman...");
 
-  // Reset modal state
+  // Derived selection state (React 19 pure derivation — zero cascading useEffect renders)
+  const selectedCandidateId = chosenCandidateId || defaultCandidate?.id || "1";
+  const matchedCandidate = candidates.find((c) => c.id === selectedCandidateId) ?? defaultCandidate;
+  const candidateName = matchedCandidate?.name ?? "Rina Kusuma";
+  const candidateCode = matchedCandidate?.candidate_code ?? "CAND-2026-001";
+  const position = matchedCandidate?.applied_position ?? "Senior Frontend Engineer";
+
+  const defaultInterviewer =
+    (currentUserId
+      ? interviewers.find((i) => i.id === currentUserId)
+      : undefined) ?? interviewers[0];
+
+  const selectedInterviewerId =
+    currentRole === "INTERVIEWER" && currentUserId
+      ? currentUserId
+      : chosenInterviewerId || defaultInterviewer?.id || currentUserId || "";
+
+  const matchedInterviewer =
+    interviewers.find((i) => i.id === selectedInterviewerId) ?? defaultInterviewer;
+  const interviewerName =
+    matchedInterviewer?.name ?? currentUserName ?? "Siti Rahma";
+  const interviewerRole =
+    matchedInterviewer?.role ??
+    (currentRole === "INTERVIEWER" ? "Technical Interviewer" : "Talent Acquisition Lead");
+
+  // Dynamically load rubrics scoped to the chosen interviewer when HR/Admin selects an interviewer
+  useEffect(() => {
+    if (!isOpen || currentRole === "INTERVIEWER" || !selectedInterviewerId) {
+      return;
+    }
+    let cancelled = false;
+    listRubrics(selectedInterviewerId)
+      .then((res) => {
+        if (!cancelled && Array.isArray(res) && res.length > 0) {
+          setScopedRubrics(res);
+        }
+      })
+      .catch(() => {
+        // Fallback to initial rubrics prop on error
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, currentRole, selectedInterviewerId]);
+
+  const activeRubrics =
+    currentRole !== "INTERVIEWER" && scopedRubrics && scopedRubrics.length > 0
+      ? scopedRubrics
+      : rubrics;
+
+  const selectedProfileId =
+    (chosenProfileId && activeRubrics.some((r) => r.id === chosenProfileId)
+      ? chosenProfileId
+      : activeRubrics[0]?.id) || "1";
+  const matchedRubric =
+    activeRubrics.find((r) => r.id === selectedProfileId) ?? activeRubrics[0];
+  const roundName = matchedRubric?.round_name ?? "HR Screening & Culture Fit (Round 1)";
+
+  const defaultSlug = candidateName.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+  const fileName = customFileName || `interview_${defaultSlug}.mp3`;
+
   const handleClose = () => {
     setIsProcessing(false);
     setActiveSession(null);
@@ -58,10 +143,14 @@ export default function AudioUploadModal({
     onClose();
   };
 
-  // Polling effect while modal is in processing view
+  // Polling effect while modal is in processing view (external API subscription)
   useEffect(() => {
     if (!isProcessing || !activeSession?.id) return;
-    if (progress >= 100 || activeSession.job_status === "COMPLETED" || activeSession.job_status === "REJECTED_NO_CONSENT") {
+    if (
+      progress >= 100 ||
+      activeSession.job_status === "COMPLETED" ||
+      activeSession.job_status === "REJECTED_NO_CONSENT"
+    ) {
       return;
     }
 
@@ -70,7 +159,8 @@ export default function AudioUploadModal({
         const fresh = await getInterviewSessionStatus(activeSession.id);
         if (fresh) {
           setActiveSession(fresh);
-          const pct = fresh.progress_percentage ?? (fresh.job_status === "COMPLETED" ? 100 : 30);
+          const pct =
+            fresh.progress_percentage ?? (fresh.job_status === "COMPLETED" ? 100 : 30);
           setProgress(pct);
           if (fresh.current_step) {
             setStatusMessage(fresh.current_step);
@@ -88,7 +178,7 @@ export default function AudioUploadModal({
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setSelectedFile(file);
-      setFileName(file.name);
+      setCustomFileName(file.name);
       setFileSize(`${(file.size / (1024 * 1024)).toFixed(1)} MB`);
       if (!audioDuration || audioDuration === "00:00") {
         setAudioDuration("45:20");
@@ -98,7 +188,7 @@ export default function AudioUploadModal({
 
   const handleLoadSample = () => {
     setSelectedFile(null);
-    setFileName("interview_rina_kusuma_round1.mp3");
+    setCustomFileName("");
     setFileSize("42.8 MB");
     setAudioDuration("45:20");
   };
@@ -110,7 +200,9 @@ export default function AudioUploadModal({
 
     const newSession: InterviewSession = {
       id: `int-${Date.now()}`,
-      candidate_id: "1",
+      candidate_id: selectedCandidateId,
+      profile_id: selectedProfileId,
+      interviewer_id: selectedInterviewerId || undefined,
       candidate_name: candidateName,
       candidate_code: candidateCode,
       position,
@@ -152,6 +244,38 @@ export default function AudioUploadModal({
 
   const isComplete = progress >= 100 || activeSession?.job_status === "COMPLETED";
 
+  const candidateOptions =
+    candidates.length > 0
+      ? candidates.map((c) => ({
+          value: c.id,
+          label: `${c.name} (${c.candidate_code}) — ${c.applied_position}`,
+        }))
+      : [{ value: "1", label: `${candidateName} (${candidateCode})` }];
+
+  const rubricOptions =
+    activeRubrics.length > 0
+      ? activeRubrics.map((r) => ({
+          value: r.id,
+          label: `${r.round_name} (${r.code})`,
+        }))
+      : [
+          { value: "1", label: "HR Screening & Culture Fit (PROFILE-HR-R1)" },
+          { value: "2", label: "User Technical Interview (PROFILE-TECH-R1)" },
+        ];
+
+  const interviewerOptions =
+    interviewers.length > 0
+      ? interviewers.map((i) => ({
+          value: i.id,
+          label: `${i.name} (${i.role}, ${i.timezone})`,
+        }))
+      : [
+          {
+            value: selectedInterviewerId || "1",
+            label: `${interviewerName} (${interviewerRole})`,
+          },
+        ];
+
   return (
     <Modal isOpen={isOpen} onClose={handleClose} className="max-w-xl p-6">
       {/* Header */}
@@ -159,17 +283,19 @@ export default function AudioUploadModal({
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
           <AudioIcon />
         </div>
-        <div className="flex-1">
-          <h3 className="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-            <span>{isProcessing ? "Processing Interview Audio" : "Ingest Audio Recording & Session"}</span>
-            <span className="rounded bg-purple-50 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300 px-2 py-0.5 text-[10px] font-bold">
+        <div className="flex-1 text-start">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white flex flex-wrap items-center gap-2">
+            <span>
+              {isProcessing ? "Processing Interview Audio" : "Ingest Audio Recording & Session"}
+            </span>
+            <span className="rounded bg-theme-purple-500/10 text-theme-purple-500 px-2 py-0.5 text-[10px] font-bold">
               ELEVENLABS SCRIBE ASR
             </span>
           </h3>
           <p className="text-xs text-gray-500 dark:text-gray-400">
             {isProcessing
               ? "Asynchronous speech-to-text diarization & Copilot rubric analysis pipeline in progress."
-              : "Upload interview audio file to trigger speech-to-text and AI Copilot rubric evaluation."}
+              : "Pilih kandidat terjadwal & rubrik tahap wawancara untuk memicu evaluasi bukti AI Copilot."}
           </p>
         </div>
       </div>
@@ -177,8 +303,7 @@ export default function AudioUploadModal({
       {/* --- LIVE PROCESSING VIEW --- */}
       {isProcessing ? (
         <div className="mt-5 space-y-5">
-          {/* Progress Bar Card */}
-          <div className="rounded-2xl border border-gray-200 bg-gray-50/80 p-5 dark:border-gray-800 dark:bg-gray-850">
+          <div className="rounded-2xl border border-gray-200 bg-gray-50/80 p-5 dark:border-gray-800 dark:bg-gray-800/60">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-1.5">
                 {!isComplete && <TimeIcon className="animate-spin text-brand-500" />}
@@ -189,13 +314,12 @@ export default function AudioUploadModal({
               </span>
             </div>
 
-            {/* Visual Animated Progress Bar */}
             <div className="w-full h-2.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all duration-700 ease-out ${
                   isComplete
                     ? "bg-success-500"
-                    : "bg-linear-to-r from-brand-500 via-purple-500 to-brand-600 animate-pulse"
+                    : "bg-linear-to-r from-brand-500 via-theme-purple-500 to-brand-600 animate-pulse"
                 }`}
                 style={{ width: `${progress}%` }}
               />
@@ -217,7 +341,11 @@ export default function AudioUploadModal({
               }`}
             >
               <div className="flex items-center gap-2.5">
-                <CheckCircleIcon className={progress >= 20 ? "text-success-600 dark:text-success-400" : "text-gray-300"} />
+                <CheckCircleIcon
+                  className={
+                    progress >= 20 ? "text-success-600 dark:text-success-400" : "text-gray-300"
+                  }
+                />
                 <span className="font-semibold">1. Validasi Persetujuan &amp; Integritas Berkas</span>
               </div>
               <span className="text-[10px] font-mono font-bold">
@@ -234,8 +362,12 @@ export default function AudioUploadModal({
                   : "border-gray-200 bg-white text-gray-500 dark:border-gray-800 dark:bg-gray-900"
               }`}
             >
-              <div className="flex items-center gap-2.5">
-                <CheckCircleIcon className={progress >= 60 ? "text-success-600 dark:text-success-400" : "text-gray-300"} />
+              <div className="flex items-center gap-2.5 text-start">
+                <CheckCircleIcon
+                  className={
+                    progress >= 60 ? "text-success-600 dark:text-success-400" : "text-gray-300"
+                  }
+                />
                 <div>
                   <span className="font-semibold block">2. ElevenLabs Scribe ASR &amp; Diarization</span>
                   <span className="text-[10px] text-gray-500 dark:text-gray-400">
@@ -257,8 +389,12 @@ export default function AudioUploadModal({
                   : "border-gray-200 bg-white text-gray-500 dark:border-gray-800 dark:bg-gray-900"
               }`}
             >
-              <div className="flex items-center gap-2.5">
-                <CheckCircleIcon className={progress >= 85 ? "text-success-600 dark:text-success-400" : "text-gray-300"} />
+              <div className="flex items-center gap-2.5 text-start">
+                <CheckCircleIcon
+                  className={
+                    progress >= 85 ? "text-success-600 dark:text-success-400" : "text-gray-300"
+                  }
+                />
                 <div>
                   <span className="font-semibold block">3. Evaluasi Rubrik Kompetensi Copilot</span>
                   <span className="text-[10px] text-gray-500 dark:text-gray-400">
@@ -281,7 +417,11 @@ export default function AudioUploadModal({
               }`}
             >
               <div className="flex items-center gap-2.5">
-                <CheckCircleIcon className={isComplete ? "text-success-600 dark:text-success-400" : "text-gray-300"} />
+                <CheckCircleIcon
+                  className={
+                    isComplete ? "text-success-600 dark:text-success-400" : "text-gray-300"
+                  }
+                />
                 <span className="font-semibold">4. Audit Verifikasi Kutipan &amp; Deteksi Flag</span>
               </div>
               <span className="text-[10px] font-mono font-bold">
@@ -300,10 +440,10 @@ export default function AudioUploadModal({
               <Link
                 href={`/interviews/review?id=${activeSession.id}`}
                 onClick={handleClose}
-                className="inline-flex items-center gap-2 rounded-xl bg-brand-500 px-4 py-2.5 text-xs font-semibold text-white shadow-brand hover:bg-brand-600 transition-all"
+                className="inline-flex items-center gap-2 rounded-xl bg-brand-500 px-4 py-2.5 text-xs font-semibold text-white shadow-theme-xs hover:bg-brand-600 transition-all"
               >
                 <DocsIcon />
-                <span>Buka Review Evidence &rarr;</span>
+                <span>Buka Review &amp; Decide &rarr;</span>
               </Link>
             )}
           </div>
@@ -311,66 +451,54 @@ export default function AudioUploadModal({
       ) : (
         /* --- FORM VIEW --- */
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-          {/* Candidate & Code */}
+          {/* Candidate Selector (Database Connected) */}
+          <FormField label="Select Candidate Application" required>
+            <Select
+              options={candidateOptions}
+              value={selectedCandidateId}
+              onChange={(e) => {
+                setChosenCandidateId(e.target.value);
+                if (!selectedFile) {
+                  setCustomFileName("");
+                }
+              }}
+            />
+          </FormField>
+
+          {/* Auto-Synced Position & Rubric Stage */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FormField label="Candidate Name" required>
-              <InputField
-                type="text"
-                value={candidateName}
-                onChange={(e) => setCandidateName(e.target.value)}
-                placeholder="e.g. Rina Kusuma"
-              />
+            <FormField label="Target Position">
+              <InputField type="text" value={position} disabled />
             </FormField>
 
-            <FormField label="Candidate Pseudonym Code" required>
-              <InputField
-                type="text"
-                value={candidateCode}
-                onChange={(e) => setCandidateCode(e.target.value)}
-                placeholder="e.g. K-014 (per SDD D-03)"
+            <FormField label="Interview Stage & Rubric" required>
+              <Select
+                options={rubricOptions}
+                value={selectedProfileId}
+                onChange={(e) => setChosenProfileId(e.target.value)}
               />
             </FormField>
           </div>
 
-          {/* Position & Round */}
+          {/* Interviewer & Duration */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FormField label="Target Position" required>
-              <InputField
-                type="text"
-                value={position}
-                onChange={(e) => setPosition(e.target.value)}
-                placeholder="e.g. Senior Frontend Developer"
-              />
-            </FormField>
-
-            <FormField label="Interview Round" required>
-              <Select
-                options={[
-                  { value: "User Technical Interview (Round 1)", label: "User Technical (Round 1)" },
-                  { value: "HR Culture Fit Interview (Round 2)", label: "HR Culture Fit (Round 2)" },
-                  { value: "Executive Leadership (Round 3)", label: "Executive Leadership (Round 3)" },
-                ]}
-                defaultValue={roundName}
-                onChange={(e) => setRoundName(e.target.value)}
-              />
-            </FormField>
-          </div>
-
-          {/* Interviewer */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FormField label="Interviewer" required>
-              <Select
-                options={[
-                  { value: "Budi Santoso", label: "Budi Santoso (VP Engineering, WIB)" },
-                  { value: "Budi Raharjo", label: "Budi Raharjo (Head of Finance, WITA)" },
-                ]}
-                defaultValue={interviewerName}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setInterviewerName(val);
-                  setInterviewerRole(val === "Budi Santoso" ? "VP of Engineering" : "Head of Finance");
-                }}
-              />
+            <FormField label="Assigned Interviewer" required>
+              {currentRole === "INTERVIEWER" ? (
+                <InputField
+                  type="text"
+                  value={`${interviewerName} (${interviewerRole})`}
+                  disabled
+                />
+              ) : (
+                <Select
+                  options={interviewerOptions}
+                  value={selectedInterviewerId}
+                  onChange={(e) => {
+                    setChosenInterviewerId(e.target.value);
+                    setChosenProfileId("");
+                  }}
+                />
+              )}
             </FormField>
 
             <FormField label="Detected Duration">
@@ -410,7 +538,7 @@ export default function AudioUploadModal({
                 <div className="mt-3 flex items-center justify-between rounded-lg border border-brand-200 bg-white p-2.5 text-xs dark:border-brand-500/30 dark:bg-gray-900 shadow-2xs">
                   <div className="flex items-center gap-2">
                     <AudioIcon className="text-brand-500 shrink-0" />
-                    <div className="text-left">
+                    <div className="text-start">
                       <span className="font-semibold text-gray-900 dark:text-white block truncate max-w-[220px]">
                         {fileName}
                       </span>
@@ -419,7 +547,7 @@ export default function AudioUploadModal({
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center gap-1 rounded bg-purple-50 px-2 py-0.5 text-[10px] font-semibold text-purple-700 dark:bg-purple-500/15 dark:text-purple-300">
+                    <span className="inline-flex items-center gap-1 rounded bg-theme-purple-500/10 px-2 py-0.5 text-[10px] font-semibold text-theme-purple-500">
                       <BoltIcon />
                       Scribe ASR Ready
                     </span>
@@ -447,7 +575,7 @@ export default function AudioUploadModal({
                 onChange={(e) => setConsentGranted(e.target.checked)}
                 className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-900"
               />
-              <label htmlFor="consent-check" className="cursor-pointer">
+              <label htmlFor="consent-check" className="cursor-pointer text-start">
                 <span className="block text-xs font-semibold text-gray-800 dark:text-gray-200">
                   Candidate Recording Consent Granted (vconsent_status = GRANTED)
                 </span>
@@ -460,8 +588,9 @@ export default function AudioUploadModal({
             {!consentGranted && (
               <div className="mt-3 flex items-start gap-2 rounded-lg bg-warning-50 p-2.5 text-xs text-warning-800 dark:bg-warning-500/10 dark:text-warning-300 border border-warning-200 dark:border-warning-500/20">
                 <AlertIcon className="shrink-0 text-warning-600" />
-                <span>
-                  <strong>Consent Check Warning (Rule BR-08):</strong> Without granted consent, AI pipeline will reject processing and assign status <code className="font-mono font-bold">REJECTED_NO_CONSENT</code>.
+                <span className="text-start">
+                  <strong>Consent Check Warning (Rule BR-08):</strong> Without granted consent, AI pipeline will reject processing and assign status{" "}
+                  <code className="font-mono font-bold">REJECTED_NO_CONSENT</code>.
                 </span>
               </div>
             )}
@@ -471,7 +600,7 @@ export default function AudioUploadModal({
             <Button variant="outline" type="button" onClick={handleClose}>
               Cancel
             </Button>
-            <Button variant="primary" type="submit" startIcon={<LockIcon className="mr-1.5" />}>
+            <Button variant="primary" type="submit" startIcon={<LockIcon className="me-1.5" />}>
               Process Ingestion (Async)
             </Button>
           </div>

@@ -10,6 +10,7 @@ import UndoBufferBanner from "@/components/orchestration/UndoBufferBanner";
 import Button from "@/components/ui/button/Button";
 import { useToast } from "@/context/ToastContext";
 import {
+  AudioIcon,
   BoltIcon,
   CalenderIcon,
   ChatIcon,
@@ -35,10 +36,12 @@ import {
   PlanStatus,
   PresetScenario,
 } from "@/types/orchestration";
+import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 function SchedulingContent() {
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const candidateId = searchParams.get("candidateId") || searchParams.get("candidate_id");
   const slotStart = searchParams.get("slot_start");
@@ -443,6 +446,12 @@ function SchedulingContent() {
       });
       setActivePlan(executedPlan);
       setStatus("EXECUTED");
+      void queryClient.invalidateQueries({ queryKey: ["candidates"] });
+      listCandidates({ page_size: 20 })
+        .then((page) => {
+          if (Array.isArray(page?.items)) setCandidatesQueue(page.items);
+        })
+        .catch(() => undefined);
 
       const candItem = plan.items?.find((i) =>
         i.recipient_role.toLowerCase().includes("candidate")
@@ -640,6 +649,17 @@ function SchedulingContent() {
                       <Button variant="primary" size="sm" onClick={handleReset}>
                         Start New Orchestration
                       </Button>
+                      <Link
+                        href={
+                          targetCandidate?.id
+                            ? `/interviews/sessions?candidateId=${targetCandidate.id}&action=upload`
+                            : "/interviews/sessions"
+                        }
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-brand-300 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-800 transition-colors hover:bg-brand-100 dark:border-brand-500/30 dark:bg-brand-500/15 dark:text-brand-300 shadow-2xs"
+                      >
+                        <AudioIcon />
+                        <span>Ingest Interview Recording</span>
+                      </Link>
                       <Link
                         href="/orchestration/calendar"
                         className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-800 transition-colors hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-200 shadow-2xs"

@@ -3,6 +3,7 @@ from datetime import date as dt_date
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dto.HolidayDTO import NationalHolidayCreateDTO, NationalHolidayDTO
+from app.exception.CustomException import NotFoundException
 from app.model.CalendarModel import Holiday
 from app.repository.HolidayRepository import HolidayRepository
 
@@ -41,6 +42,12 @@ class HolidayService:
             name=holiday.vname,
             is_joint_leave=(holiday.vtype == "COLLECTIVE_LEAVE"),
         )
+
+    async def delete_holiday(self, holiday_id: str) -> None:
+        holiday = await self.holiday_repo.get_by_id(holiday_id)
+        if not holiday:
+            raise NotFoundException("Hari libur tidak ditemukan")
+        await self.holiday_repo.delete(holiday)
 
     async def is_holiday(self, target_date: dt_date) -> Holiday | None:
         return await self.holiday_repo.is_holiday(target_date)

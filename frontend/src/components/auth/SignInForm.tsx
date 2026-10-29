@@ -32,7 +32,7 @@ export default function SignInForm() {
 
     try {
       await login({ username: username.trim(), password });
-      router.push("/orchestration/scheduling");
+      router.push("/");
     } catch (err: unknown) {
       const msg =
         err instanceof Error ? err.message : "Gagal login. Periksa kembali kredensial Anda.";
@@ -47,14 +47,11 @@ export default function SignInForm() {
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center">
         <div>
           <div className="mb-6 sm:mb-8">
-            <span className="inline-flex items-center rounded-md bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300 mb-2">
-              Heketon Office Ops AI
-            </span>
             <h1 className="mb-2 text-title-sm font-bold text-gray-900 sm:text-title-md dark:text-white/90">
               Sign In to Your Workspace
             </h1>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Sign in as an HR Admin, Hiring Manager, or Auditor to manage interview scheduling and reviews.
+              Sign in as an HR Lead, System Admin, or Interviewer to manage interview scheduling and evaluations.
             </p>
           </div>
 
@@ -75,7 +72,7 @@ export default function SignInForm() {
               <Input
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="e.g. hr.admin or budi.santoso"
+                placeholder="Enter Username"
                 required
               />
             </div>
@@ -89,7 +86,7 @@ export default function SignInForm() {
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter password (default: password123)"
+                  placeholder="Enter Password"
                   required
                 />
                 <button

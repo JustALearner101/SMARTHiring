@@ -2,8 +2,17 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dto.InterviewDecisionDTO import HrDecisionDTO, HrDecisionRequestDTO
+from app.dto.CandidateDTO import ApplicationStatus
+from app.dto.InterviewDecisionDTO import (
+    AdvanceNextStage,
+    DecisionActorRole,
+    DecisionWorkflowStatus,
+    HrDecisionDTO,
+    HrDecisionRequestDTO,
+)
+from app.exception.CustomException import ForbiddenException, NotFoundException
 from app.model.SummaryModel import HrDecision
+from app.model.UserModel import User
 from app.repository.InterviewDecisionRepository import InterviewDecisionRepository
 from app.repository.InterviewSessionRepository import InterviewSessionRepository
 from app.service.AuditLogService import AuditLogService
@@ -16,57 +25,194 @@ class InterviewDecisionService:
         self.decision_repo = InterviewDecisionRepository(session)
         self.audit_service = AuditLogService(session)
 
+    @staticmethod
+    def _resolve_transition(
+        decision: str,
+        next_stage: AdvanceNextStage | None,
+        profile_code: str | None,
+    ) -> tuple[AdvanceNextStage | None, ApplicationStatus]:
+        if decision == "REJECT":
+            return None, "REJECTED"
+        if decision == "HOLD":
+            return None, "COMPLETED"
+
+        resolved_stage: AdvanceNextStage
+        if next_stage is not None:
+            resolved_stage = next_stage
+        elif profile_code and "HR" in profile_code.upper():
+            resolved_stage = "NEXT_INTERVIEW"
+        else:
+            resolved_stage = "OFFERED"
+
+        stage_to_status: dict[AdvanceNextStage, ApplicationStatus] = {
+            "NEXT_INTERVIEW": "ESCALATED",
+            "TECHNICAL_TEST": "TECHNICAL_TEST",
+            "OFFERED": "OFFERED",
+        }
+        return resolved_stage, stage_to_status[resolved_stage]
+
     async def save_hr_decision(
         self,
         interview_id: str,
         dto: HrDecisionRequestDTO,
+        current_user: User,
     ) -> HrDecisionDTO:
-        int_id = int(interview_id) if interview_id.isdigit() else 1
+        if not interview_id.isdigit():
+            raise NotFoundException(f"Sesi wawancara {interview_id} tidak ditemukan.")
+        int_id = int(interview_id)
         interview = await self.interview_repo.get_interview_detail(int_id)
-        if not interview or not interview.source_files or not interview.source_files[-1].jobs:
-            raise ValueError(f"Job wawancara {interview_id} belum selesai diproses.")
+        if not interview or not interview.source_files:
+            raise NotFoundException(f"Job wawancara {interview_id} belum selesai diproses.")
 
-        job = interview.source_files[-1].jobs[-1]
+        sorted_sfs = sorted(interview.source_files, key=lambda sf: sf.nid)
+        if not sorted_sfs[-1].jobs:
+            raise NotFoundException(f"Job wawancara {interview_id} belum selesai diproses.")
+
+        sorted_jobs = sorted(sorted_sfs[-1].jobs, key=lambda jb: jb.nid)
+        job = sorted_jobs[-1]
+        existing_decisions = sorted(
+            getattr(job, "hr_decisions", []) or [],
+            key=lambda item: (item.ddecided_at, item.nid),
+        )
+        latest_decision = existing_decisions[-1] if existing_decisions else None
+
+        # Guard 1: Anti-IDOR — INTERVIEWER can ONLY evaluate sessions assigned to them
+        if current_user.vrole == "INTERVIEWER" and interview.nid_interviewer != current_user.nid:
+            await self.audit_service.log_event(
+                event_type="UNAUTHORIZED_INTERVIEW_ACCESS_BLOCKED",
+                actor=current_user.vname,
+                actor_type="HUMAN",
+                title="Cross-Interviewer Decision Tampering Blocked",
+                description=(
+                    f"Pewawancara '{current_user.vname}' (ID #{current_user.nid}) diblokir saat mencoba mengirim "
+                    f"keputusan pada sesi #{int_id} milik pewawancara ID #{interview.nid_interviewer}."
+                ),
+                metadata={
+                    "interview_id": int_id,
+                    "attempted_by_user_id": current_user.nid,
+                    "owner_interviewer_id": interview.nid_interviewer,
+                },
+                job_id=job.nid,
+            )
+            raise ForbiddenException(
+                "Akses ditolak: Anda tidak berwenang memberikan keputusan pada sesi wawancara milik pengguna lain."
+            )
+
+        # Guard 2: Immutable Finalized Lock — Once FINALIZED, nobody can overwrite
+        if latest_decision and latest_decision.vworkflow_status == "FINALIZED":
+            raise ForbiddenException(
+                "Keputusan wawancara ini sudah difinalisasi secara permanen dan tidak dapat diubah kembali."
+            )
+
+        # Guard 3: Interviewer One-Way Lock — Once Interviewer submits recommendation, it is locked for Interviewer
+        if current_user.vrole == "INTERVIEWER" and latest_decision is not None:
+            raise ForbiddenException(
+                "Rekomendasi evaluasi Anda sudah dikirimkan ke HR untuk tindak lanjut dan terkunci secara permanen."
+            )
+
+        # Guard 4: Wait for Assigned Technical/User Interviewer before HR Finalizes
+        assigned_interviewer = getattr(interview, "interviewer", None)
+        if (
+            current_user.vrole in ("HR", "ADMIN")
+            and latest_decision is None
+            and interview.nid_interviewer is not None
+            and assigned_interviewer is not None
+            and assigned_interviewer.vrole == "INTERVIEWER"
+        ):
+            raise ForbiddenException(
+                f"Sesi ini ditugaskan kepada pewawancara '{assigned_interviewer.vname}'. "
+                "Menunggu rekomendasi hasil evaluasi dari pewawancara terlebih dahulu."
+            )
+
         now = datetime.now(UTC)
+        profile_code = interview.profile.vcode if getattr(interview, "profile", None) else None
 
-        decision_data = {
-            "nid_job": job.nid,
-            "vdecision": "PROCEED" if dto.decision == "ADVANCE" else dto.decision,
-            "vnote": dto.notes,
-            "nid_decided_by": 1,
-            "ddecided_at": now,
-        }
-        dec = HrDecision(**decision_data)
+        resolved_stage, target_hr_status = self._resolve_transition(
+            decision=dto.decision,
+            next_stage=dto.next_stage,
+            profile_code=profile_code,
+        )
+
+        actor_role: DecisionActorRole
+        workflow_status: DecisionWorkflowStatus
+        resulting_candidate_status: ApplicationStatus
+
+        if current_user.vrole == "INTERVIEWER":
+            actor_role = "INTERVIEWER"
+            workflow_status = "PENDING_HR_FOLLOWUP"
+            resulting_candidate_status = "PENDING_HR_REVIEW"
+            event_type = "INTERVIEWER_RECOMMENDATION_SUBMITTED"
+            stage_suffix = f" ({resolved_stage})" if resolved_stage else ""
+            audit_title = f"Interviewer Recommendation: {dto.decision}{stage_suffix}"
+            audit_desc = (
+                f"Pewawancara '{current_user.vname}' mengirimkan rekomendasi evaluasi untuk kandidat "
+                f"#{interview.nid_candidate} pada sesi #{int_id}: {dto.decision}{stage_suffix} -> "
+                f"Diteruskan ke antrean tindak lanjut HR ({resulting_candidate_status}). Catatan: {dto.notes}"
+            )
+        else:
+            actor_role = "HR"
+            workflow_status = "FINALIZED"
+            resulting_candidate_status = target_hr_status
+            event_type = "HR_DECISION_FINALIZED"
+            stage_suffix = f" ({resolved_stage})" if resolved_stage else ""
+            audit_title = f"HR Final Decision: {dto.decision}{stage_suffix}"
+            audit_desc = (
+                f"Keputusan akhir HR oleh '{current_user.vname}' untuk kandidat #{interview.nid_candidate} "
+                f"pada sesi #{int_id}: {dto.decision}{stage_suffix} -> Status kandidat resmi menjadi "
+                f"{resulting_candidate_status}. Catatan: {dto.notes}"
+            )
+
+        dec = HrDecision(
+            nid_job=job.nid,
+            vdecision="PROCEED" if dto.decision == "ADVANCE" else dto.decision,
+            vnext_stage=resolved_stage,
+            vactor_role=actor_role,
+            vworkflow_status=workflow_status,
+            vnote=dto.notes,
+            nid_decided_by=current_user.nid,
+            ddecided_at=now,
+        )
         self.session.add(dec)
 
-        # Update candidate status
+        interview.dmodi = now
+        self.session.add(interview)
+
         if interview.candidate:
             cand = interview.candidate
-            if dto.decision == "ADVANCE":
-                cand.vstatus = "OFFERED"
-            elif dto.decision == "REJECT":
-                cand.vstatus = "REJECTED"
-            elif dto.decision == "HOLD":
-                cand.vstatus = "COMPLETED"
+            cand.vstatus = resulting_candidate_status
+            cand.dmodi = now
             self.session.add(cand)
 
         await self.session.commit()
         await self.session.refresh(dec)
 
-        # Append immutable audit log
         await self.audit_service.log_event(
-            event_type="HR_DECISION_RECORDED",
-            actor=dto.decided_by or "HR Admin",
+            event_type=event_type,
+            actor=current_user.vname,
             actor_type="HUMAN",
-            title=f"HR Decision: {dto.decision}",
-            description=f"Keputusan akhir HR untuk kandidat #{interview.nid_candidate} pada sesi #{interview_id}: {dto.decision}. Catatan: {dto.notes}",
-            metadata={"interview_id": int_id, "decision": dto.decision, "job_id": job.nid},
+            title=audit_title,
+            description=audit_desc,
+            metadata={
+                "interview_id": int_id,
+                "decision": dto.decision,
+                "next_stage": resolved_stage,
+                "actor_role": actor_role,
+                "workflow_status": workflow_status,
+                "resulting_candidate_status": resulting_candidate_status,
+                "decided_by_user_id": current_user.nid,
+                "job_id": job.nid,
+            },
             job_id=job.nid,
         )
 
         return HrDecisionDTO(
             decision=dto.decision,
+            next_stage=resolved_stage,
+            resulting_candidate_status=resulting_candidate_status,
+            actor_role=actor_role,
+            workflow_status=workflow_status,
             notes=dto.notes,
             decided_at=now.isoformat(),
-            decided_by=dto.decided_by,
+            decided_by=current_user.vname,
+            decided_by_user_id=str(current_user.nid),
         )

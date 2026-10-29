@@ -51,3 +51,7 @@ export function jsonPatch(body: unknown): ApiRequestOptions {
 export function jsonPut(body: unknown): ApiRequestOptions {
   return { method: "PUT", body: JSON.stringify(body) };
 }
+
+export function jsonDelete(): ApiRequestOptions {
+  return { method: "DELETE" };
+}

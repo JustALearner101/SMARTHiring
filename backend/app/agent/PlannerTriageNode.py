@@ -8,8 +8,6 @@ from app.agent.LlmFactory import LlmFactory
 
 
 class PlannerResolutionSchema(BaseModel):
-    """Structured resolution schema for AI interview scheduling planning."""
-
     target_time_preference: str = Field(
         default="10:00",
         description="Preferred slot start time e.g. '10:00', '14:00', '11:30', '13:30'",
@@ -29,15 +27,6 @@ class PlannerResolutionSchema(BaseModel):
 
 
 class PlannerTriageNode:
-    """Node 3: Planner & Triage Agent (Pilar SOURCES, LIMITS & PERMISSIONS).
-
-    Decomposes natural language requests into structured action plans,
-    resolves meeting slots across WIB/WITA/WIT using real calendar database availability,
-    builds citations for each source examined, and enforces the 3-round negotiation limit.
-    Defaults notification channels to EMAIL (standard corporate protocol)
-    while supporting WhatsApp when requested.
-    """
-
     @classmethod
     async def run(cls, state: OrchestratorAgentState) -> dict[str, Any]:
         cmd = state.get("command", "").strip()
@@ -45,9 +34,9 @@ class PlannerTriageNode:
         current_round = state.get("negotiation_round", 1)
         max_rounds = state.get("max_rounds", 3)
 
-        # 1. Check negotiation limits & Out-of-Scope (Pilar LIMITS)
+        # 1. Check negotiation limits & Out-of-Scope
         if current_round > max_rounds:
-            reason = f"Batas negosiasi otonom {max_rounds} putaran terlampaui. Dialihkan ke HR untuk resolusi manual."
+            reason = f"Limits on autonomous negotiations {max_rounds} round exceeded. Escalate to HR for manual resolution."
             return {
                 "status": "DEADLOCK_ESCALATED",
                 "escalation_reason": reason,
@@ -67,7 +56,7 @@ class PlannerTriageNode:
         # Check out-of-scope discussion (e.g. salary or contract negotiation)
         out_of_scope_keywords = ["gaji", "salary", "bonus", "tunjangan", "kontrak kerja", "benefit"]
         if any(kw in cmd_lower for kw in out_of_scope_keywords) and not state.get("guardrail_passed", True):
-            reason = "Kandidat/Interviewer mendiskusikan topik kompensasi di luar wewenang penjadwalan otonom."
+            reason = "Compensation topics beyond autonomous scheduling authority have been discussed. Escalate to HR for manual resolution."
             return {
                 "status": "DEADLOCK_ESCALATED",
                 "escalation_reason": reason,
@@ -201,7 +190,7 @@ class PlannerTriageNode:
                 "meeting_link": "https://meet.google.com/hkt-ops-2026",
             }
 
-        # 4. Sources Cited (Pilar SOURCES)
+        # 4. Sources Cited
         inter_slug = inter_name.lower().replace(" ", "-")
         sources = [
             {
@@ -215,8 +204,8 @@ class PlannerTriageNode:
                 "id": "src-02",
                 "ref_code": "[rule-jumatan]",
                 "source_type": "OPERATIONAL_RULE",
-                "title": "Aturan Sholat Jumat & Jam Kerja",
-                "detail": "Kepatuhan terhadap batas operasional 09:00 - 17:00 dan jendela ibadah Sholat Jumat (11:30 - 13:00 WIB).",
+                "title": "Rules for Friday Prayer & Work Hours",
+                "detail": "Compliance with the 09:00 - 17:00 operational boundary and the Friday Prayer worship window (11:30 - 13:00 WIB).",
             },
             {
                 "id": "src-03",
@@ -239,7 +228,7 @@ class PlannerTriageNode:
                 "recipient_role": inter_role,
                 "recipient_contact": inter_phone if inter_channel == "whatsapp" else inter_email,
                 "channel": inter_channel,
-                "subject": f"Undangan User Technical Interview: {cand_name}" if inter_channel == "email" else None,
+                "subject": f"User Technical Interview Invitation: {cand_name}" if inter_channel == "email" else None,
                 "content_preview": interviewer_text,
                 "is_external": False,
             },
@@ -250,7 +239,7 @@ class PlannerTriageNode:
                 "recipient_role": "Candidate",
                 "recipient_contact": cand_phone if cand_channel == "whatsapp" else cand_email,
                 "channel": cand_channel,
-                "subject": f"Undangan Wawancara — {cand_pos}" if cand_channel == "email" else None,
+                "subject": f"Technical Interview Invitation — {cand_pos}" if cand_channel == "email" else None,
                 "content_preview": candidate_text,
                 "is_external": True,  # External communication triggers High-Impact
             },
@@ -262,7 +251,7 @@ class PlannerTriageNode:
                 "recipient_contact": f"{inter_email}, {cand_email}",
                 "channel": "calendar",
                 "subject": f"Technical Interview: {cand_name} x {inter_name}",
-                "content_preview": "Sinkronisasi slot kalender Google Meet 60 menit.",
+                "content_preview": "Synchronize a 60-minute Google Meet calendar slot.",
                 "is_external": False,
             },
         ]

@@ -12,14 +12,6 @@ from app.repository.OperationalPolicyRepository import OperationalPolicyReposito
 
 
 class ContextRetrieverNode:
-    """Node 2: DB Context Retriever & Disambiguation Gate (Pilar LIMITS & SOURCES).
-
-    Resolves mentioned Candidate and Interviewer contacts from PostgreSQL.
-    Queries real database calendar slots and operational rules.
-    If ambiguous contacts are detected (e.g. two "Pak Budi"), halts the graph
-    and requests clarification from HR.
-    """
-
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.contact_repo = ContactRepository(session)
@@ -31,7 +23,7 @@ class ContextRetrieverNode:
         cmd = state.get("command", "").strip()
         cmd_lower = cmd.lower()
 
-        # 1. Disambiguation Check for Interviewer (Pilar LIMITS)
+        # 1. Disambiguation Check for Interviewer
         # Check if generic "budi" is mentioned without department or last name
         if "budi" in cmd_lower and not any(kw in cmd_lower for kw in ["santoso", "engineering", "hartono", "finance"]):
             ambiguous_users = await self.contact_repo.find_ambiguous_names("Budi")
@@ -89,7 +81,7 @@ class ContextRetrieverNode:
             budi_users = await self.contact_repo.find_ambiguous_names("Budi Santoso")
             selected_interviewer = budi_users[0] if budi_users else active_interviewers[0]
 
-        # 3. Dynamic Candidate Resolution (Pilar SOURCES)
+        # 3. Dynamic Candidate Resolution
         all_candidates, _ = await self.candidate_repo.search(limit=100)
         target_candidate = None
         best_cand_score = 0
@@ -145,7 +137,7 @@ class ContextRetrieverNode:
                 "candidate_timezone": target_candidate.vtimezone,
             })
 
-        # 4. Resolve Target Date & Query Available Slots from Calendar DB (Pilar SOURCES)
+        # 4. Resolve Target Date & Query Available Slots from Calendar DB
         now = datetime.now(UTC)
         target_date = (now + timedelta(days=2)).date()
 

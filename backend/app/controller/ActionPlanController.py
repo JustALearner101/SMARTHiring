@@ -31,7 +31,7 @@ async def get_current_plan(
 async def approve_plan(
     plan_id: str,
     request: PlanApprovalRequestDTO,
-    current_user: User = Depends(require_roles(["HR"])),
+    current_user: User = Depends(require_roles(["HR", "ADMIN"])),
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[ActionPlanDTO]:
     service = ActionPlanService(db)
@@ -46,7 +46,7 @@ async def approve_plan(
 async def undo_plan(
     plan_id: str,
     request: PlanUndoRequestDTO,
-    current_user: User = Depends(require_roles(["HR"])),
+    current_user: User = Depends(require_roles(["HR", "ADMIN"])),
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[ActionPlanDTO]:
     service = ActionPlanService(db)

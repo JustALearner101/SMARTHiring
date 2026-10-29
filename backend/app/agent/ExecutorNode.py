@@ -12,18 +12,6 @@ from app.service.EmailDispatcherService import EmailDispatcherService
 
 
 class ExecutorNode:
-    """Node 5: Channel & Calendar Executor (Pilar APPROVAL, RECORD & SOURCES).
-
-    Executes actual mutations to PostgreSQL and triggers real external communication
-    (SMTP Email Gateway) when an ActionPlan is approved and passes the 60-second undo window:
-    - Books calendar slot in tblt_calendar_event
-    - Upserts negotiation thread in tblt_negotiation_thread
-    - Appends sent messages to tblt_thread_message
-    - Dispatches verified email invitations via EmailDispatcherService (Sumopod SMTP)
-    - Updates candidate status to INTERVIEW_SCHEDULED
-    - Writes immutable SHA-256 hash-chained audit logs (ACTION_EXECUTED & EMAIL_DISPATCHED)
-    """
-
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.audit_service = AuditLogService(session)
@@ -101,6 +89,7 @@ class ExecutorNode:
             thread.vstatus = "SCHEDULED"
             thread.vagreed_slot = agreed_slot_desc
             thread.dlast_activity_at = now
+            thread.dmodi = now
             self.session.add(thread)
 
         # 3. Append Outbound Dialogue Messages & Dispatch Real Email
@@ -109,7 +98,7 @@ class ExecutorNode:
         for item in items:
             channel = item.get("channel", "email")
             if channel in ["whatsapp", "email"]:
-                content = item.get("content_preview") or f"Undangan interview untuk {cand_name}."
+                content = item.get("content_preview") or f"Interview Invitation for {cand_name}."
                 recipient_contact = item.get("recipient_contact") or ""
                 recipient_name = item.get("recipient_name", cand_name)
                 recipient_role = item.get("recipient_role", "Candidate")
@@ -120,7 +109,7 @@ class ExecutorNode:
                         to_email=recipient_contact,
                         recipient_name=recipient_name,
                         recipient_role=recipient_role,
-                        subject=item.get("subject") or f"[Undangan] User Technical Interview: {cand_name}",
+                        subject=item.get("subject") or f"Interview Schedule: {cand_name}",
                         content=content,
                         slot_wib=agreed_slot_desc,
                         meeting_link=slot.get("meeting_link", "https://meet.google.com/hkt-ops-2026"),
@@ -150,6 +139,7 @@ class ExecutorNode:
         candidate = (await self.session.execute(cand_stmt)).scalars().first()
         if candidate:
             candidate.vstatus = "INTERVIEW_SCHEDULED"
+            candidate.dmodi = now
             self.session.add(candidate)
 
         await self.session.commit()
@@ -163,8 +153,8 @@ class ExecutorNode:
             actor_type="HUMAN",
             title="Interview Action Plan Executed",
             description=(
-                f"Undangan wawancara untuk {cand_name} ({cand_channel.upper()}) dan {state.get('interviewer_name')} "
-                f"berhasil dikirim dan dijadwalkan pada {agreed_slot_desc}."
+                f"The interview invitation for {cand_name} ({cand_channel.upper()}) and {state.get('interviewer_name')} "
+                f"has been successfully sent and scheduled for {agreed_slot_desc}."
             ),
             metadata={
                 "candidate_id": cand_id,
@@ -192,7 +182,7 @@ class ExecutorNode:
                     actor_type="AGENT",
                     title=f"Interview Email Delivered: {name}",
                     description=(
-                        f"Undangan wawancara berhasil dikirim ke {to_email} via Sumopod SMTP (SSL 465). "
+                        f"Successfully sent an interview invitation email to {to_email} via Sumopod SMTP (SSL 465). "
                         f"Message-ID: {res.get('message_id')}"
                     ),
                     metadata={
@@ -214,7 +204,7 @@ class ExecutorNode:
                     actor="AI_ORCHESTRATOR",
                     actor_type="AGENT",
                     title=f"Email Delivery Failed: {name}",
-                    description=f"Gagal mengirim email ke {to_email}: {res.get('error')}",
+                    description=f"Failed to send an email to {to_email}: {res.get('error')}",
                     metadata={
                         "recipient": to_email,
                         "error": res.get("error"),

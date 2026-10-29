@@ -93,12 +93,6 @@ export default function CalendarMatrixPage() {
     <div className="space-y-6">
       <PageBreadcrumb pageTitle="Calendar Matrix" />
 
-      {/* Tri-Zone Synchronizer Header */}
-      <TimezoneMatrixHeader
-        selectedTimezone={selectedTimezone}
-        onSelectTimezone={setSelectedTimezone}
-      />
-
       {/* Operational Policy Banner */}
       <OperationalPolicyBanner onOpenTester={() => setIsTesterOpen(true)} policy={policy} />
 

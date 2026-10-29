@@ -106,24 +106,34 @@ async def test_interview_file_upload_and_evidence_pipeline(test_session: AsyncSe
 
 @pytest.mark.asyncio
 async def test_hr_decision_recording_api(client: AsyncClient):
-    # 1. Fetch available session
-    list_res = await client.get("/api/v1/interviews/sessions")
-    assert list_res.status_code == 200
-    items = list_res.json()["data"]["items"]
-    assert len(items) > 0
-    interview_id = items[0]["id"]
+    # 1. Upload a fresh HR session so it is undecided and owned by the HR actor
+    upload_res = await client.post(
+        "/api/v1/interviews/sessions/upload",
+        json={
+            "candidate_id": "1",
+            "profile_id": "1",
+            "consent_status": "GRANTED",
+            "audio_url": "https://storage.smarthiring.ai/interviews/hr_unit_test.mp3",
+            "audio_duration": "25:00",
+            "notes": "HR screening unit test recording",
+        },
+        headers={"X-Demo-Role": "HR", "X-Bypass-Rate-Limit": "1"},
+    )
+    assert upload_res.status_code == 201
+    interview_id = upload_res.json()["data"]["id"]
 
-    # 2. Record HR decision
+    # 2. Record 1-time immutable HR decision
     dec_res = await client.post(
         f"/api/v1/interviews/decisions/{interview_id}",
         json={
             "decision": "ADVANCE",
+            "next_stage": "NEXT_INTERVIEW",
             "notes": "Rekomendasi kuat ADVANCE: Keterampilan teknis dan bukti wawancara sangat solid.",
-            "decided_by": "VP of Engineering Budi Santoso",
         },
-        headers={"X-Bypass-Rate-Limit": "1"},
+        headers={"X-Demo-Role": "HR", "X-Bypass-Rate-Limit": "1"},
     )
     assert dec_res.status_code == 200
     data = dec_res.json()["data"]
     assert data["decision"] == "ADVANCE"
+    assert data["workflow_status"] == "FINALIZED"
     assert "ADVANCE" in data["notes"]

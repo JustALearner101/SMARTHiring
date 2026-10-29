@@ -15,14 +15,6 @@ logger = logging.getLogger(__name__)
 
 
 class EmailDispatcherService:
-    """Asynchronous Email Dispatcher Service for Heketon AI Orchestrator.
-
-    Integrates with SMTP Gateway (Sumopod / SSL Port 465) to deliver real
-    interview invitations and notifications to candidates and interviewers.
-    Adheres strictly to RFC 2822 / 5322 header hygiene, RFC 5545 iCalendar (.ics)
-    interactivity (RSVP widget in Gmail/Outlook), and CAN-SPAM compliant copywriting.
-    """
-
     def __init__(self) -> None:
         self.enabled = settings.SMTP_ENABLED
         self.host = settings.SMTP_HOST
@@ -43,7 +35,6 @@ class EmailDispatcherService:
         recipient_email: str,
         recipient_name: str,
     ) -> str:
-        """Generate an RFC 5545 compliant iCalendar (.ics) payload."""
         now_utc = datetime.now(UTC)
         uid = f"{uuid.uuid4()}@heketon.ai"
         dtstamp = now_utc.strftime("%Y%m%dT%H%M%SZ")
@@ -100,7 +91,7 @@ class EmailDispatcherService:
             sources_html = f"""
             <div style="margin-top: 24px; padding: 16px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
                 <h4 style="margin: 0 0 10px 0; color: #0f172a; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">
-                    Verified Grounding Sources (Pilar SOURCES):
+                    Verified Grounding Sources:
                 </h4>
                 <ul style="margin: 0; padding-left: 20px; font-size: 12px; color: #334155; line-height: 1.5;">
                     {citations_li}
@@ -174,7 +165,7 @@ class EmailDispatcherService:
 
             <!-- Human-in-the-Loop Badge -->
             <div style="margin-top: 24px; padding: 12px 16px; background-color: #eff6ff; border-left: 4px solid #3b82f6; border-radius: 4px; font-size: 12px; color: #1e40af;">
-                🛡️ <strong>Pilar Human-in-the-Loop & Audit Record</strong>: Undangan ini telah disetujui secara eksplisit oleh HR Lead melalui verifikasi gerbang persetujuan AI Heketon.
+                🛡️ <strong>Human-in-the-Loop & Audit Record</strong>: Undangan ini telah disetujui secara eksplisit oleh HR Lead melalui verifikasi gerbang persetujuan AI Heketon.
             </div>
         </div>
 
@@ -198,7 +189,6 @@ class EmailDispatcherService:
         html_body: str,
         ics_content: str | None = None,
     ) -> str:
-        """Synchronous SMTP delivery helper with RFC 2822 hygiene and .ics attachment."""
         sender_domain = self.from_email.split("@")[-1] if "@" in self.from_email else "smarthiring.ai"
         message_id = email.utils.make_msgid(domain=sender_domain)
 
@@ -266,7 +256,6 @@ class EmailDispatcherService:
         start_utc: datetime | None = None,
         end_utc: datetime | None = None,
     ) -> dict[str, Any]:
-        """Dispatch a verified interview invitation email via SMTP Gateway."""
         if not self.enabled or not self.user or not self.password:
             logger.info("SMTP disabled or unconfigured; falling back to internal simulation.")
             return {

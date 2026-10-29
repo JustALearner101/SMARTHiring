@@ -19,8 +19,6 @@ from app.service.AuditLogService import AuditLogService
 
 
 class InterviewAnalyzerGraph:
-    """Pipeline 2: AI Post-Interview Transcript & Rubric Analyzer (Pilar SOURCES, PERMISSIONS, RECORD)."""
-
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.audit_service = AuditLogService(session)
@@ -43,7 +41,7 @@ class InterviewAnalyzerGraph:
                 actor="SYSTEM_CONSENT_GATE",
                 actor_type="AGENT",
                 title="Interview Processing Rejected - No Consent",
-                description="Kandidat tidak memberikan atau mencabut persetujuan pemrosesan rekaman wawancara (Consent Status != GRANTED).",
+                description="The candidate has not provided or has revoked consent for the processing of the interview recording (Consent Status != GRANTED).",
                 job_id=job_id,
             )
             return {

@@ -16,22 +16,22 @@ const PIPELINE_STEPS = [
   {
     step: "1",
     title: "Guardrail & Prompt Injection Scan",
-    desc: "Memindai instruksi terhadap pola manipulasi adversarial & batasan izin.",
+    desc: "Scan instructions for adversarial manipulation patterns & permission boundaries.",
   },
   {
     step: "2",
     title: "Context, Contact & Calendar Retriever",
-    desc: "Mengambil profil kandidat, direktori kontak, jadwal kalender, & zona waktu WIB/WITA/WIT.",
+    desc: "Retrieve candidate profiles, contact directories, calendar schedules, & WIB/WITA/WIT time zones.",
   },
   {
     step: "3",
     title: "Planner & Triage Agent",
-    desc: "Menyusun slot optimal, sitasi sumber [SOURCES], serta draf pesan Email/WhatsApp.",
+    desc: "Compose optimal slots, provide source citations [SOURCES], and draft Email/WhatsApp messages.",
   },
   {
     step: "4",
     title: "Secondary Validator Agent",
-    desc: "Memverifikasi kepatuhan jam kerja (09:00–17:00), blokir Sholat Jumat, & buffer 15 menit.",
+    desc: "Verify compliance with working hours (09:00–17:00), block time for Friday prayers, and allow a 15-minute buffer.",
   },
 ] as const;
 
@@ -54,13 +54,11 @@ export default function OrchestrationPipelineLoader({
                 Human Clarification Required (Contact Ambiguity)
               </h3>
               <span className="rounded-full bg-warning-100 px-2.5 py-0.5 font-mono text-[10px] font-bold text-warning-800 dark:bg-warning-500/20 dark:text-warning-300">
-                PILLAR 4 · LIMITS
+                LIMITS
               </span>
             </div>
             <p className="mt-1.5 text-xs leading-relaxed text-gray-600 dark:text-gray-300">
-              AI mendeteksi lebih dari satu kontak internal yang cocok dengan perintah Anda dan
-              berhenti sesuai aturan akuntabilitas <strong>LIMITS</strong>. Silakan pilih profil
-              pewawancara yang dimaksud untuk melanjutkan penyusunan rencana aksi.
+              AI detected more than one internal contact matching your command and stopped according to the <strong>LIMITS</strong> accountability rule. Please select the intended interviewer profile to continue composing the action plan.
             </p>
             <div className="mt-4 flex flex-wrap items-center gap-2.5">
               {onReopenDisambiguation && (

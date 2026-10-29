@@ -11,6 +11,7 @@ import {
   CopyIcon,
   EnvelopeIcon,
   InfoIcon,
+  LockIcon,
   ShootingStarIcon,
 } from "@/icons";
 import { useAuth } from "@/context/AuthContext";
@@ -642,7 +643,8 @@ export default function ConfirmationCard({
           <div className="flex items-center gap-2">
             {!isHr && (
               <span className="text-[11px] font-semibold text-warning-600 dark:text-warning-400">
-                🔒 HR Approval Only
+                <LockIcon/>  
+                HR Approval Only
               </span>
             )}
             <Button

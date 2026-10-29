@@ -87,5 +87,5 @@ class SystemLogRepository(BaseRepository[SystemLog]):
             offset=offset,
             limit=limit,
             where_conditions=conditions if conditions else None,
-            order_by=SystemLog.nid.desc(),
+            order_by=(SystemLog.dcrea.desc(), SystemLog.nid.desc()),
         )

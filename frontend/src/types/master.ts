@@ -4,6 +4,8 @@
  * Aligns with backend Pydantic DTOs and PostgreSQL schema (tblm_*).
  */
 
+import type { UserRole } from "./auth";
+
 export type Timezone = "WIB" | "WITA" | "WIT";
 
 export type PreferredChannel = "whatsapp" | "email";
@@ -12,6 +14,8 @@ export type ApplicationStatus =
   | "SCREENING"
   | "ESCALATED"
   | "INTERVIEW_SCHEDULED"
+  | "PENDING_HR_REVIEW"
+  | "TECHNICAL_TEST"
   | "COMPLETED"
   | "OFFERED"
   | "REJECTED";
@@ -30,10 +34,22 @@ export interface Candidate {
   notes?: string;
   current_salary?: number | null;
   expected_salary?: number | null;
+  application_cycle?: number;
+  previous_application_id?: string | null;
   created_at: string;
 }
 
-export type CandidateCreateInput = Omit<Candidate, "id" | "candidate_code" | "created_at">;
+export type CandidateCreateInput = Omit<
+  Candidate,
+  | "id"
+  | "candidate_code"
+  | "status"
+  | "created_at"
+  | "application_cycle"
+  | "previous_application_id"
+> & {
+  status?: ApplicationStatus;
+};
 export type CandidateUpdateInput = Partial<CandidateCreateInput>;
 
 export type Department =
@@ -50,52 +66,103 @@ export interface InterviewerContact {
   id: string;
   employee_id: string;
   name: string;
+  username?: string;
   email: string;
   phone: string;
   department: Department;
   role: string;
+  system_role?: UserRole;
   timezone: Timezone;
   working_hours: string;
   avatar_initials: string;
 }
 
-export type InterviewerCreateInput = Omit<InterviewerContact, "id" | "avatar_initials">;
-export type InterviewerUpdateInput = Partial<InterviewerCreateInput>;
+export interface InterviewerCreateInput {
+  employee_id: string;
+  name: string;
+  username: string;
+  password: string;
+  email: string;
+  phone: string;
+  department: Department;
+  role: string;
+  system_role: UserRole;
+  timezone: Timezone;
+  working_hours: string;
+}
+
+export interface InterviewerUpdateInput {
+  employee_id?: string;
+  name?: string;
+  username?: string;
+  password?: string;
+  email?: string;
+  phone?: string;
+  department?: Department;
+  role?: string;
+  system_role?: UserRole;
+  timezone?: Timezone;
+  working_hours?: string;
+}
 
 export interface OperationalPolicy {
-  work_start_time: string; // "09:00"
-  work_end_time: string;   // "17:00"
-  friday_prayer_start: string; // "11:30"
-  friday_prayer_end: string;   // "13:00"
-  max_negotiation_rounds: number; // default: 3
-  buffer_minutes: number; // default: 15
+  work_start_time: string;
+  work_end_time: string;
+  friday_prayer_start: string;
+  friday_prayer_end: string;
+  max_negotiation_rounds: number;
+  buffer_minutes: number;
   injection_guardrail_enabled: boolean;
 }
 
 export interface NationalHoliday {
   id: string;
-  date: string; // "YYYY-MM-DD"
+  date: string;
   name: string;
-  is_joint_leave: boolean; // Cuti bersama flag
+  is_joint_leave: boolean;
 }
 
 export type NationalHolidayCreateInput = Omit<NationalHoliday, "id">;
+
+export type RubricTargetRole = "HR" | "INTERVIEWER";
 
 export interface CompetencyItem {
   id: string;
   code: string;
   name: string;
   description: string;
-  weight: number; // percentage (e.g. 25)
-  target_score: number; // 1 to 5
+  weight: number;
+  target_score: number;
 }
+
+export interface CompetencyCreateInput {
+  code: string;
+  name: string;
+  description: string;
+  weight?: number;
+  target_score?: number;
+}
+
+export type CompetencyUpdateInput = Partial<CompetencyCreateInput>;
 
 export interface RubricProfile {
   id: string;
   code: string;
   round_name: string;
   description: string;
+  target_role?: RubricTargetRole;
+  department?: string | null;
+  owner_user_id?: string | null;
+  owner_name?: string | null;
   competencies: CompetencyItem[];
+}
+
+export interface RubricProfileCreateInput {
+  code: string;
+  round_name: string;
+  description?: string;
+  target_role?: RubricTargetRole;
+  department?: string;
 }
 
 /**

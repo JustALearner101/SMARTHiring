@@ -1,6 +1,6 @@
 from collections.abc import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.model.UserModel import User
@@ -15,7 +15,10 @@ class ContactRepository(BaseRepository[User]):
         stmt = select(User).where(User.vstatus == "ACTIVE")
         if department:
             stmt = stmt.where(User.vdepartment == department)
-        stmt = stmt.order_by(User.vname.asc())
+        stmt = stmt.order_by(
+            func.coalesce(User.dmodi, User.dcrea).desc(),
+            User.nid.desc(),
+        )
         result = await self.session.execute(stmt)
         return result.scalars().all()
 

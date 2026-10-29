@@ -6,7 +6,7 @@ from app.dto.BaseDTO import BaseDTO
 class LoginRequestDTO(BaseDTO):
     """Payload for user authentication."""
 
-    username: str = Field(..., description="Username sistem (misal: hr.admin, budi.santoso, auditor.it)")
+    username: str = Field(..., description="Username sistem (misal: hr.admin, budi.santoso, admin.it)")
     password: str = Field(..., description="Password akun pengguna")
 
 

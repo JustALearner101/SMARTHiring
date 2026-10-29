@@ -3,11 +3,15 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.dto.NotificationDTO import NotificationDTO
 from app.model.AuditModel import AuditLog
 from app.model.FollowupModel import FollowupPlan
+from app.model.InterviewModel import Interview, SourceFile
+from app.model.JobModel import Job
 from app.model.OrchestrationModel import NegotiationThread
+from app.model.SummaryModel import HrDecision
 from app.model.UserModel import User
 
 
@@ -20,7 +24,7 @@ class NotificationService:
         user_role = current_user.vrole
         user_name = current_user.vname
 
-        if user_role == "HR":
+        if user_role in ("HR", "ADMIN"):
             plan_stmt = (
                 select(FollowupPlan)
                 .where(FollowupPlan.vapproval_status == "AWAITING_APPROVAL")
@@ -67,7 +71,55 @@ class NotificationService:
                         )
                     )
 
-        if user_role in ("HR", "AUDITOR"):
+            pending_subq = (
+                select(HrDecision.nid)
+                .join(Job, HrDecision.nid_job == Job.nid)
+                .join(SourceFile, Job.nid_source == SourceFile.nid)
+                .where(
+                    SourceFile.nid_interview == Interview.nid,
+                    HrDecision.vworkflow_status == "PENDING_HR_FOLLOWUP",
+                )
+            )
+            finalized_subq = (
+                select(HrDecision.nid)
+                .join(Job, HrDecision.nid_job == Job.nid)
+                .join(SourceFile, Job.nid_source == SourceFile.nid)
+                .where(
+                    SourceFile.nid_interview == Interview.nid,
+                    HrDecision.vworkflow_status == "FINALIZED",
+                )
+            )
+            followup_iv_stmt = (
+                select(Interview)
+                .options(
+                    selectinload(Interview.candidate),
+                    selectinload(Interview.interviewer),
+                )
+                .where(pending_subq.exists(), ~finalized_subq.exists())
+                .order_by(Interview.nid.desc())
+                .limit(5)
+            )
+            pending_interviews = (await self.session.execute(followup_iv_stmt)).scalars().all()
+            for iv in pending_interviews:
+                cand_name = iv.candidate.vname if iv.candidate else "Kandidat"
+                intv_name = iv.interviewer.vname if iv.interviewer else "Pewawancara"
+                notifications.append(
+                    NotificationDTO(
+                        id=f"interview-followup-{iv.nid}",
+                        category="APPROVAL",
+                        title="Pending HR Follow-Up Decision",
+                        message=(
+                            f"Pewawancara {intv_name} telah mengirim hasil evaluasi untuk {cand_name}. "
+                            "Menunggu tindak lanjut final HR."
+                        ),
+                        timestamp=(iv.dmodi or iv.dcrea).isoformat(),
+                        link=f"/interviews/review?id={iv.nid}",
+                        badge_variant="warning",
+                        metadata={"interview_id": iv.nid, "candidate_name": cand_name},
+                    )
+                )
+
+        if user_role == "ADMIN":
             audit_stmt = (
                 select(AuditLog)
                 .where(AuditLog.vevent_type.ilike("%INJECTION%") | AuditLog.vevent_type.ilike("%BLOCKED%"))
@@ -80,24 +132,24 @@ class NotificationService:
                     NotificationDTO(
                         id=f"sec-{log.nid}",
                         category="SECURITY",
-                        title="AI Guardrail Alert",
-                        message=f"Percobaan anomali/prompt injection terdeteksi: {log.vmasked_detail[:90]}...",
+                        title="AI Guardrail & Security Alert",
+                        message=f"Percobaan anomali/akses diblokir terdeteksi: {log.vmasked_detail[:90]}...",
                         timestamp=log.dcrea.isoformat(),
                         link="/audit/guardrail",
                         badge_variant="error",
                         metadata={"audit_id": log.nid, "hash": log.vhash},
                     )
                 )
-                
-        if user_role in ("USER_INTERVIEWER", "TECH_INTERVIEWER"):
+
+        if user_role == "INTERVIEWER":
             notifications.append(
                 NotificationDTO(
                     id=f"interviewer-slot-{current_user.nid}",
                     category="INTERVIEW",
-                    title="Jadwal Sesi Wawancara Anda",
-                    message=f"Halo {user_name}, periksa jadwal ketersediaan kalender Anda untuk sesi interview pekan ini.",
+                    title="Jadwal & Evaluasi Sesi Wawancara Anda",
+                    message=f"Halo {user_name}, periksa jadwal kalender dan sesi evaluasi wawancara yang ditugaskan kepada Anda.",
                     timestamp=datetime.now(UTC).isoformat(),
-                    link="/orchestration/calendar",
+                    link="/interviews/sessions",
                     badge_variant="info",
                 )
             )

@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.AppSecurity import require_roles
 from app.db.DatabaseSession import get_db
 from app.dto.BaseDTO import ApiResponse
 from app.dto.InterviewDecisionDTO import HrDecisionDTO, HrDecisionRequestDTO
-from app.exception.CustomException import NotFoundException
+from app.model.UserModel import User
 from app.service.InterviewDecisionService import InterviewDecisionService
 
 router = APIRouter(prefix="/interviews/decisions", tags=["InterviewDecisions"])
@@ -14,11 +15,18 @@ router = APIRouter(prefix="/interviews/decisions", tags=["InterviewDecisions"])
 async def save_hr_decision(
     interview_id: str,
     dto: HrDecisionRequestDTO,
+    current_user: User = Depends(require_roles(["HR", "ADMIN", "INTERVIEWER"])),
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[HrDecisionDTO]:
     service = InterviewDecisionService(db)
-    try:
-        saved = await service.save_hr_decision(interview_id, dto)
-        return ApiResponse(data=saved, message="Keputusan HR berhasil dicatat secara permanen")
-    except ValueError as e:
-        raise NotFoundException(str(e)) from e
+    saved = await service.save_hr_decision(
+        interview_id=interview_id,
+        dto=dto,
+        current_user=current_user,
+    )
+    msg = (
+        "Rekomendasi evaluasi Pewawancara berhasil dikirimkan ke HR untuk tindak lanjut"
+        if saved.workflow_status == "PENDING_HR_FOLLOWUP"
+        else "Keputusan akhir HR berhasil difinalisasi secara permanen"
+    )
+    return ApiResponse(data=saved, message=msg)

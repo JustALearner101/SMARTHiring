@@ -1,64 +1,354 @@
 "use client";
 
 import React, { useState } from "react";
+import { Link } from "@/i18n/navigation";
 import Button from "@/components/ui/button/Button";
-import { HrDecision, HrDecisionType } from "@/types/interview";
-import { CheckCircleIcon, AlertIcon, CloseIcon, LockIcon } from "@/icons";
+import { UserRole } from "@/types/auth";
+import { AdvanceNextStage, HrDecision, HrDecisionType } from "@/types/interview";
+import {
+  AlertIcon,
+  ArrowRightIcon,
+  BoltIcon,
+  CheckCircleIcon,
+  CloseIcon,
+  LockIcon,
+} from "@/icons";
 
 interface HrDecisionCardProps {
   initialDecision?: HrDecision;
-  onSubmitDecision: (decision: HrDecisionType, notes: string) => void;
+  onSubmitDecision: (
+    decision: HrDecisionType,
+    notes: string,
+    nextStage?: AdvanceNextStage | null
+  ) => Promise<void> | void;
+  candidateId: string;
   candidateName: string;
+  roundName: string;
+  currentUserId?: string | null;
+  currentUserRole?: UserRole | null;
+  interviewerId?: string | null;
+  interviewerName?: string;
 }
+
+const STAGE_LABELS: Record<AdvanceNextStage, string> = {
+  NEXT_INTERVIEW: "Next Interview Round (Next Round Ready)",
+  TECHNICAL_TEST: "Technical Test Assessment",
+  OFFERED: "Final Offering (OFFERED)",
+};
 
 export default function HrDecisionCard({
   initialDecision,
   onSubmitDecision,
+  candidateId,
   candidateName,
+  roundName,
+  currentUserId,
+  currentUserRole,
+  interviewerId,
+  interviewerName,
 }: HrDecisionCardProps) {
+  const isFinalized = Boolean(
+    initialDecision &&
+      (!initialDecision.workflow_status ||
+        initialDecision.workflow_status === "FINALIZED")
+  );
+  const isPendingHrFollowup =
+    initialDecision?.workflow_status === "PENDING_HR_FOLLOWUP";
+
+  const isHrOrAdmin = currentUserRole === "HR" || currentUserRole === "ADMIN";
+  const isAssignedToAnotherUser = Boolean(
+    interviewerId && currentUserId && interviewerId !== currentUserId
+  );
+
+  const inferredDefaultStage: AdvanceNextStage =
+    initialDecision?.next_stage ??
+    (roundName.toLowerCase().includes("hr") ? "NEXT_INTERVIEW" : "OFFERED");
+
   const [selectedDecision, setSelectedDecision] = useState<HrDecisionType>(
     initialDecision?.decision || "ADVANCE"
   );
-  const [notes, setNotes] = useState(
-    initialDecision?.notes ||
-      "Kandidat mendemonstrasikan keahlian teknis arsitektur frontend dan komunikasi kolaboratif yang sangat baik. Direkomendasikan lolos ke tahap offering."
-  );
-  const [isSubmitted, setIsSubmitted] = useState(!!initialDecision);
+  const [nextStage, setNextStage] = useState<AdvanceNextStage>(inferredDefaultStage);
+  const [notes, setNotes] = useState(() => {
+    if (isPendingHrFollowup && isHrOrAdmin && initialDecision) {
+      return `Menindaklanjuti rekomendasi pewawancara (${initialDecision.decided_by}): ${initialDecision.notes}`;
+    }
+    return (
+      initialDecision?.notes ||
+      "Kandidat mendemonstrasikan kompetensi yang kuat sesuai bukti kutipan transkrip wawancara."
+    );
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmitDecision(selectedDecision, notes);
-    setIsSubmitted(true);
+    setIsSubmitting(true);
+    try {
+      await onSubmitDecision(
+        selectedDecision,
+        notes,
+        selectedDecision === "ADVANCE" ? nextStage : null
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
+
+  const renderDecisionOutcomePill = (dec: HrDecision) => {
+    if (dec.decision === "ADVANCE") {
+      return (
+        <span className="inline-flex items-center gap-1.5 rounded-lg bg-success-50 px-2.5 py-1 text-xs font-bold text-success-700 dark:bg-success-500/15 dark:text-success-300">
+          <CheckCircleIcon />
+          <span>
+            ADVANCE
+            {dec.next_stage ? ` → ${STAGE_LABELS[dec.next_stage] ?? dec.next_stage}` : ""}
+          </span>
+        </span>
+      );
+    }
+    if (dec.decision === "HOLD") {
+      return (
+        <span className="inline-flex items-center gap-1.5 rounded-lg bg-warning-50 px-2.5 py-1 text-xs font-bold text-warning-700 dark:bg-warning-500/15 dark:text-warning-300">
+          <AlertIcon />
+          <span>HOLD (On Hold / Comparison)</span>
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-lg bg-error-50 px-2.5 py-1 text-xs font-bold text-error-700 dark:bg-error-500/15 dark:text-error-300">
+        <CloseIcon />
+        <span>REJECTED</span>
+      </span>
+    );
+  };
+
+  // =========================================================================
+  // STATE 1: FINALIZED DECISION (IMMUTABLE ONE-WAY LOCK FOR ALL ROLES)
+  // =========================================================================
+  if (isFinalized && initialDecision) {
+    return (
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3 dark:border-gray-800">
+          <div className="text-start">
+            <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+              <span>Finalized Evaluation Decision</span>
+              <span className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 font-mono text-[10px] font-bold text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                <LockIcon />
+                IMMUTABLE RECORD
+              </span>
+            </h3>
+            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+              Keputusan final telah disahkan secara permanen dan terkunci pada jejak audit.
+            </p>
+          </div>
+
+          <span className="inline-flex items-center gap-1 rounded-full bg-success-50 px-2.5 py-1 text-xs font-semibold text-success-700 dark:bg-success-500/15 dark:text-success-400">
+            <CheckCircleIcon />
+            <span>FINALIZED</span>
+          </span>
+        </div>
+
+        <div className="rounded-xl border border-gray-200 bg-gray-50/70 p-4 text-start space-y-3 dark:border-gray-800 dark:bg-gray-800/50">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            {renderDecisionOutcomePill(initialDecision)}
+            <span className="text-[11px] text-gray-500 dark:text-gray-400">
+              Disahkan oleh <strong>{initialDecision.decided_by}</strong> &bull;{" "}
+              {initialDecision.decided_at}
+            </span>
+          </div>
+
+          <div>
+            <span className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              Final Rationale &amp; Audit Notes:
+            </span>
+            <p className="mt-1 text-xs text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-line">
+              {initialDecision.notes}
+            </p>
+          </div>
+        </div>
+
+        {isHrOrAdmin && (
+          <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3.5 sm:flex-row sm:items-center sm:justify-between dark:border-gray-800 dark:bg-gray-800/50">
+            <div className="text-start text-xs text-gray-700 dark:text-gray-300">
+              {initialDecision.decision === "ADVANCE" &&
+              initialDecision.next_stage === "NEXT_INTERVIEW" ? (
+                <span>
+                  Status kandidat resmi diperbarui menjadi{" "}
+                  <strong>Next Round Ready (ESCALATED)</strong>.
+                </span>
+              ) : (
+                <span>
+                  Status kandidat di Master Candidates telah tersinkronisasi secara permanen.
+                </span>
+              )}
+            </div>
+
+            <div className="flex shrink-0 items-center gap-2">
+              {initialDecision.decision === "ADVANCE" &&
+              initialDecision.next_stage === "NEXT_INTERVIEW" ? (
+                <Link
+                  href={`/orchestration/scheduling?candidateId=${candidateId}`}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-2 text-xs font-semibold text-white shadow-theme-xs hover:bg-brand-600 transition-all"
+                >
+                  <BoltIcon className="text-white" />
+                  <span>Schedule Next Interview</span>
+                  <ArrowRightIcon className="rtl:rotate-180" />
+                </Link>
+              ) : (
+                <Link
+                  href="/master/candidates"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+                >
+                  <span>View Candidates Directory</span>
+                  <ArrowRightIcon className="rtl:rotate-180" />
+                </Link>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // STATE 2A: PENDING_HR_FOLLOWUP VIEWED BY INTERVIEWER (LOCKED HANDOFF)
+  // =========================================================================
+  if (isPendingHrFollowup && initialDecision && !isHrOrAdmin) {
+    return (
+      <div className="rounded-2xl border border-brand-200 bg-white p-5 shadow-theme-xs dark:border-brand-500/30 dark:bg-gray-900 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3 dark:border-gray-800">
+          <div className="text-start">
+            <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+              <span>Interviewer Recommendation Submitted</span>
+              <span className="inline-flex items-center gap-1 rounded bg-brand-50 px-2 py-0.5 font-mono text-[10px] font-bold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
+                <LockIcon />
+                LOCKED FOR HR FOLLOW-UP
+              </span>
+            </h3>
+            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+              Rekomendasi evaluasi Anda telah terkunci dan diteruskan ke HR untuk konfirmasi tindak lanjut final.
+            </p>
+          </div>
+
+          <span className="inline-flex items-center gap-1 rounded-full bg-warning-50 px-2.5 py-1 text-xs font-semibold text-warning-700 dark:bg-warning-500/15 dark:text-warning-300">
+            <AlertIcon />
+            <span>Pending HR Follow-Up</span>
+          </span>
+        </div>
+
+        <div className="rounded-xl border border-brand-100 bg-brand-50/40 p-4 text-start space-y-3 dark:border-brand-500/20 dark:bg-brand-500/10">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            {renderDecisionOutcomePill(initialDecision)}
+            <span className="text-[11px] text-gray-500 dark:text-gray-400">
+              Dikirim oleh <strong>{initialDecision.decided_by}</strong> &bull;{" "}
+              {initialDecision.decided_at}
+            </span>
+          </div>
+          <div>
+            <span className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              Submitted Evaluation Notes:
+            </span>
+            <p className="mt-1 text-xs text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-line">
+              {initialDecision.notes}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // STATE 3: UNDECIDED SESSION ASSIGNED TO ANOTHER INTERVIEWER (READ-ONLY)
+  // =========================================================================
+  if (!initialDecision && isAssignedToAnotherUser) {
+    return (
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3 dark:border-gray-800">
+          <div className="text-start">
+            <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+              <span>Awaiting Assigned Interviewer Evaluation</span>
+              <span className="inline-flex items-center gap-1 rounded bg-warning-50 px-2 py-0.5 font-mono text-[10px] font-bold text-warning-700 dark:bg-warning-500/15 dark:text-warning-300">
+                <LockIcon />
+                READ-ONLY
+              </span>
+            </h3>
+            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+              Hanya pewawancara yang ditugaskan yang berhak mengirimkan evaluasi pertama pada sesi ini.
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-warning-200 bg-warning-50/50 p-4 text-start text-xs text-warning-900 dark:border-warning-500/25 dark:bg-warning-500/10 dark:text-warning-200">
+          Sesi wawancara ini ditugaskan kepada pewawancara{" "}
+          <strong>{interviewerName || "Assigned Interviewer"}</strong>. Menunggu rekomendasi hasil wawancara dari pewawancara terkait sebelum HR dapat melakukan tindak lanjut final.
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // STATE 4: ACTIVE FORM
+  // - Interviewer submitting 1-time Recommendation to HR (locks to PENDING_HR_FOLLOWUP)
+  // - HR/Admin finalizing Interviewer's Recommendation (locks to FINALIZED)
+  // - HR/Admin deciding their own HR Screening session (locks to FINALIZED)
+  // =========================================================================
+  const isInterviewerSubmission = currentUserRole === "INTERVIEWER";
+  const headerTitle = isPendingHrFollowup
+    ? "HR Final Follow-Up Gate (Confirm Interviewer Recommendation)"
+    : isInterviewerSubmission
+    ? "Interviewer Evaluation & Recommendation Gate"
+    : "HR Final Decision Gate";
+
+  const headerSubtitle = isPendingHrFollowup
+    ? "Tinjau rekomendasi pewawancara di bawah, lalu sahkan keputusan final HR untuk memperbarui status kandidat secara resmi."
+    : isInterviewerSubmission
+    ? "Keputusan evaluasi Anda akan dikunci secara satu arah dan diteruskan ke HR untuk tindak lanjut final."
+    : "Status aplikasi kandidat di Master Directory diperbarui secara otomatis dan terkunci begitu keputusan disimpan.";
+
+  const submitButtonLabel = isPendingHrFollowup
+    ? "Finalize HR Follow-Up Decision"
+    : isInterviewerSubmission
+    ? "Submit Recommendation to HR"
+    : "Submit Final HR Decision";
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3 dark:border-gray-800">
-        <div>
+        <div className="text-start">
           <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            <span>HR Final Decision Gate</span>
+            <span>{headerTitle}</span>
             <span className="rounded bg-brand-50 px-2 py-0.5 font-mono text-[10px] font-bold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
-              APPROVAL
+              {isInterviewerSubmission ? "HANDOFF TO HR" : "FINAL APPROVAL"}
             </span>
           </h3>
           <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-            AI Copilot provides evidence-based analysis; the hiring decision remains 100% human-verified.
+            {headerSubtitle}
           </p>
         </div>
-
-        {isSubmitted && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-success-50 px-2.5 py-1 text-xs font-semibold text-success-700 dark:bg-success-500/15 dark:text-success-400">
-            <CheckCircleIcon/>
-            <span>Decision Recorded</span>
-          </span>
-        )}
       </div>
+
+      {/* Interviewer Recommendation Banner shown to HR/Admin during Follow-Up */}
+      {isPendingHrFollowup && initialDecision && (
+        <div className="mt-4 rounded-xl border border-brand-200 bg-brand-50/50 p-4 text-start space-y-2.5 dark:border-brand-500/30 dark:bg-brand-500/10">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs font-bold text-brand-800 dark:text-brand-300">
+              Rekomendasi Pewawancara ({initialDecision.decided_by}):
+            </span>
+            {renderDecisionOutcomePill(initialDecision)}
+          </div>
+          <p className="text-xs text-gray-700 dark:text-gray-200 leading-relaxed whitespace-pre-line">
+            &ldquo;{initialDecision.notes}&rdquo;
+          </p>
+          <span className="block text-[10px] text-gray-500 dark:text-gray-400">
+            Dikirim pada {initialDecision.decided_at} &bull; Menunggu pengesahan final HR
+          </span>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="mt-4 space-y-4">
         {/* Decision Option Radio Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
           <label
-            className={`cursor-pointer flex flex-col justify-between rounded-xl border p-3 transition-all ${
+            className={`cursor-pointer flex flex-col justify-between rounded-xl border p-3 text-start transition-all ${
               selectedDecision === "ADVANCE"
                 ? "border-success-500 bg-success-50/50 dark:bg-success-500/10 dark:border-success-500"
                 : "border-gray-200 bg-white hover:border-gray-300 dark:border-gray-800 dark:bg-gray-800/40"
@@ -66,7 +356,7 @@ export default function HrDecisionCard({
           >
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-success-800 dark:text-success-300 flex items-center gap-1.5">
-                <CheckCircleIcon/>
+                <CheckCircleIcon />
                 ADVANCE
               </span>
               <input
@@ -79,12 +369,12 @@ export default function HrDecisionCard({
               />
             </div>
             <span className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-              Advance to offering or next interview round.
+              Lolos ke ronde interview berikutnya, tes teknikal, atau offering.
             </span>
           </label>
 
           <label
-            className={`cursor-pointer flex flex-col justify-between rounded-xl border p-3 transition-all ${
+            className={`cursor-pointer flex flex-col justify-between rounded-xl border p-3 text-start transition-all ${
               selectedDecision === "HOLD"
                 ? "border-warning-500 bg-warning-50/50 dark:bg-warning-500/10 dark:border-warning-500"
                 : "border-gray-200 bg-white hover:border-gray-300 dark:border-gray-800 dark:bg-gray-800/40"
@@ -92,7 +382,7 @@ export default function HrDecisionCard({
           >
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-warning-800 dark:text-warning-300 flex items-center gap-1.5">
-                <AlertIcon/>
+                <AlertIcon />
                 HOLD
               </span>
               <input
@@ -105,12 +395,12 @@ export default function HrDecisionCard({
               />
             </div>
             <span className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-              Hold candidate to compare with incoming applicants.
+              Tahan sementara (On Hold) untuk komparasi dengan kandidat lain.
             </span>
           </label>
 
           <label
-            className={`cursor-pointer flex flex-col justify-between rounded-xl border p-3 transition-all ${
+            className={`cursor-pointer flex flex-col justify-between rounded-xl border p-3 text-start transition-all ${
               selectedDecision === "REJECT"
                 ? "border-error-500 bg-error-50/50 dark:bg-error-500/10 dark:border-error-500"
                 : "border-gray-200 bg-white hover:border-gray-300 dark:border-gray-800 dark:bg-gray-800/40"
@@ -118,7 +408,7 @@ export default function HrDecisionCard({
           >
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-error-800 dark:text-error-300 flex items-center gap-1.5">
-                <CloseIcon/>
+                <CloseIcon />
                 REJECT
               </span>
               <input
@@ -131,28 +421,97 @@ export default function HrDecisionCard({
               />
             </div>
             <span className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-              Send polite rejection notification.
+              Tidak direkomendasikan lanjut ke tahap seleksi berikutnya.
             </span>
           </label>
         </div>
 
+        {/* Next Pipeline Stage Selector when ADVANCE is active */}
+        {selectedDecision === "ADVANCE" && (
+          <div className="rounded-xl border border-brand-200 bg-brand-50/40 p-3.5 text-start dark:border-brand-500/30 dark:bg-brand-500/10">
+            <span className="block text-xs font-bold text-gray-900 dark:text-white">
+              {isInterviewerSubmission
+                ? "Rekomendasi Tahap Lanjutan untuk HR:"
+                : "Pilih Tahap Lanjutan (Otomatis Memperbarui Application Status):"}
+            </span>
+            <div className="mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <button
+                type="button"
+                onClick={() => setNextStage("NEXT_INTERVIEW")}
+                className={`rounded-lg border p-2.5 text-start text-xs transition-all ${
+                  nextStage === "NEXT_INTERVIEW"
+                    ? "border-brand-500 bg-white font-semibold text-brand-700 shadow-theme-xs dark:bg-gray-900 dark:text-brand-300"
+                    : "border-gray-200 bg-white/70 text-gray-600 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-300"
+                }`}
+              >
+                <span className="block font-bold">1. Next Interview Round</span>
+                <span className="mt-0.5 block text-[11px] font-normal text-gray-500 dark:text-gray-400">
+                  User / Technical Interview &rarr; Status: <strong>Next Round Ready</strong>
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setNextStage("TECHNICAL_TEST")}
+                className={`rounded-lg border p-2.5 text-start text-xs transition-all ${
+                  nextStage === "TECHNICAL_TEST"
+                    ? "border-brand-500 bg-white font-semibold text-brand-700 shadow-theme-xs dark:bg-gray-900 dark:text-brand-300"
+                    : "border-gray-200 bg-white/70 text-gray-600 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-300"
+                }`}
+              >
+                <span className="block font-bold">2. Technical Test</span>
+                <span className="mt-0.5 block text-[11px] font-normal text-gray-500 dark:text-gray-400">
+                  Take-Home / Assessment &rarr; Status: <strong>Technical Test</strong>
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setNextStage("OFFERED")}
+                className={`rounded-lg border p-2.5 text-start text-xs transition-all ${
+                  nextStage === "OFFERED"
+                    ? "border-brand-500 bg-white font-semibold text-brand-700 shadow-theme-xs dark:bg-gray-900 dark:text-brand-300"
+                    : "border-gray-200 bg-white/70 text-gray-600 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-300"
+                }`}
+              >
+                <span className="block font-bold">3. Final Offering</span>
+                <span className="mt-0.5 block text-[11px] font-normal text-gray-500 dark:text-gray-400">
+                  Lolos seluruh seleksi &rarr; Status: <strong>Offering</strong>
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Evaluation Notes */}
-        <div>
+        <div className="text-start">
           <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-            HR Evaluation & Notes for {candidateName}:
+            {isInterviewerSubmission
+              ? `Catatan Evaluasi Teknis / User untuk ${candidateName}:`
+              : `Catatan Keputusan Final HR untuk ${candidateName}:`}
           </label>
           <textarea
             rows={3}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="Enter rationale based on cited evidence..."
+            required
+            placeholder="Tuliskan alasan evaluasi berdasarkan bukti kutipan transkrip..."
             className="w-full rounded-xl border border-gray-300 bg-gray-50 p-3 text-xs text-gray-800 placeholder-gray-400 focus:border-brand-500 focus:bg-white focus:outline-hidden dark:border-gray-700 dark:bg-gray-800 dark:text-white"
           />
         </div>
 
-        <div className="flex justify-end pt-1">
-          <Button variant="primary" size="sm" type="submit" startIcon={<LockIcon/>}>
-            {isSubmitted ? "Update Decision" : "Submit Final Decision"}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+          <span className="text-[11px] text-gray-500 dark:text-gray-400">
+            Perhatian: Keputusan bersifat satu arah (immutable) dan tidak dapat diubah setelah dikirim.
+          </span>
+          <Button
+            variant="primary"
+            size="sm"
+            type="submit"
+            disabled={isSubmitting}
+            startIcon={<LockIcon />}
+          >
+            {submitButtonLabel}
           </Button>
         </div>
       </form>

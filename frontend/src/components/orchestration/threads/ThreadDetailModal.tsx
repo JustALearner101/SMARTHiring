@@ -74,7 +74,7 @@ export default function ThreadDetailModal({
             </div>
             <div className="flex-1">
               <h4 className="text-xs font-bold text-error-800 dark:text-error-300">
-                Pilar LIMITS: Deadlock Reached — AI Autonomous Loop Halted
+                Deadlock Reached — AI Autonomous Loop Halted
               </h4>
               <p className="mt-1 text-xs text-error-700 dark:text-error-400 leading-relaxed">
                 {thread.escalation_reason ||

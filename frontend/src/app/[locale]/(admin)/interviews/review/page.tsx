@@ -1,7 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, Suspense } from "react";
+import React, { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { Link } from "@/i18n/navigation";
+import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/context/ToastContext";
+import { ApiError } from "@/lib/api";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import ReviewHeader from "@/components/interviews/review/ReviewHeader";
 import AudioWavePlayer from "@/components/interviews/review/AudioWavePlayer";
@@ -10,11 +15,12 @@ import CompetencyCard from "@/components/interviews/review/CompetencyCard";
 import CandidateSnapshotCard from "@/components/interviews/review/CandidateSnapshotCard";
 import HrDecisionCard from "@/components/interviews/review/HrDecisionCard";
 import {
-  InterviewSession,
-  TranscriptSegment,
-  SummaryEvidence,
+  AdvanceNextStage,
   HrDecision,
   HrDecisionType,
+  InterviewSession,
+  SummaryEvidence,
+  TranscriptSegment,
 } from "@/types/interview";
 import {
   getInterviewSession,
@@ -22,38 +28,79 @@ import {
   listInterviewSessions,
   saveHrDecision,
 } from "@/services/interviewService";
-import { ShootingStarIcon, CheckCircleIcon } from "@/icons";
+import { AudioIcon, CheckCircleIcon, LockIcon, ShootingStarIcon } from "@/icons";
 
 function ReviewContent() {
   const searchParams = useSearchParams();
   const sessionIdParam = searchParams.get("id");
+  const queryClient = useQueryClient();
+  const { user, role } = useAuth();
+  const { showSuccess, showError } = useToast();
 
-  // Audio Player State (Client-side UX simulation, Ledger U-07)
+  // Audio Player State
   const [currentTimeMs, setCurrentTimeMs] = useState<number>(80000);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [activeSegmentId, setActiveSegmentId] = useState<string | null>(null);
 
+  const [allSessions, setAllSessions] = useState<InterviewSession[]>([]);
   const [sessionData, setSessionData] = useState<InterviewSession | null>(null);
   const [transcriptSegments, setTranscriptSegments] = useState<TranscriptSegment[]>([]);
+  const [accessDeniedMessage, setAccessDeniedMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const durationMs = 45 * 60 * 1000 + 20 * 1000; // 45:20 in ms
+  const durationMs = 45 * 60 * 1000 + 20 * 1000;
 
-  // Hydrate session metadata + verbatim transcript strictly from the Backend API
+  // Hydrate all sessions (for Session Switcher) + active session metadata + verbatim transcript
   useEffect(() => {
     let cancelled = false;
 
     const loadEvidence = async () => {
       setIsLoading(true);
+      setAccessDeniedMessage(null);
       try {
+        const listPage = await listInterviewSessions({
+          page_size: 50,
+          scope: role === "INTERVIEWER" ? "mine" : "all",
+        });
+        const sessionItems = Array.isArray(listPage?.items) ? listPage.items : [];
+        if (!cancelled) {
+          setAllSessions(sessionItems);
+        }
+
         let targetId = sessionIdParam;
         if (!targetId) {
-          const listPage = await listInterviewSessions({ page_size: 1 });
-          targetId = listPage?.items?.[0]?.id ?? null;
+          const awaitingHrFollowup =
+            role === "HR" || role === "ADMIN"
+              ? sessionItems.find(
+                  (s) =>
+                    s.consent_status === "GRANTED" &&
+                    s.job_status === "COMPLETED" &&
+                    s.hr_decision?.workflow_status === "PENDING_HR_FOLLOWUP"
+                )
+              : undefined;
+          const pendingOwnReview = sessionItems.find(
+            (s) =>
+              s.consent_status === "GRANTED" &&
+              s.job_status === "COMPLETED" &&
+              !s.hr_decision &&
+              (role === "INTERVIEWER" ||
+                !s.interviewer_id ||
+                s.interviewer_id === user?.id)
+          );
+          const fallbackGranted = sessionItems.find((s) => s.consent_status === "GRANTED");
+          targetId =
+            awaitingHrFollowup?.id ??
+            pendingOwnReview?.id ??
+            fallbackGranted?.id ??
+            sessionItems[0]?.id ??
+            null;
         }
 
         if (!targetId || cancelled) {
-          if (!cancelled) setIsLoading(false);
+          if (!cancelled) {
+            setSessionData(null);
+            setIsLoading(false);
+          }
           return;
         }
 
@@ -75,7 +122,15 @@ function ReviewContent() {
           );
         }
       } catch (error) {
-        console.error("Failed to fetch interview review data:", error);
+        if (!cancelled && error instanceof ApiError && error.status === 403) {
+          setSessionData(null);
+          setAccessDeniedMessage(
+            error.message ||
+              "Akses ditolak (403): Anda tidak memiliki izin untuk membuka sesi wawancara milik pewawancara lain."
+          );
+        } else {
+          console.error("Failed to fetch interview review data:", error);
+        }
       } finally {
         if (!cancelled) setIsLoading(false);
       }
@@ -86,7 +141,7 @@ function ReviewContent() {
     return () => {
       cancelled = true;
     };
-  }, [sessionIdParam]);
+  }, [sessionIdParam, user?.id, role]);
 
   const competencyPoints = sessionData?.competency_points ?? [];
 
@@ -102,7 +157,6 @@ function ReviewContent() {
           }
           const next = prev + 1000;
 
-          // Auto-match active transcript segment as audio plays
           const matchingSeg = transcriptSegments.find(
             (s) => next >= s.start_ms && next <= s.end_ms
           );
@@ -117,30 +171,41 @@ function ReviewContent() {
     return () => clearInterval(interval);
   }, [isPlaying, durationMs, activeSegmentId, transcriptSegments]);
 
-  // Click on evidence quote -> jump audio + highlight transcript
   const handleJumpToEvidence = (evidence: SummaryEvidence) => {
     setCurrentTimeMs(evidence.start_ms);
     setActiveSegmentId(evidence.transcript_segment_id);
     setIsPlaying(true);
   };
 
-  // Click directly on transcript segment
   const handleSelectSegment = (segment: TranscriptSegment) => {
     setCurrentTimeMs(segment.start_ms);
     setActiveSegmentId(segment.id);
   };
 
   const handleDecisionSubmit = useCallback(
-    async (decision: HrDecisionType, notes: string) => {
+    async (
+      decision: HrDecisionType,
+      notes: string,
+      nextStage?: AdvanceNextStage | null
+    ) => {
       if (!sessionData) return;
 
       try {
-        const saved = await saveHrDecision(sessionData.id, { decision, notes });
+        const saved = await saveHrDecision(sessionData.id, {
+          decision,
+          next_stage: nextStage,
+          notes,
+        });
         const hrDecision: HrDecision = {
           decision: saved.decision,
+          next_stage: saved.next_stage ?? nextStage ?? null,
+          resulting_candidate_status: saved.resulting_candidate_status ?? null,
+          actor_role: saved.actor_role,
+          workflow_status: saved.workflow_status,
           notes: saved.notes || notes,
           decided_at: String(saved.decided_at),
           decided_by: saved.decided_by,
+          decided_by_user_id: saved.decided_by_user_id ?? null,
         };
         setSessionData((prev) =>
           prev
@@ -151,11 +216,37 @@ function ReviewContent() {
               }
             : prev
         );
+        setAllSessions((prev) =>
+          prev.map((item) =>
+            item.id === sessionData.id ? { ...item, hr_decision: hrDecision } : item
+          )
+        );
+
+        // Immediately sync Master Candidates cache so HR never edits status manually
+        void queryClient.invalidateQueries({ queryKey: ["candidates"] });
+
+        const resultingStatusLabel = saved.resulting_candidate_status || decision;
+        if (saved.workflow_status === "PENDING_HR_FOLLOWUP") {
+          showSuccess(
+            "Rekomendasi Evaluasi Diteruskan ke HR",
+            `Rekomendasi ${decision} untuk ${sessionData.candidate_name} terkunci dan dikirim ke HR untuk tindak lanjut final (status: ${resultingStatusLabel}).`
+          );
+        } else {
+          showSuccess(
+            "Keputusan Final HR Disimpan Permanen",
+            `Keputusan final ${decision} untuk ${sessionData.candidate_name} terkunci. Status aplikasi kandidat otomatis diperbarui ke ${resultingStatusLabel}.`
+          );
+        }
       } catch (error) {
         console.error("Failed to save HR decision:", error);
+        const msg =
+          error instanceof Error
+            ? error.message
+            : "Gagal menyimpan keputusan evaluasi ke server.";
+        showError("Gagal Menyimpan Keputusan", msg);
       }
     },
-    [sessionData]
+    [queryClient, sessionData, showError, showSuccess]
   );
 
   if (isLoading) {
@@ -169,12 +260,54 @@ function ReviewContent() {
     );
   }
 
+  if (accessDeniedMessage) {
+    return (
+      <div>
+        <PageBreadcrumb pageTitle="Review & Evidence Workspace" />
+        <div className="rounded-2xl border border-error-200 bg-error-50/50 p-10 text-center space-y-3 dark:border-error-500/30 dark:bg-error-500/10">
+          <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-error-100 text-error-600 dark:bg-error-500/20 dark:text-error-400">
+            <LockIcon />
+          </div>
+          <p className="text-sm font-bold text-error-800 dark:text-error-300">
+            Zero-Trust Ownership Guard (403 Forbidden)
+          </p>
+          <p className="mx-auto max-w-md text-xs text-gray-600 dark:text-gray-300">
+            {accessDeniedMessage}
+          </p>
+          <div>
+            <Link
+              href="/interviews/sessions"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-brand-500 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-600 transition-all"
+            >
+              <AudioIcon />
+              <span>Kembali ke Sesi Wawancara Saya</span>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!sessionData) {
     return (
       <div>
         <PageBreadcrumb pageTitle="Review & Evidence Workspace" />
-        <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center text-xs text-gray-400 dark:border-gray-800 dark:bg-gray-900">
-          No interview session found in database.
+        <div className="rounded-2xl border border-gray-200 bg-white p-10 text-center space-y-3 dark:border-gray-800 dark:bg-gray-900">
+          <p className="text-sm font-semibold text-gray-800 dark:text-white">
+            There are no interview recordings in the database yet.
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Upload interview recordings from candidates through the Interview Sessions page.
+          </p>
+          <div>
+            <Link
+              href="/interviews/sessions"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-brand-500 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-600 transition-all"
+            >
+              <AudioIcon />
+              <span>Open Interview Sessions</span>
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -184,8 +317,8 @@ function ReviewContent() {
     <div>
       <PageBreadcrumb pageTitle="Review & Evidence Workspace" />
 
-      {/* Top Session Metadata Header */}
-      <ReviewHeader session={sessionData} />
+      {/* Top Session Metadata Header + Session Switcher */}
+      <ReviewHeader session={sessionData} allSessions={allSessions} />
 
       {/* Split-View Workspace */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
@@ -205,18 +338,16 @@ function ReviewContent() {
             onSelectSegment={handleSelectSegment}
           />
 
-          {/* Provenance & ATS Match Snapshot */}
           <CandidateSnapshotCard session={sessionData} />
         </div>
 
         {/* Right Pane: AI Copilot Rubric Assessment & HR Decision Gate (7 Cols) */}
         <div className="lg:col-span-7 space-y-4">
-          {/* Header Card */}
           <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900 shadow-theme-xs">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2.5 text-start">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
-                  <ShootingStarIcon/>
+                  <ShootingStarIcon />
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-gray-900 dark:text-white">
@@ -229,7 +360,7 @@ function ReviewContent() {
               </div>
 
               <span className="inline-flex items-center gap-1 rounded-md bg-success-50 px-2.5 py-1 text-xs font-semibold text-success-700 dark:bg-success-500/15 dark:text-success-300">
-                <CheckCircleIcon/>
+                <CheckCircleIcon />
                 <span>
                   Audited {competencyPoints.length}/{competencyPoints.length} Points
                 </span>
@@ -237,7 +368,6 @@ function ReviewContent() {
             </div>
           </div>
 
-          {/* Competency Rubric Cards */}
           <div className="space-y-3">
             {competencyPoints.map((point) => (
               <CompetencyCard
@@ -248,12 +378,17 @@ function ReviewContent() {
             ))}
           </div>
 
-          {/* HR Decision Gate Form */}
           <HrDecisionCard
-            key={sessionData.hr_decision?.decided_at ?? "pending-decision"}
+            key={`${sessionData.id}-${sessionData.hr_decision?.workflow_status ?? "none"}-${sessionData.hr_decision?.decided_at ?? "pending"}`}
             initialDecision={sessionData.hr_decision}
             onSubmitDecision={handleDecisionSubmit}
+            candidateId={sessionData.candidate_id}
             candidateName={sessionData.candidate_name}
+            roundName={sessionData.round_name}
+            currentUserId={user?.id ?? null}
+            currentUserRole={role}
+            interviewerId={sessionData.interviewer_id ?? null}
+            interviewerName={sessionData.interviewer_name}
           />
         </div>
       </div>
@@ -263,7 +398,13 @@ function ReviewContent() {
 
 export default function ReviewEvidencePage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-xs text-gray-400">Loading Review Workspace...</div>}>
+    <Suspense
+      fallback={
+        <div className="p-8 text-center text-xs text-gray-400">
+          Loading Review Workspace...
+        </div>
+      }
+    >
       <ReviewContent />
     </Suspense>
   );

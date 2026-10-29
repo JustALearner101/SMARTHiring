@@ -1,29 +1,67 @@
 "use client";
 
 import React from "react";
-import { Link } from "@/i18n/navigation";
+import { Link, useRouter } from "@/i18n/navigation";
 import { InterviewSession } from "@/types/interview";
 import ConsentBadge from "../sessions/ConsentBadge";
-import { ChevronLeftIcon, TimeIcon, CheckCircleIcon, UserIcon } from "@/icons";
+import { CheckCircleIcon, ChevronLeftIcon, TimeIcon, UserIcon } from "@/icons";
 
 interface ReviewHeaderProps {
   session: InterviewSession;
+  allSessions?: InterviewSession[];
 }
 
-export default function ReviewHeader({ session }: ReviewHeaderProps) {
+export default function ReviewHeader({
+  session,
+  allSessions = [],
+}: ReviewHeaderProps) {
+  const router = useRouter();
+
+  const switchableSessions = allSessions.filter(
+    (s) => s.consent_status === "GRANTED"
+  );
+
   return (
-    <div className="mb-5 rounded-2xl border border-gray-200 bg-white p-4 md:p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
+    <div className="mb-5 rounded-2xl border border-gray-200 bg-white p-4 md:p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900 space-y-4">
+      {/* Integrated Session Switcher Bar */}
+      {switchableSessions.length > 1 && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-gray-100 pb-3.5 dark:border-gray-800">
+          <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+            Active Session Workspace ({switchableSessions.length} Recorded Sessions):
+          </span>
+          <select
+            value={session.id}
+            onChange={(e) => {
+              router.replace(`/interviews/review?id=${encodeURIComponent(e.target.value)}`);
+            }}
+            className="w-full sm:w-auto sm:min-w-[340px] rounded-xl border border-gray-300 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-800 focus:border-brand-500 focus:bg-white focus:outline-hidden dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+          >
+            {switchableSessions.map((item) => {
+              const decisionTag = item.hr_decision
+                ? `[${item.hr_decision.decision}]`
+                : "[Pending Decision]";
+              return (
+                <option key={item.id} value={item.id}>
+                  #{item.id} — {item.candidate_name} ({item.candidate_code}) • {item.round_name}{" "}
+                  {decisionTag}
+                </option>
+              );
+            })}
+          </select>
+        </div>
+      )}
+
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-start gap-3.5">
           <Link
             href="/interviews/sessions"
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-400 dark:hover:bg-gray-800"
-            title="Back to Sessions"
+            title="Back to Interview Sessions"
           >
-            <ChevronLeftIcon/>
+            <ChevronLeftIcon className="rtl:rotate-180" />
           </Link>
 
-          <div>
+          <div className="text-start">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-lg font-bold text-gray-900 dark:text-white">
                 {session.candidate_name}
@@ -58,8 +96,8 @@ export default function ReviewHeader({ session }: ReviewHeaderProps) {
           </span>
 
           <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 font-mono text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-300">
-            <TimeIcon/>
-            <span>Duration: {session.audio_duration}</span>
+            <TimeIcon />
+            <span>Duration: {session.audio_duration || "45:20"}</span>
           </span>
         </div>
       </div>

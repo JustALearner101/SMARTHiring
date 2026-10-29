@@ -23,7 +23,7 @@ async def get_operational_policy(
 @router.put("", response_model=ApiResponse[OperationalPolicyDTO])
 async def update_operational_policy(
     dto: OperationalPolicyDTO,
-    _current_user: User = Depends(require_roles(["HR"])),
+    _current_user: User = Depends(require_roles(["HR", "ADMIN"])),
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[OperationalPolicyDTO]:
     service = OperationalPolicyService(db)

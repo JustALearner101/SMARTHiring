@@ -20,16 +20,8 @@ COMPILED_PATTERNS = [re.compile(p, re.IGNORECASE) for p in INJECTION_PATTERNS]
 
 
 class GuardrailNode:
-    """Node 1: Prompt Injection & Security Scanner (Pilar PERMISSIONS & RECORD).
-
-    Examines incoming natural language instructions, candidate WhatsApp messages,
-    and interview notes for directive overrides, unauthorized elevation attempts,
-    or prompt injections.
-    """
-
     @classmethod
     def scan_text(cls, text: str) -> tuple[bool, str]:
-        """Scans input text; returns (is_safe, notes)."""
         clean_text = text.strip().lower()
         if not clean_text:
             return True, "Input kosong atau aman."
@@ -37,20 +29,19 @@ class GuardrailNode:
         for pattern in COMPILED_PATTERNS:
             if pattern.search(clean_text):
                 return False, (
-                    "Guardrail Alert: Terdeteksi indikasi prompt injection / instruksi adversarial liar. "
-                    "Instruksi diisolasi untuk mencegah pelanggaran pilar PERMISSIONS."
+                    "Guardrail Alert: Indications of prompt injection or malicious adversarial instructions have been detected."
+                    "Instructions have been isolated to prevent PERMISSIONS pillar violations."
                 )
 
         # Keyword heuristics
         suspicious_keywords = ["bypass", "system prompt", "abort all", "ignore previous", "override policy"]
         if any(kw in clean_text for kw in suspicious_keywords):
-            return False, "Guardrail Alert: Pola teks berisiko tinggi terdeteksi dan diblokir."
+            return False, "Guardrail Alert: High-risk text patterns detected and blocked."
 
-        return True, "Instruksi terverifikasi aman bebas prompt injection."
+        return True, "Instructions verified to be safe from prompt injection."
 
     @classmethod
     async def run(cls, state: OrchestratorAgentState) -> dict[str, Any]:
-        """LangGraph node execution."""
         command = state.get("command", "")
         is_safe, notes = cls.scan_text(command)
 

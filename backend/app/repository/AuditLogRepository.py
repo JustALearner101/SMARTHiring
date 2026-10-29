@@ -50,6 +50,6 @@ class AuditLogRepository(BaseRepository[AuditLog]):
         items, total = await self.paginate(
             offset=offset,
             limit=limit,
-            order_by=AuditLog.nid.desc(),
+            order_by=(AuditLog.dcrea.desc(), AuditLog.nid.desc()),
         )
         return items, total

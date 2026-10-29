@@ -1,9 +1,18 @@
+from __future__ import annotations
+
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.model.BaseModel import TableBaseModel
+
+if TYPE_CHECKING:
+    from app.model.CandidateModel import Candidate
+    from app.model.JobModel import Job
+    from app.model.RubricModel import Profile
+    from app.model.UserModel import User
 
 
 class Interview(TableBaseModel):
@@ -32,10 +41,17 @@ class Interview(TableBaseModel):
         nullable=False,
         index=True,
     )
+    nid_interviewer: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("tblm_user.nid", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
-    profile: Mapped["Profile"] = relationship("Profile")  # noqa: F821
-    candidate: Mapped["Candidate"] = relationship("Candidate")  # noqa: F821
-    source_files: Mapped[list["SourceFile"]] = relationship(
+    profile: Mapped[Profile] = relationship("Profile")
+    candidate: Mapped[Candidate] = relationship("Candidate")
+    interviewer: Mapped[User | None] = relationship("User")
+    source_files: Mapped[list[SourceFile]] = relationship(
         "SourceFile",
         back_populates="interview",
         cascade="all, delete-orphan",
@@ -63,5 +79,5 @@ class SourceFile(TableBaseModel):
         index=True,
     )
 
-    interview: Mapped["Interview"] = relationship("Interview", back_populates="source_files")
-    jobs: Mapped[list["Job"]] = relationship("Job", back_populates="source_file")  # noqa: F821
+    interview: Mapped[Interview] = relationship("Interview", back_populates="source_files")
+    jobs: Mapped[list[Job]] = relationship("Job", back_populates="source_file")

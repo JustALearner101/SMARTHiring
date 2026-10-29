@@ -32,17 +32,17 @@ class OrchestratorAgentState(TypedDict, total=False):
     interviewer_phone: str | None
     interviewer_timezone: str | None
 
-    # Disambiguation Gate (Pilar LIMITS)
+    # Disambiguation Gate
     is_disambiguation_needed: bool
     disambiguation_profiles: list[dict[str, Any]]
     disambiguation_message: str | None
 
-    # Guardrail (Pilar PERMISSIONS)
+    # Guardrail 
     guardrail_passed: bool
     guardrail_notes: str
     injection_detected: bool
 
-    # Planner & Citations (Pilar SOURCES)
+    # Planner & Citations 
     proposed_slot: dict[str, Any] | None
     sources_cited: list[dict[str, Any]]
     items: list[dict[str, Any]]
@@ -52,16 +52,11 @@ class OrchestratorAgentState(TypedDict, total=False):
     secondary_validator_passed: bool
     validator_notes: str
 
-    # Execution & Outcomes (Pilar APPROVAL & RECORD)
+    # Execution & Outcomes
     action_plan_id: int | None
     status: str  # "CLARIFICATION_NEEDED" | "PENDING_APPROVAL" | "DEADLOCK_ESCALATED" | "EXECUTED" | "UNDONE"
     escalation_reason: str | None
     audit_entries: list[dict[str, Any]]
-
-
-# ==============================================================================
-# 2. State TypedDict for Post-Interview Analyzer (Pipeline 2)
-# ==============================================================================
 
 class InterviewAnalyzerState(TypedDict, total=False):
     interview_id: int
@@ -84,12 +79,7 @@ class InterviewAnalyzerState(TypedDict, total=False):
     audit_entries: list[dict[str, Any]]
 
 
-# ==============================================================================
-# 3. Pydantic Structured Output Schemas for LLM
-# ==============================================================================
-
 class CommandExtractionSchema(BaseModel):
-    """Structured extraction of intent, parties, and scheduling constraints."""
     candidate_name: str = Field(description="Name or partial name of candidate mentioned")
     interviewer_name: str = Field(description="Name or partial name of interviewer or hiring manager mentioned")
     target_date_hint: str = Field(default="next week", description="Timeframe hinted e.g. 'besok', 'rabu depan'")
@@ -99,7 +89,6 @@ class CommandExtractionSchema(BaseModel):
 
 
 class TriageEvaluationSchema(BaseModel):
-    """Autonomous triage decision on incoming candidate or interviewer reply."""
     intent: Literal["CONFIRM", "RESCHEDULE", "OUT_OF_SCOPE"] = Field(
         description="CONFIRM: agrees with proposed slot; RESCHEDULE: requests a different time; OUT_OF_SCOPE: discusses salary, benefits, etc."
     )
@@ -117,5 +106,4 @@ class CompetencyEvaluationItem(BaseModel):
 
 
 class InterviewEvaluationReportSchema(BaseModel):
-    """Collection of evaluated competencies with verbatim quotes."""
     evaluations: list[CompetencyEvaluationItem] = Field(default_factory=list)

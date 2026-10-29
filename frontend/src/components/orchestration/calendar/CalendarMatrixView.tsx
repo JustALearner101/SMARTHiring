@@ -78,7 +78,7 @@ export default function CalendarMatrixView({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-gray-100 pb-4 dark:border-gray-800">
         <div className="flex items-center gap-3">
           <label className="text-xs font-bold text-gray-700 dark:text-gray-300">
-            Pilih Interviewer:
+            Select Interviewer:
           </label>
           <select
             value={currentInterviewer.id}
@@ -97,15 +97,15 @@ export default function CalendarMatrixView({
         <div className="flex flex-wrap items-center gap-3 text-[11px]">
           <span className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
             <span className="h-2.5 w-2.5 rounded-full bg-brand-500" />
-            Interview Terjadwal (AI)
+            Scheduled Interview
           </span>
           <span className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
             <span className="h-2.5 w-2.5 rounded-full bg-purple-500" />
-            Rapat Internal
+            Internal Meeting
           </span>
           <span className="flex items-center gap-1.5 font-bold text-warning-700 dark:text-warning-400">
             <span className="h-2.5 w-2.5 rounded-full bg-warning-500" />
-            [rule-jumatan] Sholat Jumat
+            Friday Prayer
           </span>
         </div>
       </div>
@@ -198,7 +198,7 @@ export default function CalendarMatrixView({
                               <span>BLOCKED</span>
                             </span>
                             <span className="text-[9px] font-mono mt-0.5">
-                              [rule-jumatan] Sholat Jumat
+                              Friday Prayer
                             </span>
                           </div>
                         )}
@@ -206,7 +206,7 @@ export default function CalendarMatrixView({
                         {/* Empty Slot Hover Hint */}
                         {!isFridayPrayerHour && !isNonWorking && cellEvents.length === 0 && (
                           <div className="hidden group-hover:flex items-center justify-center h-full text-[10px] font-semibold text-brand-600 dark:text-brand-400">
-                            + Pilih Slot
+                            + Add Slot
                           </div>
                         )}
 
@@ -259,18 +259,18 @@ export default function CalendarMatrixView({
           <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-5 shadow-theme-lg dark:border-gray-800 dark:bg-gray-900">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3 dark:border-gray-800">
               <h4 className="text-sm font-bold text-gray-900 dark:text-white">
-                Detail Agenda Kalender
+                Calendar Agenda Details
               </h4>
               <button
                 onClick={() => setSelectedEvent(null)}
                 className="text-gray-400 hover:text-gray-600 text-xs"
               >
-                Tutup
+                Close
               </button>
             </div>
             <div className="mt-3 space-y-2 text-xs">
               <div>
-                <span className="text-gray-400 block text-[10px]">Judul:</span>
+                <span className="text-gray-400 block text-[10px]">Title:</span>
                 <span className="font-bold text-gray-900 dark:text-white">
                   {selectedEvent.title}
                 </span>
@@ -282,14 +282,14 @@ export default function CalendarMatrixView({
                 </span>
               </div>
               <div>
-                <span className="text-gray-400 block text-[10px]">Waktu:</span>
+                <span className="text-gray-400 block text-[10px]">Time:</span>
                 <span className="font-mono text-brand-600 dark:text-brand-400">
                   {selectedEvent.start.replace("T", " ")} s/d {selectedEvent.end.split("T")[1]}
                 </span>
               </div>
               {selectedEvent.description && (
                 <div>
-                  <span className="text-gray-400 block text-[10px]">Keterangan:</span>
+                  <span className="text-gray-400 block text-[10px]">Description:</span>
                   <p className="text-gray-600 dark:text-gray-400 leading-relaxed">
                     {selectedEvent.description}
                   </p>

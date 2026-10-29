@@ -75,7 +75,7 @@ async def seed_data() -> None:
                 "vphone_number": "+6281211112222",
                 "vposition": "VP of Engineering",
                 "vdepartment": "Engineering",
-                "vrole": "USER_INTERVIEWER",
+                "vrole": "INTERVIEWER",
                 "vtimezone": "WIB",
                 "vworking_hours": "09:00 - 17:00",
                 "vstatus": "ACTIVE",
@@ -89,21 +89,21 @@ async def seed_data() -> None:
                 "vphone_number": "+6281299998888",
                 "vposition": "VP of Finance",
                 "vdepartment": "Finance",
-                "vrole": "USER_INTERVIEWER",
+                "vrole": "INTERVIEWER",
                 "vtimezone": "WITA",
                 "vworking_hours": "09:00 - 17:00",
                 "vstatus": "ACTIVE",
             },
             {
                 "vuserid": "EMP-AUD-001",
-                "vname": "Hendra Wijaya (Lead Auditor)",
+                "vname": "Hendra Wijaya (System Admin)",
                 "vusername": "auditor.it",
                 "vemail": "hendra.wijaya@company.com",
                 "vpassword_hash": default_password_hash,
                 "vphone_number": "+6281333334444",
-                "vposition": "IT & AI Governance Auditor",
+                "vposition": "IT & AI Governance Administrator",
                 "vdepartment": "Internal Audit",
-                "vrole": "AUDITOR",
+                "vrole": "ADMIN",
                 "vtimezone": "WIB",
                 "vworking_hours": "09:00 - 17:00",
                 "vstatus": "ACTIVE",
@@ -123,42 +123,38 @@ async def seed_data() -> None:
             else:
                 existing.vpassword_hash = default_password_hash
                 existing.vname = u["vname"]
+                existing.vrole = u["vrole"]
                 existing.vposition = u["vposition"]
                 existing.vdepartment = u["vdepartment"]
                 existing.vtimezone = u["vtimezone"]
                 print(f"  [User] {u['vname']} sudah ada, kredensial disinkronkan.")
 
+        await session.flush()
+
         # -------------------------------------------------------------
         # 3. Seed Permissions (Matriks Hak Akses per Kelas Data)
         # -------------------------------------------------------------
         permissions_matrix = [
-            # HR: Akses penuh
+            # HR: Akses penuh operasional rekrutmen
             ("HR", "GENERAL", "WRITE"),
             ("HR", "HR_ONLY", "WRITE"),
             ("HR", "SALARY", "READ"),
             ("HR", "SENSITIVE_FLAG", "READ"),
-            ("HR", "AUDIT_LOG", "READ"),
+            ("HR", "AUDIT_LOG", "NONE"),
 
-            # USER_INTERVIEWER: Terbatas umum, blokir gaji & sensitif
-            ("USER_INTERVIEWER", "GENERAL", "READ"),
-            ("USER_INTERVIEWER", "HR_ONLY", "NONE"),
-            ("USER_INTERVIEWER", "SALARY", "NONE"),
-            ("USER_INTERVIEWER", "SENSITIVE_FLAG", "NONE"),
-            ("USER_INTERVIEWER", "AUDIT_LOG", "NONE"),
+            # INTERVIEWER: Terbatas umum, blokir gaji & sensitif
+            ("INTERVIEWER", "GENERAL", "READ"),
+            ("INTERVIEWER", "HR_ONLY", "NONE"),
+            ("INTERVIEWER", "SALARY", "NONE"),
+            ("INTERVIEWER", "SENSITIVE_FLAG", "NONE"),
+            ("INTERVIEWER", "AUDIT_LOG", "NONE"),
 
-            # TECH_INTERVIEWER: Terbatas umum
-            ("TECH_INTERVIEWER", "GENERAL", "READ"),
-            ("TECH_INTERVIEWER", "HR_ONLY", "NONE"),
-            ("TECH_INTERVIEWER", "SALARY", "NONE"),
-            ("TECH_INTERVIEWER", "SENSITIVE_FLAG", "NONE"),
-            ("TECH_INTERVIEWER", "AUDIT_LOG", "NONE"),
-
-            # AUDITOR: Khusus inspeksi log dan evaluasi
-            ("AUDITOR", "AUDIT_LOG", "READ"),
-            ("AUDITOR", "GENERAL", "READ"),
-            ("AUDITOR", "SENSITIVE_FLAG", "READ"),
-            ("AUDITOR", "SALARY", "NONE"),
-            ("AUDITOR", "HR_ONLY", "NONE"),
+            # ADMIN: Akses penuh seluruh modul & inspeksi audit log
+            ("ADMIN", "AUDIT_LOG", "READ"),
+            ("ADMIN", "GENERAL", "WRITE"),
+            ("ADMIN", "HR_ONLY", "WRITE"),
+            ("ADMIN", "SALARY", "READ"),
+            ("ADMIN", "SENSITIVE_FLAG", "READ"),
         ]
 
         for role, vis_class, level in permissions_matrix:
@@ -239,13 +235,20 @@ async def seed_data() -> None:
                 print(f"  [Candidate] {cand_dict['vname']} ({cand_dict['vcandidate_code']}) data disinkronkan.")
 
         # -------------------------------------------------------------
-        # 5. Seed Rubric Profiles & Competencies
+        # 5. Seed Rubric Profiles & Competencies (Scoped per User/Division)
         # -------------------------------------------------------------
+        hr_owner = (await session.execute(select(User).where(User.vusername == "hr.admin"))).scalars().first()
+        eng_owner = (await session.execute(select(User).where(User.vusername == "budi.santoso"))).scalars().first()
+        fin_owner = (await session.execute(select(User).where(User.vusername == "budi.hartono"))).scalars().first()
+
         profiles_to_seed = [
             {
                 "vcode": "PROFILE-HR-R1",
                 "vname": "HR Screening & Culture Fit (Round 1)",
                 "vversion_no": "v1.0",
+                "vtarget_role": "HR",
+                "vdepartment": "Human Resources",
+                "nid_owner_user": hr_owner.nid if hr_owner else None,
                 "vsummary_format": {"format": "COMPETENCY_EVIDENCE_MAP"},
                 "competencies": [
                     {
@@ -280,8 +283,11 @@ async def seed_data() -> None:
             },
             {
                 "vcode": "PROFILE-TECH-R1",
-                "vname": "User Technical Interview (Round 1)",
+                "vname": "Engineering Technical Interview (Round 1)",
                 "vversion_no": "v1.0",
+                "vtarget_role": "INTERVIEWER",
+                "vdepartment": "Engineering",
+                "nid_owner_user": eng_owner.nid if eng_owner else None,
                 "vsummary_format": {"format": "COMPETENCY_EVIDENCE_MAP"},
                 "competencies": [
                     {
@@ -305,12 +311,30 @@ async def seed_data() -> None:
                         "nsort_order": 3,
                         "vreference_question": "Bagaimana Anda mengelola perbedaan pandangan teknis dengan anggota tim?",
                     },
+                ],
+            },
+            {
+                "vcode": "PROFILE-FIN-R1",
+                "vname": "Finance & Corporate Governance Interview",
+                "vversion_no": "v1.0",
+                "vtarget_role": "INTERVIEWER",
+                "vdepartment": "Finance",
+                "nid_owner_user": fin_owner.nid if fin_owner else None,
+                "vsummary_format": {"format": "COMPETENCY_EVIDENCE_MAP"},
+                "competencies": [
                     {
-                        "vvisibility_class": "SALARY",
-                        "vcode": "C4",
-                        "vname": "Salary & Compensation Expectations",
-                        "nsort_order": 4,
-                        "vreference_question": "Berapa ekspektasi kompensasi total dan berapa lama periode pemberitahuan (notice period)?",
+                        "vvisibility_class": "GENERAL",
+                        "vcode": "F1",
+                        "vname": "Financial Modeling & Forecasting Accuracy",
+                        "nsort_order": 1,
+                        "vreference_question": "Bagaimana metode Anda memvalidasi asumsi proyeksi arus kas kuartalan saat volatilitas pasar tinggi?",
+                    },
+                    {
+                        "vvisibility_class": "GENERAL",
+                        "vcode": "F2",
+                        "vname": "Internal Control & Audit Compliance (PSAK/IFRS)",
+                        "nsort_order": 2,
+                        "vreference_question": "Ceritakan pengalaman Anda menemukan dan menutup celah rekonsiliasi keuangan sebelum audit eksternal.",
                     },
                 ],
             },
@@ -328,6 +352,9 @@ async def seed_data() -> None:
                     vcode=p_data["vcode"],
                     vname=p_data["vname"],
                     vversion_no=p_data["vversion_no"],
+                    vtarget_role=p_data["vtarget_role"],
+                    vdepartment=p_data["vdepartment"],
+                    nid_owner_user=p_data["nid_owner_user"],
                     vsummary_format=p_data["vsummary_format"],
                 )
                 session.add(existing_p)
@@ -335,6 +362,9 @@ async def seed_data() -> None:
                 print(f"  [Rubric Profile] Profil {p_data['vcode']} dibuat.")
             else:
                 existing_p.vname = p_data["vname"]
+                existing_p.vtarget_role = p_data["vtarget_role"]
+                existing_p.vdepartment = p_data["vdepartment"]
+                existing_p.nid_owner_user = p_data["nid_owner_user"]
                 print(f"  [Rubric Profile] Profil {p_data['vcode']} sudah ada.")
 
             for c_data in p_data["competencies"]:
@@ -489,6 +519,7 @@ async def seed_data() -> None:
                 interview = Interview(
                     nid_candidate=rina_cand.nid,
                     nid_profile=tech_profile.nid,
+                    nid_interviewer=budi_user.nid if budi_user else None,
                     vconsent_status="GRANTED",
                     dconsent_at=datetime.now(UTC),
                     vconsent_notice_version="v2.1",
