@@ -90,7 +90,7 @@ export default function CandidatesPage() {
     setFormData({
       name: "",
       email: "",
-      phone: "+628",
+      phone: "",
       preferred_channel: "whatsapp",
       applied_position: "",
       status: "SCREENING",

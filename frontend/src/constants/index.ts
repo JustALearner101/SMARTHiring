@@ -40,4 +40,8 @@ export const API_ENDPOINTS = {
 
   // Audit
   AUDIT_LOGS: "/auditLogs",
+
+  // Notifications
+  NOTIFICATIONS: "/notifications",
 } as const;
+

@@ -15,6 +15,7 @@ import {
   EnvelopeIcon,
   InfoIcon,
   ShootingStarIcon,
+  CalenderIcon,
 } from "@/icons";
 import { Link } from "@/i18n/navigation";
 import { listAuditLogs } from "@/services/auditService";
@@ -510,23 +511,6 @@ function SchedulingContent() {
     <div>
       <PageBreadcrumb pageTitle="Autonomous Scheduling" />
 
-      {/* Pillars of Accountability Compliance Banner */}
-      <div className="mb-5 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900 shadow-theme-xs">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-500 text-white shadow-theme-xs">
-              <BoltIcon className="text-white" />
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-gray-900 dark:text-white">
-                AI Orchestrator
-              </h2>
-              <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                Automation of post-screening scheduling in ATS with full human oversight.
-              </p>
-            </div>
-          </div>
-
           {/* 5 Pillars Badges */}
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="rounded-md bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
@@ -649,12 +633,12 @@ function SchedulingContent() {
                               >
                                 {isEmail ? (
                                   <>
-                                    <EnvelopeIcon className="h-3.5 w-3.5" />
+                                    <EnvelopeIcon/>
                                     <span>Email</span>
                                   </>
                                 ) : (
                                   <>
-                                    <ChatIcon className="h-3.5 w-3.5" />
+                                    <ChatIcon/>
                                     <span>WhatsApp</span>
                                   </>
                                 )}
@@ -671,7 +655,8 @@ function SchedulingContent() {
                       {activePlan?.proposed_slot?.formatted_wib && (
                         <div className="flex items-center gap-2 rounded-xl bg-white/70 p-2.5 dark:bg-gray-900/70 border border-success-200/80 dark:border-success-900/40 shadow-2xs">
                           <span className="inline-flex items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-2 py-1 text-[11px] font-bold text-purple-700 dark:border-purple-500/30 dark:bg-purple-500/15 dark:text-purple-300">
-                            📅 Calendar
+                            <CalenderIcon/>
+                            Calendar
                           </span>
                           <span className="text-xs text-gray-800 dark:text-gray-200">
                             Slot locked at <strong>{activePlan.proposed_slot.formatted_wib}</strong> (PostgreSQL Checked)

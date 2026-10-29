@@ -8,14 +8,21 @@ import { type Locale, routing } from "@/i18n/routing";
 import "flatpickr/dist/flatpickr.css";
 import { NextIntlClientProvider } from "next-intl";
 import { setRequestLocale } from "next-intl/server";
-import { Outfit } from "next/font/google";
+import { Plus_Jakarta_Sans, Poppins } from "next/font/google";
 import { notFound } from "next/navigation";
 import "simplebar-react/dist/simplebar.min.css";
 import "swiper/css/bundle";
 import "../globals.css";
 
-const outfit = Outfit({
+const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
+  variable: "--font-sans",
+});
+
+const poppins = Poppins({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-poppins",
 });
 
 export function generateStaticParams() {
@@ -39,7 +46,7 @@ export default async function RootLayout({
 
   return (
     <html lang={locale} dir={isRtl(locale as Locale) ? "rtl" : "ltr"} suppressHydrationWarning>
-      <body suppressHydrationWarning className={`${outfit.className} dark:bg-gray-900`}>
+      <body suppressHydrationWarning className={`${poppins.className} dark:bg-gray-900`}>
         <NextIntlClientProvider>
           <QueryProvider>
             <ThemeProvider>
