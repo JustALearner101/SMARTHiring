@@ -35,6 +35,9 @@ class InterviewSessionDTO(BaseDTO):
     audio_url: str | None = None
     audio_duration: str | None = None
     job_status: JobStatus
+    progress_percentage: int = 100
+    current_step: str = ""
+    asr_engine: str | None = None
     competency_points: list[CompetencySummaryPointDTO] = Field(default_factory=list)
     hr_decision: HrDecisionDTO | None = None
 

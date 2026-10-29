@@ -7,7 +7,11 @@ import { AlertIcon, CheckCircleIcon } from "@/icons";
 interface CalendarMatrixViewProps {
   events: CalendarMatrixEvent[];
   selectedTimezone: "WIB" | "WITA" | "WIT";
-  onSelectSlot?: (date: string, time: string) => void;
+  onSelectSlot?: (
+    date: string,
+    time: string,
+    interviewer?: { id: string; name: string; role: string }
+  ) => void;
 }
 
 export default function CalendarMatrixView({
@@ -167,18 +171,23 @@ export default function CalendarMatrixView({
                     return (
                       <div
                         key={d.dateStr}
-                        onClick={() =>
-                          !isFridayPrayerHour &&
-                          !isNonWorking &&
-                          onSelectSlot &&
-                          onSelectSlot(d.dateStr, hour)
-                        }
+                        onClick={() => {
+                          if (!isFridayPrayerHour && !isNonWorking && cellEvents.length === 0 && onSelectSlot) {
+                            onSelectSlot(d.dateStr, hour, {
+                              id: currentInterviewer.id,
+                              name: currentInterviewer.name,
+                              role: currentInterviewer.role,
+                            });
+                          }
+                        }}
                         className={`p-1 border-e border-gray-100 dark:border-gray-800 relative transition-all ${
                           isFridayPrayerHour
                             ? "bg-warning-100/40 dark:bg-warning-900/20 cursor-not-allowed"
                             : isNonWorking
                             ? "cursor-not-allowed"
-                            : "hover:bg-brand-50/30 cursor-pointer"
+                            : cellEvents.length > 0
+                            ? ""
+                            : "hover:bg-brand-50/40 dark:hover:bg-brand-500/10 cursor-pointer group"
                         }`}
                       >
                         {/* Friday Prayer Block Banner */}
@@ -191,6 +200,13 @@ export default function CalendarMatrixView({
                             <span className="text-[9px] font-mono mt-0.5">
                               [rule-jumatan] Sholat Jumat
                             </span>
+                          </div>
+                        )}
+
+                        {/* Empty Slot Hover Hint */}
+                        {!isFridayPrayerHour && !isNonWorking && cellEvents.length === 0 && (
+                          <div className="hidden group-hover:flex items-center justify-center h-full text-[10px] font-semibold text-brand-600 dark:text-brand-400">
+                            + Pilih Slot
                           </div>
                         )}
 
@@ -208,7 +224,7 @@ export default function CalendarMatrixView({
                                 e.stopPropagation();
                                 setSelectedEvent(evt);
                               }}
-                              className={`rounded-lg p-1.5 text-[10px] leading-tight shadow-xs transition-transform hover:scale-[1.02] ${
+                              className={`rounded-lg p-1.5 text-[10px] leading-tight shadow-xs transition-transform hover:scale-[1.02] cursor-pointer ${
                                 isInterview
                                   ? "bg-brand-500 text-white font-semibold"
                                   : isMeeting

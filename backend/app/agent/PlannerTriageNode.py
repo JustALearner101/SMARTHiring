@@ -1,15 +1,39 @@
 from datetime import UTC, datetime, time, timedelta
 from typing import Any
 
+from pydantic import BaseModel, Field
+
 from app.agent.AgentState import OrchestratorAgentState
+from app.agent.LlmFactory import LlmFactory
+
+
+class PlannerResolutionSchema(BaseModel):
+    """Structured resolution schema for AI interview scheduling planning."""
+
+    target_time_preference: str = Field(
+        default="10:00",
+        description="Preferred slot start time e.g. '10:00', '14:00', '11:30', '13:30'",
+    )
+    interviewer_message: str = Field(
+        default="",
+        description="Drafted invitation message or email body for the internal hiring manager/interviewer",
+    )
+    candidate_message: str = Field(
+        default="",
+        description="Drafted invitation message for the candidate via their preferred channel",
+    )
+    reasoning: str = Field(
+        default="",
+        description="Reasoning explaining slot choice, non-conflict verification, and channel selection",
+    )
 
 
 class PlannerTriageNode:
     """Node 3: Planner & Triage Agent (Pilar SOURCES, LIMITS & PERMISSIONS).
 
     Decomposes natural language requests into structured action plans,
-    resolves meeting slots across WIB/WITA/WIT, builds citations for each
-    source examined, and enforces the 3-round negotiation limit.
+    resolves meeting slots across WIB/WITA/WIT using real calendar database availability,
+    builds citations for each source examined, and enforces the 3-round negotiation limit.
     Defaults notification channels to EMAIL (standard corporate protocol)
     while supporting WhatsApp when requested.
     """
@@ -62,8 +86,7 @@ class PlannerTriageNode:
 
         cand_name = state.get("candidate_name") or "Rina Kusuma"
         cand_pos = state.get("candidate_position") or "Senior Frontend Engineer"
-        # Corporate standard default is email, unless WhatsApp is explicitly indicated in the instruction
-        cand_channel = "whatsapp" if ("whatsapp" in cmd_lower or "wa" in cmd_lower) else "email"
+        cand_channel = "whatsapp" if ("whatsapp" in cmd_lower or "wa" in cmd_lower) else (state.get("candidate_channel") or "email")
         cand_email = state.get("candidate_email") or "candidate@example.com"
         cand_phone = state.get("candidate_phone") or "+6281234567890"
 
@@ -74,54 +97,119 @@ class PlannerTriageNode:
         inter_phone = state.get("interviewer_phone") or "+6281198765432"
         inter_tz = state.get("interviewer_timezone") or "WIB"
 
-        # 2. Slot Time Planning
-        now = datetime.now(UTC)
-        # Parse or default to slot in 2 days at 10:00 AM WIB (03:00 UTC)
-        target_hour = 10
-        target_minute = 0
-        if "14:00" in cmd_lower or "2 siang" in cmd_lower:
-            target_hour = 14
-        elif "11:30" in cmd_lower:
-            target_hour = 11
-            target_minute = 30
-        elif "13:30" in cmd_lower:
-            target_hour = 13
-            target_minute = 30
+        available_slots = state.get("available_slots") or []
 
-        day_offset = 2
-        if "besok" in cmd_lower:
-            day_offset = 1
-        elif "kamis" in cmd_lower:
-            day_offset = 3
-        elif "jumat" in cmd_lower:
-            day_offset = 4
+        # 2. Invoke LLM for Dynamic Entity Resolution & Drafting with Fallback
+        def fallback_planner() -> PlannerResolutionSchema:
+            pref = "10:00"
+            if "14:00" in cmd_lower or "2 siang" in cmd_lower:
+                pref = "14:00"
+            elif "11:30" in cmd_lower:
+                pref = "11:30"
+            elif "13:30" in cmd_lower:
+                pref = "13:30"
 
-        target_date = (now + timedelta(days=day_offset)).date()
-        target_slot_start = datetime.combine(target_date, time(target_hour, target_minute), tzinfo=UTC) - timedelta(hours=7)
-        target_slot_end = target_slot_start + timedelta(hours=1)
+            return PlannerResolutionSchema(
+                target_time_preference=pref,
+                interviewer_message=f"Halo {inter_name}, berikut draf undangan interview dengan {cand_name} untuk posisi {cand_pos}.",
+                candidate_message=f"Halo Kak {cand_name}, kami mengundang Anda ke User Technical Interview via Google Meet pada jadwal yang disepakati.",
+                reasoning="Fallback planner resolving standard schedule with corporate formatting.",
+            )
 
-        wib_time = target_slot_start + timedelta(hours=7)
-        wita_time = target_slot_start + timedelta(hours=8)
+        system_instruction = (
+            "You are Heketon AI Orchestrator, an autonomous HR scheduling agent. "
+            "Your task is to analyze the user's scheduling instruction, extract the target time preference, "
+            "and draft professional, clear invitation messages for the interviewer and candidate. "
+            "All timings must respect Indonesian business hours (09:00 - 17:00) and Friday prayer (11:30 - 13:00 WIB)."
+        )
+        user_content = (
+            f"Command: '{cmd}'\n"
+            f"Candidate: {cand_name} ({cand_pos})\n"
+            f"Interviewer: {inter_name} ({inter_role})\n"
+            f"Available Database Slots: {[s.get('formatted_wib') for s in available_slots[:4]]}"
+        )
 
-        slot_dict = {
-            "title": f"User Technical Interview: {cand_name}",
-            "start_utc": target_slot_start.isoformat(),
-            "end_utc": target_slot_end.isoformat(),
-            "formatted_wib": f"{wib_time.strftime('%A, %d %b %Y, %H:%M')} WIB",
-            "formatted_wita": f"{wita_time.strftime('%A, %d %b %Y, %H:%M')} WITA",
-            "duration_minutes": 60,
-            "location_type": "Google Meet",
-            "meeting_link": "https://meet.google.com/hkt-ops-2026",
-        }
+        plan_res = await LlmFactory.invoke_structured_or_fallback(
+            schema=PlannerResolutionSchema,
+            system_instruction=system_instruction,
+            user_content=user_content,
+            fallback_fn=fallback_planner,
+        )
 
-        # 3. Sources Cited (Pilar SOURCES)
+        # 3. Slot Time Planning (Using Real DB Calendar Slots if Available)
+        chosen_slot_data: dict[str, Any] | None = None
+
+        if available_slots:
+            # Try to find a slot matching target time preference
+            target_pref = plan_res.target_time_preference
+            for s in available_slots:
+                if s.get("time_str") == target_pref or target_pref in s.get("formatted_wib", ""):
+                    chosen_slot_data = s
+                    break
+            if not chosen_slot_data:
+                # Pick the first available slot from the database
+                chosen_slot_data = available_slots[0]
+
+        if chosen_slot_data:
+            slot_dict = {
+                "title": f"User Technical Interview: {cand_name}",
+                "start_utc": chosen_slot_data["start_utc"],
+                "end_utc": chosen_slot_data["end_utc"],
+                "formatted_wib": chosen_slot_data["formatted_wib"],
+                "formatted_wita": chosen_slot_data["formatted_wita"],
+                "duration_minutes": 60,
+                "location_type": "Google Meet",
+                "meeting_link": "https://meet.google.com/hkt-ops-2026",
+            }
+        else:
+            # Deterministic calculation fallback
+            now = datetime.now(UTC)
+            target_hour = 10
+            target_minute = 0
+            if "14:00" in cmd_lower or "2 siang" in cmd_lower or plan_res.target_time_preference == "14:00":
+                target_hour = 14
+            elif "11:30" in cmd_lower or plan_res.target_time_preference == "11:30":
+                target_hour = 11
+                target_minute = 30
+            elif "13:30" in cmd_lower or plan_res.target_time_preference == "13:30":
+                target_hour = 13
+                target_minute = 30
+
+            day_offset = 2
+            if "besok" in cmd_lower:
+                day_offset = 1
+            elif "kamis" in cmd_lower:
+                day_offset = 3
+            elif "jumat" in cmd_lower:
+                day_offset = 4
+
+            target_date = (now + timedelta(days=day_offset)).date()
+            target_slot_start = datetime.combine(target_date, time(target_hour, target_minute), tzinfo=UTC) - timedelta(hours=7)
+            target_slot_end = target_slot_start + timedelta(hours=1)
+
+            wib_time = target_slot_start + timedelta(hours=7)
+            wita_time = target_slot_start + timedelta(hours=8)
+
+            slot_dict = {
+                "title": f"User Technical Interview: {cand_name}",
+                "start_utc": target_slot_start.isoformat(),
+                "end_utc": target_slot_end.isoformat(),
+                "formatted_wib": f"{wib_time.strftime('%A, %d %b %Y, %H:%M')} WIB",
+                "formatted_wita": f"{wita_time.strftime('%A, %d %b %Y, %H:%M')} WITA",
+                "duration_minutes": 60,
+                "location_type": "Google Meet",
+                "meeting_link": "https://meet.google.com/hkt-ops-2026",
+            }
+
+        # 4. Sources Cited (Pilar SOURCES)
+        inter_slug = inter_name.lower().replace(" ", "-")
         sources = [
             {
                 "id": "src-01",
-                "ref_code": f"[cal-{inter_name.lower().replace(' ', '-')}]",
+                "ref_code": f"[cal-{inter_slug}]",
                 "source_type": "CALENDAR",
                 "title": f"Kalender {inter_name}",
-                "detail": f"Slot kosong terverifikasi pukul {target_hour:02d}:{target_minute:02d} {inter_tz} tanpa konflik jadwal lain.",
+                "detail": f"Slot kosong terverifikasi pukul {slot_dict.get('formatted_wib', '')} ({inter_tz}) tanpa konflik jadwal lain.",
             },
             {
                 "id": "src-02",
@@ -139,7 +227,10 @@ class PlannerTriageNode:
             },
         ]
 
-        # 4. Action Items Draft (3 items)
+        # 5. Action Items Draft (3 items)
+        interviewer_text = plan_res.interviewer_message or f"Halo {inter_name}, berikut draf undangan interview dengan {cand_name} untuk posisi {cand_pos}."
+        candidate_text = plan_res.candidate_message or f"Halo Kak {cand_name}, kami mengundang Anda ke User Technical Interview via Google Meet pada jadwal yang disepakati."
+
         action_items = [
             {
                 "id": "item-01",
@@ -149,7 +240,7 @@ class PlannerTriageNode:
                 "recipient_contact": inter_phone if inter_channel == "whatsapp" else inter_email,
                 "channel": inter_channel,
                 "subject": f"Undangan User Technical Interview: {cand_name}" if inter_channel == "email" else None,
-                "content_preview": f"Halo {inter_name}, berikut draf undangan interview dengan {cand_name} untuk posisi {cand_pos}.",
+                "content_preview": interviewer_text,
                 "is_external": False,
             },
             {
@@ -160,7 +251,7 @@ class PlannerTriageNode:
                 "recipient_contact": cand_phone if cand_channel == "whatsapp" else cand_email,
                 "channel": cand_channel,
                 "subject": f"Undangan Wawancara — {cand_pos}" if cand_channel == "email" else None,
-                "content_preview": f"Halo Kak {cand_name}, kami mengundang Anda ke User Technical Interview via Google Meet pada jadwal yang disepakati.",
+                "content_preview": candidate_text,
                 "is_external": True,  # External communication triggers High-Impact
             },
             {

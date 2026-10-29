@@ -1,9 +1,11 @@
 import re
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.AgentState import OrchestratorAgentState
+from app.repository.CalendarMatrixRepository import CalendarMatrixRepository
 from app.repository.CandidateRepository import CandidateRepository
 from app.repository.ContactRepository import ContactRepository
 from app.repository.OperationalPolicyRepository import OperationalPolicyRepository
@@ -13,6 +15,7 @@ class ContextRetrieverNode:
     """Node 2: DB Context Retriever & Disambiguation Gate (Pilar LIMITS & SOURCES).
 
     Resolves mentioned Candidate and Interviewer contacts from PostgreSQL.
+    Queries real database calendar slots and operational rules.
     If ambiguous contacts are detected (e.g. two "Pak Budi"), halts the graph
     and requests clarification from HR.
     """
@@ -22,6 +25,7 @@ class ContextRetrieverNode:
         self.contact_repo = ContactRepository(session)
         self.candidate_repo = CandidateRepository(session)
         self.policy_repo = OperationalPolicyRepository(session)
+        self.cal_repo = CalendarMatrixRepository(session)
 
     async def run(self, state: OrchestratorAgentState) -> dict[str, Any]:
         cmd = state.get("command", "").strip()
@@ -86,7 +90,6 @@ class ContextRetrieverNode:
             selected_interviewer = budi_users[0] if budi_users else active_interviewers[0]
 
         # 3. Dynamic Candidate Resolution (Pilar SOURCES)
-        # Search all registered candidates in PostgreSQL by full name or token matching
         all_candidates, _ = await self.candidate_repo.search(limit=100)
         target_candidate = None
         best_cand_score = 0
@@ -95,11 +98,10 @@ class ContextRetrieverNode:
             c_name_lower = cand.vname.lower().strip()
             score = 0
 
-            # Exact full name match in command (e.g. "fathir intania putri setiawan")
+            # Exact full name match in command
             if c_name_lower in cmd_lower:
                 score += 1000 + len(c_name_lower)
             else:
-                # Token-by-token match (first name, last name, middle names)
                 name_tokens = [t for t in re.findall(r"\b\w+\b", c_name_lower) if len(t) >= 3]
                 matched_count = 0
                 for token in name_tokens:
@@ -113,7 +115,6 @@ class ContextRetrieverNode:
                 best_cand_score = score
                 target_candidate = cand
 
-        # Fallback to first candidate only if no candidate in DB was mentioned in the command
         if not target_candidate and all_candidates:
             target_candidate = all_candidates[0]
 
@@ -143,5 +144,47 @@ class ContextRetrieverNode:
                 "candidate_channel": target_candidate.vpreferred_channel,
                 "candidate_timezone": target_candidate.vtimezone,
             })
+
+        # 4. Resolve Target Date & Query Available Slots from Calendar DB (Pilar SOURCES)
+        now = datetime.now(UTC)
+        target_date = (now + timedelta(days=2)).date()
+
+        day_keywords = {
+            "senin": 0, "selasa": 1, "rabu": 2, "kamis": 3,
+            "jumat": 4, "sabtu": 5, "minggu": 6,
+        }
+        for kw, target_wd in day_keywords.items():
+            if kw in cmd_lower:
+                days_ahead = (target_wd - now.weekday() + 7) % 7
+                if days_ahead == 0:
+                    days_ahead = 7
+                target_date = (now + timedelta(days=days_ahead)).date()
+                break
+
+        if "besok" in cmd_lower:
+            target_date = (now + timedelta(days=1)).date()
+        elif "lusa" in cmd_lower:
+            target_date = (now + timedelta(days=2)).date()
+
+        available_slots = []
+        if selected_interviewer:
+            available_slots = await self.cal_repo.find_available_slots(
+                user_id=selected_interviewer.nid,
+                target_date=target_date,
+                duration_minutes=60,
+                timezone_str=selected_interviewer.vtimezone or "WIB",
+            )
+            # If no slots found on that day, search next day
+            if not available_slots:
+                next_day = target_date + timedelta(days=1)
+                available_slots = await self.cal_repo.find_available_slots(
+                    user_id=selected_interviewer.nid,
+                    target_date=next_day,
+                    duration_minutes=60,
+                    timezone_str=selected_interviewer.vtimezone or "WIB",
+                )
+
+        updates["target_date_hint"] = target_date.isoformat()
+        updates["available_slots"] = available_slots
 
         return updates

@@ -36,6 +36,14 @@ export async function getInterviewSession(
   );
 }
 
+export async function getInterviewSessionStatus(
+  interviewId: string
+): Promise<InterviewSession> {
+  return request<InterviewSession>(
+    `${API_ENDPOINTS.INTERVIEW_SESSIONS}/${encodeURIComponent(interviewId)}/status`
+  );
+}
+
 export async function uploadInterviewSession(
   input: InterviewUploadRequest
 ): Promise<InterviewSession> {
@@ -43,6 +51,24 @@ export async function uploadInterviewSession(
     API_ENDPOINTS.INTERVIEW_SESSIONS_UPLOAD,
     jsonPost(input)
   );
+}
+
+export async function uploadInterviewFile(
+  formData: FormData
+): Promise<InterviewSession> {
+  const url = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1"}/interviews/sessions/upload-file`;
+  const res = await fetch(url, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(
+      errorData.detail || errorData.message || `Upload failed with status: ${res.status}`
+    );
+  }
+  const json = await res.json();
+  return json.data;
 }
 
 export async function getInterviewTranscripts(

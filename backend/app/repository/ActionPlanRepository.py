@@ -1,4 +1,6 @@
-from sqlalchemy import select
+from datetime import datetime
+
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -51,6 +53,57 @@ class ActionPlanRepository(BaseRepository[FollowupPlan]):
 
         await self.session.commit()
         return await self.get_action_plan(plan.nid) or plan
+
+    async def atomic_approve_plan(
+        self,
+        plan_id: int,
+        approved_by_id: int | None = None,
+        undo_deadline: datetime | None = None,
+        immediate: bool = False,
+    ) -> FollowupPlan | None:
+        """Atomically approve an ActionPlan if and only if it is currently AWAITING_APPROVAL.
+
+        Returns None if already approved, executed, undone, or not found.
+        Prevents race condition on concurrent approval requests.
+        """
+        target_status = "EXECUTED" if immediate else "APPROVED"
+        token = f"tok_appr_{plan_id}"
+        stmt = (
+            update(FollowupPlan)
+            .where(
+                FollowupPlan.nid == plan_id,
+                FollowupPlan.vapproval_status == "AWAITING_APPROVAL",
+            )
+            .values(
+                vapproval_status=target_status,
+                vapproval_token=token,
+                nid_approved_by=approved_by_id or 1,
+                dundo_deadline=undo_deadline,
+                dmodi=func.now(),
+            )
+            .returning(FollowupPlan)
+        )
+        result = await self.session.execute(stmt)
+        await self.session.commit()
+        return result.scalar_one_or_none()
+
+    async def atomic_undo_plan(self, plan_id: int) -> FollowupPlan | None:
+        """Atomically undo an ActionPlan if and only if it is currently APPROVED (within undo window)."""
+        stmt = (
+            update(FollowupPlan)
+            .where(
+                FollowupPlan.nid == plan_id,
+                FollowupPlan.vapproval_status == "APPROVED",
+            )
+            .values(
+                vapproval_status="UNDONE",
+                dmodi=func.now(),
+            )
+            .returning(FollowupPlan)
+        )
+        result = await self.session.execute(stmt)
+        await self.session.commit()
+        return result.scalar_one_or_none()
 
     async def update_plan_status(
         self,

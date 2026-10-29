@@ -3,6 +3,8 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent.AgentState import TriageEvaluationSchema
+from app.agent.LlmFactory import LlmFactory
 from app.agent.OrchestratorGraph import run_orchestrator_pipeline
 from app.dto.ActionPlanDTO import (
     ActionItemDraftDTO,
@@ -13,9 +15,11 @@ from app.dto.ActionPlanDTO import (
 from app.dto.OrchestratorCommandDTO import (
     CommandRequestDTO,
     DisambiguationProfileDTO,
+    InboundReplyRequestDTO,
     PresetScenarioDTO,
 )
 from app.repository.ActionPlanRepository import ActionPlanRepository
+from app.repository.NegotiationThreadRepository import NegotiationThreadRepository
 from app.service.AuditLogService import AuditLogService
 
 
@@ -23,6 +27,7 @@ class OrchestratorCommandService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.action_plan_repo = ActionPlanRepository(session)
+        self.thread_repo = NegotiationThreadRepository(session)
         self.audit_service = AuditLogService(session)
 
     async def list_preset_scenarios(self) -> list[PresetScenarioDTO]:
@@ -59,14 +64,24 @@ class OrchestratorCommandService:
 
     async def execute_command(self, request: CommandRequestDTO) -> ActionPlanDTO | dict[str, Any]:
         cmd = request.command.strip()
+        thread_id = request.thread_id
 
-        # Run Pipeline 1: LangGraph Orchestrator
+        current_round = 1
+        if thread_id:
+            thread = await self.thread_repo.get_thread(thread_id)
+            if thread:
+                current_round = thread.ncurrent_round
+
+        # Run Pipeline 1: LangGraph Orchestrator with Checkpointer & Dynamic Slots
         agent_state = await run_orchestrator_pipeline(
             session=self.session,
             command=cmd,
             scenario_id=request.scenario_id,
             sender_role="HR",
             channel="internal",
+            thread_id=thread_id,
+            negotiation_round=current_round,
+            max_rounds=3,
         )
 
         # 1. Disambiguation Gate (Pilar LIMITS)
@@ -83,7 +98,15 @@ class OrchestratorCommandService:
                 ],
             }
 
-        # 2. Extract Agent Output
+        # 2. Deadlock Escalation Gate (Pilar LIMITS)
+        if agent_state.get("status") == "DEADLOCK_ESCALATED":
+            return {
+                "status": "DEADLOCK_ESCALATED",
+                "escalation_reason": agent_state.get("escalation_reason", "Negosiasi melebihi batas atau di luar wewenang."),
+                "message": "Orkestrasi mandiri dihentikan dan dialihkan ke HR.",
+            }
+
+        # 3. Extract Agent Output
         slot_dict = agent_state.get("proposed_slot") or {}
         sources_list = agent_state.get("sources_cited") or []
         items_list = agent_state.get("items") or []
@@ -117,11 +140,11 @@ class OrchestratorCommandService:
             "interviewer_dept": agent_state.get("interviewer_dept") or "Engineering",
             "interviewer_email": agent_state.get("interviewer_email") or "budi.santoso@company.com",
             "interviewer_phone": agent_state.get("interviewer_phone") or "+6281198765432",
-            "negotiation_round": agent_state.get("negotiation_round", 1),
+            "negotiation_round": agent_state.get("negotiation_round", current_round),
         }
 
-        # 3. Persist FollowupPlan with Full Agent Metadata
-        plan_data = {
+        # 4. Persist FollowupPlan with Full Agent Metadata
+        plan_data: dict[str, Any] = {
             "vplan": cmd,
             "vaction_type": "CALENDAR",
             "dscheduled_start_utc": start_utc,
@@ -131,6 +154,8 @@ class OrchestratorCommandService:
             "vapproval_status": "AWAITING_APPROVAL",
             "vagent_metadata": agent_metadata,
         }
+        if thread_id:
+            plan_data["nid_thread"] = thread_id
 
         recipients = [
             {"nid_user": inter_id, "vrecipient_role": "ATTENDEE"},
@@ -139,14 +164,14 @@ class OrchestratorCommandService:
 
         created_plan = await self.action_plan_repo.create_action_plan(plan_data, recipients)
 
-        # 4. Log Immutable Audit Record
+        # 5. Log Immutable Audit Record
         await self.audit_service.log_event(
             event_type="PLAN_GENERATED",
             actor="AI_ORCHESTRATOR",
             actor_type="AGENT",
             title="Interview Action Plan Generated",
             description=f"Rencana aksi #{created_plan.nid} untuk {agent_metadata['candidate_name']} x {agent_metadata['interviewer_name']} disusun dan menunggu persetujuan HR.",
-            metadata={"plan_id": created_plan.nid, "sources_count": len(sources_list)},
+            metadata={"plan_id": created_plan.nid, "sources_count": len(sources_list), "thread_id": thread_id},
         )
 
         slot_dto = ProposedSlotDTO(**slot_dict)
@@ -180,3 +205,140 @@ class OrchestratorCommandService:
             items=items_dtos,
             created_at=now.isoformat(),
         )
+
+    async def handle_inbound_reply(self, request: InboundReplyRequestDTO) -> ActionPlanDTO | dict[str, Any]:
+        """Processes inbound replies from Candidate or Interviewer via WhatsApp/Email.
+
+        Enforces autonomous triage, 3-round negotiation limits, and out-of-scope escalation.
+        """
+        reply = request.reply_text.strip()
+        reply_lower = reply.lower()
+        thread_id = request.thread_id or 1
+
+        # Check existing thread
+        thread = await self.thread_repo.get_thread(thread_id)
+        current_round = thread.ncurrent_round if thread else 1
+
+        # Fallback triage evaluation
+        def fallback_triage() -> TriageEvaluationSchema:
+            out_of_scope = ["gaji", "salary", "bonus", "benefit", "kontrak"]
+            if any(kw in reply_lower for kw in out_of_scope):
+                return TriageEvaluationSchema(
+                    intent="OUT_OF_SCOPE",
+                    triage_reason="Mendiskusikan kompensasi di luar wewenang penjadwalan.",
+                )
+            confirm_words = ["bisa", "siap", "oke", "setuju", "deal", "confirm"]
+            if any(kw in reply_lower for kw in confirm_words) and not any(w in reply_lower for w in ["tidak", "ga bisa", "gabisa"]):
+                return TriageEvaluationSchema(
+                    intent="CONFIRM",
+                    triage_reason="Pihak terkait menyetujui usulan jadwal.",
+                )
+            return TriageEvaluationSchema(
+                intent="RESCHEDULE",
+                requested_slot_text=reply,
+                triage_reason="Permintaan perubahan jadwal wawancara.",
+            )
+
+        system_instruction = (
+            "You are an AI Triage Agent analyzing candidate/interviewer responses to interview invitations. "
+            "Determine if the response confirms the schedule (CONFIRM), asks for reschedule (RESCHEDULE), "
+            "or raises out-of-scope topics like salary or benefits (OUT_OF_SCOPE)."
+        )
+
+        triage_res = await LlmFactory.invoke_structured_or_fallback(
+            schema=TriageEvaluationSchema,
+            system_instruction=system_instruction,
+            user_content=f"Inbound reply from {request.sender_role} via {request.channel}: '{reply}'",
+            fallback_fn=fallback_triage,
+        )
+
+        # Record message in thread
+        if thread:
+            await self.thread_repo.append_message(
+                thread_id=thread.nid,
+                message_data={
+                    "nround_number": current_round,
+                    "vsender_role": request.sender_role,
+                    "vsender_name": "Kandidat" if request.sender_role == "CANDIDATE" else "Interviewer",
+                    "vchannel": request.channel,
+                    "vcontent": reply,
+                },
+            )
+
+        # 1. OUT OF SCOPE Discussion -> Escalate to HR
+        if triage_res.intent == "OUT_OF_SCOPE":
+            reason = f"Topik di luar wewenang penjadwalan terdeteksi: {triage_res.triage_reason}"
+            if thread:
+                thread.vstatus = "DEADLOCK_ESCALATED"
+                thread.vescalation_reason = reason
+                self.session.add(thread)
+                await self.session.commit()
+
+            await self.audit_service.log_event(
+                event_type="DEADLOCK_ESCALATED",
+                actor="AI_ORCHESTRATOR",
+                actor_type="AGENT",
+                title="Out-of-Scope Negotiation Escalated to HR",
+                description=f"Thread #{thread_id}: {reason}",
+                metadata={"thread_id": thread_id, "topic": "out_of_scope"},
+            )
+            return {
+                "status": "DEADLOCK_ESCALATED",
+                "escalation_reason": reason,
+                "message": "Balasan kandidat/interviewer berada di luar wewenang penjadwalan otonom. Dialihkan ke HR.",
+            }
+
+        # 2. CONFIRM Schedule -> Mark Thread Confirmed
+        if triage_res.intent == "CONFIRM":
+            if thread:
+                thread.vstatus = "SCHEDULED"
+                self.session.add(thread)
+                await self.session.commit()
+
+            await self.audit_service.log_event(
+                event_type="ACTION_EXECUTED",
+                actor="AI_ORCHESTRATOR",
+                actor_type="AGENT",
+                title="Interview Schedule Confirmed",
+                description=f"Jadwal wawancara pada thread #{thread_id} telah dikonfirmasi oleh {request.sender_role}.",
+                metadata={"thread_id": thread_id},
+            )
+            return {
+                "status": "CONFIRMED",
+                "message": f"Konfirmasi jadwal berhasil diterima dari {request.sender_role}.",
+            }
+
+        # 3. RESCHEDULE Request -> Check Round Limits
+        next_round = current_round + 1
+        if next_round > 3:
+            reason = "Batas negosiasi otonom 3 putaran terlampaui tanpa kesepakatan jadwal. Dialihkan ke HR."
+            if thread:
+                thread.vstatus = "DEADLOCK_ESCALATED"
+                thread.vescalation_reason = reason
+                self.session.add(thread)
+                await self.session.commit()
+
+            await self.audit_service.log_event(
+                event_type="DEADLOCK_ESCALATED",
+                actor="AI_ORCHESTRATOR",
+                actor_type="AGENT",
+                title="Autonomous Negotiation Limit Exceeded",
+                description=reason,
+                metadata={"thread_id": thread_id, "round": next_round, "max_rounds": 3},
+            )
+            return {
+                "status": "DEADLOCK_ESCALATED",
+                "escalation_reason": reason,
+                "message": "Negosiasi telah mencapai batas maksimal 3 putaran. Memerlukan intervensi manual HR.",
+            }
+
+        # Update thread round
+        if thread:
+            thread.ncurrent_round = next_round
+            self.session.add(thread)
+            await self.session.commit()
+
+        # Run rescheduling orchestrator pipeline
+        reschedule_cmd = f"Kandidat meminta jadwal interview disesuaikan: {reply}"
+        command_req = CommandRequestDTO(command=reschedule_cmd, thread_id=thread_id)
+        return await self.execute_command(command_req)

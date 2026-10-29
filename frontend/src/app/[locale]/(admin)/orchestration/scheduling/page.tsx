@@ -73,7 +73,10 @@ function mapPlanStatus(planStatus: PlanStatus): PlanStatus {
 
 function SchedulingContent() {
   const searchParams = useSearchParams();
-  const candidateId = searchParams.get("candidateId");
+  const candidateId = searchParams.get("candidateId") || searchParams.get("candidate_id");
+  const slotStart = searchParams.get("slot_start");
+  const interviewerName = searchParams.get("interviewer_name");
+  const threadId = searchParams.get("thread_id");
 
   const [candidatesQueue, setCandidatesQueue] = useState<Candidate[]>([]);
   const [apiCandidate, setApiCandidate] = useState<Candidate | null>(null);
@@ -81,6 +84,35 @@ function SchedulingContent() {
     apiCandidate && candidateId && apiCandidate.id === candidateId
       ? apiCandidate
       : candidatesQueue.find((c) => c.id === candidateId) ?? candidatesQueue[0] ?? null;
+
+  const initialCommandFromParams = useMemo(() => {
+    const candName = targetCandidate?.name || "Rina Kusuma";
+    const interName = interviewerName || "Budi Santoso";
+
+    if (threadId) {
+      return `Triage dan jadwalkan ulang technical interview untuk ${candName} bersama ${interName} (Thread #${threadId})`;
+    }
+
+    if (slotStart) {
+      const dt = new Date(slotStart);
+      if (!Number.isNaN(dt.getTime())) {
+        const options: Intl.DateTimeFormatOptions = {
+          weekday: "long",
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          timeZone: "Asia/Jakarta",
+        };
+        const formatted = new Intl.DateTimeFormat("id-ID", options).format(dt);
+        return `Jadwalkan technical interview untuk ${candName} bersama ${interName} pada ${formatted} WIB`;
+      }
+      return `Jadwalkan technical interview untuk ${candName} bersama ${interName} pada ${slotStart}`;
+    }
+
+    return "";
+  }, [slotStart, threadId, interviewerName, targetCandidate]);
 
   const [lastExecutedCommand, setLastExecutedCommand] = useState<string>("");
 
@@ -516,12 +548,50 @@ function SchedulingContent() {
         </div>
       </div>
 
+      {/* Cross-Page Context Banner (Milestone 3 Integration) */}
+      {threadId && (
+        <div className="mb-4 rounded-xl border border-warning-200 bg-warning-50 p-3.5 dark:border-warning-800/60 dark:bg-warning-500/10">
+          <div className="flex items-center gap-2.5">
+            <div className="text-warning-600 dark:text-warning-400">
+              <BoltIcon className="h-4 w-4" />
+            </div>
+            <div className="text-xs">
+              <span className="font-bold text-warning-900 dark:text-warning-200">
+                Konteks Triage Thread #{threadId} Aktif:
+              </span>{" "}
+              <span className="text-warning-800 dark:text-warning-300">
+                Menangani eskalasi negosiasi untuk {targetCandidate?.name || "kandidat"}. Command telah disiapkan di bawah untuk menjadwalkan ulang.
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {slotStart && !threadId && (
+        <div className="mb-4 rounded-xl border border-brand-200 bg-brand-50 p-3.5 dark:border-brand-800/60 dark:bg-brand-500/10">
+          <div className="flex items-center gap-2.5">
+            <div className="text-brand-600 dark:text-brand-400">
+              <BoltIcon className="h-4 w-4" />
+            </div>
+            <div className="text-xs">
+              <span className="font-bold text-brand-900 dark:text-brand-200">
+                Konteks Slot Calendar Matrix Aktif:
+              </span>{" "}
+              <span className="text-brand-800 dark:text-brand-300">
+                Slot waktu telah dipilih dari Calendar Matrix. Klik &quot;AI Orchestration&quot; untuk memvalidasi dan memproses proposal jadwal.
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Natural Language Command Bar */}
       <CommandBar
-        key={targetCandidate?.id ?? "default"}
+        key={`${targetCandidate?.id ?? "default"}-${initialCommandFromParams}`}
         onExecuteCommand={handleExecuteCommand}
         isProcessing={isProcessing}
         activeCandidateName={targetCandidate?.name}
+        initialCommand={initialCommandFromParams || undefined}
         scenarios={scenarioList}
       />
 
@@ -615,18 +685,30 @@ function SchedulingContent() {
                       Start New Orchestration
                     </Button>
                     <Link
+                      href="/orchestration/calendar"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-purple-300 bg-purple-50 px-3 py-2 text-xs font-semibold text-purple-800 transition-colors hover:bg-purple-100 dark:border-purple-500/30 dark:bg-purple-500/10 dark:text-purple-300 shadow-2xs"
+                    >
+                      <span>📅 Calendar Matrix</span>
+                    </Link>
+                    <Link
+                      href="/orchestration/threads"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300 shadow-2xs"
+                    >
+                      <span>📋 Triage Threads</span>
+                    </Link>
+                    <Link
                       href="/simulator/email"
                       className="inline-flex items-center gap-1.5 rounded-lg border border-brand-300 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-800 transition-colors hover:bg-brand-100 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300 shadow-2xs"
                     >
                       <EnvelopeIcon className="text-brand-600" />
-                      <span>View in Email Simulator</span>
+                      <span>Email Simulator</span>
                     </Link>
                     <Link
                       href="/simulator/whatsapp"
                       className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 transition-colors hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300 shadow-2xs"
                     >
                       <ChatIcon className="text-emerald-600" />
-                      <span>View in WhatsApp Simulator</span>
+                      <span>WhatsApp Simulator</span>
                     </Link>
                   </div>
                 </div>

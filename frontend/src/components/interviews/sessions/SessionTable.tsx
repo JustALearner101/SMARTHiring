@@ -25,7 +25,7 @@ import {
 
 interface SessionTableProps {
   sessions: InterviewSession[];
-  onUploadSession: (session: InterviewSession) => void;
+  onUploadSession: (session: InterviewSession, file?: File | null) => Promise<InterviewSession | null>;
 }
 
 export default function SessionTable({ sessions, onUploadSession }: SessionTableProps) {
@@ -47,36 +47,57 @@ export default function SessionTable({ sessions, onUploadSession }: SessionTable
     return matchesSearch && matchesConsent;
   });
 
-  const getJobStatusBadge = (status: string) => {
-    switch (status) {
-      case "COMPLETED":
-        return (
+  const renderJobStatus = (session: InterviewSession) => {
+    if (session.consent_status !== "GRANTED" || session.job_status === "REJECTED_NO_CONSENT") {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-md bg-error-50 px-2 py-0.5 text-[11px] font-semibold text-error-700 dark:bg-error-500/15 dark:text-error-400">
+          <CloseLineIcon />
+          NO_CONSENT
+        </span>
+      );
+    }
+
+    if (session.job_status === "COMPLETED") {
+      return (
+        <div className="space-y-0.5">
           <span className="inline-flex items-center gap-1 rounded-md bg-success-50 px-2 py-0.5 text-[11px] font-semibold text-success-700 dark:bg-success-500/15 dark:text-success-400">
-            <CheckCircleIcon/>
+            <CheckCircleIcon />
             COMPLETED
           </span>
-        );
-      case "IN_REVIEW":
-        return (
-          <span className="inline-flex items-center gap-1 rounded-md bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-700 dark:bg-brand-500/15 dark:text-brand-400 animate-pulse">
-            <TimeIcon/>
-            IN_REVIEW
-          </span>
-        );
-      case "REJECTED_NO_CONSENT":
-        return (
-          <span className="inline-flex items-center gap-1 rounded-md bg-error-50 px-2 py-0.5 text-[11px] font-semibold text-error-700 dark:bg-error-500/15 dark:text-error-400">
-            <CloseLineIcon/>
-            NO_CONSENT
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-700 dark:bg-gray-800 dark:text-gray-300">
-            {status}
-          </span>
-        );
+          {session.asr_engine && (
+            <span className="block text-[9px] font-medium text-purple-600 dark:text-purple-400 font-mono">
+              {session.asr_engine}
+            </span>
+          )}
+        </div>
+      );
     }
+
+    // In-progress asynchronous processing
+    const pct = session.progress_percentage ?? 25;
+    return (
+      <div className="space-y-1 min-w-[130px] max-w-[170px]">
+        <div className="flex items-center justify-between text-[10px] font-semibold">
+          <span className="text-brand-600 dark:text-brand-400 flex items-center gap-1">
+            <TimeIcon className="animate-spin text-xs" />
+            {session.job_status}
+          </span>
+          <span className="text-gray-500 dark:text-gray-400 font-mono">{pct}%</span>
+        </div>
+        <div className="w-full h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+          <div
+            className="h-full bg-linear-to-r from-brand-500 to-purple-500 rounded-full transition-all duration-500 ease-out animate-pulse"
+            style={{ width: `${Math.max(10, pct)}%` }}
+          />
+        </div>
+        <span
+          className="block text-[9px] text-gray-400 dark:text-gray-500 truncate"
+          title={session.current_step || "Processing..."}
+        >
+          {session.current_step || "Processing..."}
+        </span>
+      </div>
+    );
   };
 
   return (
@@ -99,49 +120,60 @@ export default function SessionTable({ sessions, onUploadSession }: SessionTable
             />
           </div>
 
-          <select
-            value={consentFilter}
-            onChange={(e) => setConsentFilter(e.target.value)}
-            className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
-          >
-            <option value="ALL">All Consent Statuses</option>
-            <option value="GRANTED">Granted</option>
-            <option value="NOT_GRANTED">Not Granted</option>
-            <option value="WITHDRAWN">Withdrawn</option>
-          </select>
+          {/* Consent Filter */}
+          <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+            <span>Consent:</span>
+            <select
+              value={consentFilter}
+              onChange={(e) => setConsentFilter(e.target.value)}
+              className="rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+            >
+              <option value="ALL">All Status</option>
+              <option value="GRANTED">Granted (Processing Allowed)</option>
+              <option value="NOT_GRANTED">Not Granted (Blocked)</option>
+            </select>
+          </div>
         </div>
 
-        <Button variant="primary" size="sm" onClick={() => setIsModalOpen(true)} startIcon={<PlusIcon/>}>
-          Upload Audio Recording
-        </Button>
+        {/* Action Button: Ingest Audio File */}
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={() => setIsModalOpen(true)}
+            startIcon={<PlusIcon className="mr-1" />}
+          >
+            Ingest Audio Recording
+          </Button>
+        </div>
       </div>
 
-      {/* Table Card */}
-      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-        <div className="overflow-x-auto">
+      {/* Sessions Table */}
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xs dark:border-gray-800 dark:bg-gray-900">
+        <div className="max-w-full overflow-x-auto">
           <Table>
-            <TableHeader className="border-b border-gray-100 bg-gray-50/50 dark:border-gray-800 dark:bg-gray-800/50">
+            <TableHeader className="border-b border-gray-100 bg-gray-50/50 dark:border-gray-800 dark:bg-gray-800/40">
               <TableRow>
-                <TableCell isHeader className="py-3.5 pl-5 text-start text-xs font-semibold text-gray-600 dark:text-gray-400">
-                  Candidate
+                <TableCell isHeader className="py-3.5 pl-5 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+                  CANDIDATE
                 </TableCell>
-                <TableCell isHeader className="py-3.5 text-start text-xs font-semibold text-gray-600 dark:text-gray-400">
-                  Position & Round
+                <TableCell isHeader className="py-3.5 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+                  TARGET POSITION &amp; ROUND
                 </TableCell>
-                <TableCell isHeader className="py-3.5 text-start text-xs font-semibold text-gray-600 dark:text-gray-400">
-                  Interviewer
+                <TableCell isHeader className="py-3.5 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+                  INTERVIEWER
                 </TableCell>
-                <TableCell isHeader className="py-3.5 text-start text-xs font-semibold text-gray-600 dark:text-gray-400">
-                  Consent Status
+                <TableCell isHeader className="py-3.5 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+                  CONSENT STATUS
                 </TableCell>
-                <TableCell isHeader className="py-3.5 text-start text-xs font-semibold text-gray-600 dark:text-gray-400">
-                  Audio Duration
+                <TableCell isHeader className="py-3.5 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+                  DURATION
                 </TableCell>
-                <TableCell isHeader className="py-3.5 text-start text-xs font-semibold text-gray-600 dark:text-gray-400">
-                  Job Pipeline
+                <TableCell isHeader className="py-3.5 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+                  JOB PROGRESS
                 </TableCell>
-                <TableCell isHeader className="py-3.5 pr-5 text-end text-xs font-semibold text-gray-600 dark:text-gray-400">
-                  Action
+                <TableCell isHeader className="py-3.5 pr-5 text-end text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+                  ACTION
                 </TableCell>
               </TableRow>
             </TableHeader>
@@ -215,19 +247,26 @@ export default function SessionTable({ sessions, onUploadSession }: SessionTable
                     </TableCell>
 
                     <TableCell className="py-4">
-                      {getJobStatusBadge(session.job_status)}
+                      {renderJobStatus(session)}
                     </TableCell>
 
                     <TableCell className="py-4 pr-5 text-end">
                       <div className="flex items-center justify-end gap-2">
                         {session.consent_status === "GRANTED" ? (
-                          <Link
-                            href={`/interviews/review?id=${session.id}`}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-100 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300"
-                          >
-                            <DocsIcon/>
-                            <span>Review Evidence</span>
-                          </Link>
+                          session.job_status === "COMPLETED" ? (
+                            <Link
+                              href={`/interviews/review?id=${session.id}`}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-100 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300"
+                            >
+                              <DocsIcon />
+                              <span>Review Evidence</span>
+                            </Link>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50/50 px-2.5 py-1.5 text-xs font-semibold text-brand-600 dark:border-brand-500/20 dark:bg-brand-500/5 dark:text-brand-400">
+                              <TimeIcon className="animate-spin text-xs" />
+                              <span>Memproses...</span>
+                            </span>
+                          )
                         ) : (
                           <span className="text-[11px] text-gray-400 italic">
                             Blocked (No Consent)
@@ -239,7 +278,7 @@ export default function SessionTable({ sessions, onUploadSession }: SessionTable
                           className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-800 dark:text-gray-300"
                           title="Schedule follow-up round"
                         >
-                          <BoltIcon/>
+                          <BoltIcon />
                         </Link>
                       </div>
                     </TableCell>
@@ -251,6 +290,7 @@ export default function SessionTable({ sessions, onUploadSession }: SessionTable
         </div>
       </div>
 
+      {/* Audio Upload Modal with Live Progress Stepper */}
       <AudioUploadModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}

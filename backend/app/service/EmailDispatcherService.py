@@ -2,6 +2,9 @@ import asyncio
 import email.utils
 import logging
 import smtplib
+import uuid
+from datetime import UTC, datetime, timedelta
+from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Any
@@ -16,7 +19,8 @@ class EmailDispatcherService:
 
     Integrates with SMTP Gateway (Sumopod / SSL Port 465) to deliver real
     interview invitations and notifications to candidates and interviewers.
-    Preserves Pillar 1 (SOURCES Cited) and Pillar 3 (Human Approval Gate).
+    Adheres strictly to RFC 2822 / 5322 header hygiene, RFC 5545 iCalendar (.ics)
+    interactivity (RSVP widget in Gmail/Outlook), and CAN-SPAM compliant copywriting.
     """
 
     def __init__(self) -> None:
@@ -28,6 +32,55 @@ class EmailDispatcherService:
         self.password = settings.SMTP_PASSWORD
         self.from_email = settings.SMTP_FROM_EMAIL
         self.from_name = settings.SMTP_FROM_NAME
+
+    def _generate_ics(
+        self,
+        start_utc: datetime,
+        end_utc: datetime,
+        summary: str,
+        description: str,
+        meeting_link: str,
+        recipient_email: str,
+        recipient_name: str,
+    ) -> str:
+        """Generate an RFC 5545 compliant iCalendar (.ics) payload."""
+        now_utc = datetime.now(UTC)
+        uid = f"{uuid.uuid4()}@heketon.ai"
+        dtstamp = now_utc.strftime("%Y%m%dT%H%M%SZ")
+        dtstart = start_utc.strftime("%Y%m%dT%H%M%SZ")
+        dtend = end_utc.strftime("%Y%m%dT%H%M%SZ")
+
+        # Clean description for ICS (escape newlines and special characters)
+        clean_desc = (
+            description.replace("\r\n", "\\n")
+            .replace("\n", "\\n")
+            .replace(",", "\\,")
+            .replace(";", "\\;")
+        )
+
+        ics_lines = [
+            "BEGIN:VCALENDAR",
+            "PRODID:-//Heketon AI Orchestrator//ID",
+            "VERSION:2.0",
+            "CALSCALE:GREGORIAN",
+            "METHOD:REQUEST",
+            "BEGIN:VEVENT",
+            f"UID:{uid}",
+            f"DTSTAMP:{dtstamp}",
+            f"DTSTART:{dtstart}",
+            f"DTEND:{dtend}",
+            f"SUMMARY:{summary}",
+            f"DESCRIPTION:{clean_desc}",
+            f"LOCATION:{meeting_link}",
+            "STATUS:CONFIRMED",
+            "SEQUENCE:0",
+            f"ORGANIZER;CN={self.from_name}:mailto:{self.from_email}",
+            f"ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN={recipient_name}:mailto:{recipient_email}",
+            "TRANSP:OPAQUE",
+            "END:VEVENT",
+            "END:VCALENDAR",
+        ]
+        return "\r\n".join(ics_lines) + "\r\n"
 
     def _build_html_body(
         self,
@@ -54,6 +107,8 @@ class EmailDispatcherService:
                 </ul>
             </div>
             """
+
+        sender_domain = self.from_email.split("@")[-1] if "@" in self.from_email else "smarthiring.ai"
 
         return f"""<!DOCTYPE html>
 <html lang="id">
@@ -109,6 +164,11 @@ class EmailDispatcherService:
                 </div>
             </div>
 
+            <!-- Interactive Calendar Notice -->
+            <div style="margin-top: 20px; padding: 12px 16px; background-color: #f0fdfa; border: 1px solid #ccfbf1; border-radius: 8px; font-size: 12px; color: #0f766e;">
+                🗓️ <strong>Undangan Kalender Interaktif Terlampir</strong>: Email ini memuat file kalender terintegrasi (<code>invite.ics</code>). Anda dapat langsung mengklik <em>Terima / Accept</em> pada tombol kalender di aplikasi Gmail / Outlook Anda.
+            </div>
+
             <!-- Sources / Verification -->
             {sources_html}
 
@@ -118,10 +178,12 @@ class EmailDispatcherService:
             </div>
         </div>
 
-        <!-- Footer -->
-        <div style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 20px 24px; text-align: center; font-size: 12px; color: #94a3b8;">
-            Heketon Autonomous Office Agent — Challenge B (The Office Agent)<br>
-            Powered by Tencent Cloud & Sumopod AI Infrastructure
+        <!-- CAN-SPAM Compliant Footer -->
+        <div style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 20px 24px; text-align: center; font-size: 11px; color: #94a3b8; line-height: 1.5;">
+            <strong>SmartHiring Inc. / Heketon Ops</strong><br>
+            Menara BTPN Lt. 32, Jl. Dr. Ide Anak Agung Gde Agung Kav 5.5-5.6, Jakarta Selatan 12950, Indonesia<br>
+            Email otomatis dikirimkan terkait proses seleksi interview terverifikasi.<br>
+            <a href="mailto:unsubscribe@{sender_domain}?subject=unsubscribe" style="color: #64748b; text-decoration: underline;">Berhenti Berlangganan / Unsubscribe</a> • <a href="https://heketon.ai/privacy" style="color: #64748b; text-decoration: underline;">Kebijakan Privasi</a>
         </div>
     </div>
 </body>
@@ -134,25 +196,50 @@ class EmailDispatcherService:
         subject: str,
         plain_text: str,
         html_body: str,
+        ics_content: str | None = None,
     ) -> str:
-        """Synchronous SMTP delivery helper executed in thread pool."""
-        msg = MIMEMultipart("alternative")
+        """Synchronous SMTP delivery helper with RFC 2822 hygiene and .ics attachment."""
+        sender_domain = self.from_email.split("@")[-1] if "@" in self.from_email else "smarthiring.ai"
+        message_id = email.utils.make_msgid(domain=sender_domain)
+
+        # Outer multipart/mixed container
+        msg = MIMEMultipart("mixed")
         msg["From"] = f"{self.from_name} <{self.from_email}>"
         msg["To"] = f"{recipient_name} <{to_email}>"
         msg["Reply-To"] = f"{self.from_name} <{self.from_email}>"
+        msg["Return-Path"] = f"bounces@{sender_domain}"
         msg["Subject"] = subject
         msg["Date"] = email.utils.formatdate(localtime=True)
-        sender_domain = self.from_email.split("@")[-1] if "@" in self.from_email else "smarthiring.ai"
-        message_id = email.utils.make_msgid(domain=sender_domain)
         msg["Message-ID"] = message_id
         msg["X-Mailer"] = "Heketon AI Orchestrator 1.0 (Hackathon Edition)"
         msg["Auto-Submitted"] = "auto-generated"
+        msg["Precedence"] = "bulk"
+        msg["List-Unsubscribe"] = f"<mailto:unsubscribe@{sender_domain}?subject=unsubscribe>"
+        msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
         msg["X-Auto-Response-Suppress"] = "All"
 
+        # Inner multipart/alternative container for text and HTML
+        alt_container = MIMEMultipart("alternative")
         part_text = MIMEText(plain_text, "plain", "utf-8")
         part_html = MIMEText(html_body, "html", "utf-8")
-        msg.attach(part_text)
-        msg.attach(part_html)
+        alt_container.attach(part_text)
+        alt_container.attach(part_html)
+
+        # If interactive iCalendar is provided, attach it to alternative part
+        if ics_content:
+            part_cal = MIMEText(ics_content, "calendar; method=REQUEST; charset=UTF-8", "utf-8")
+            part_cal.add_header("Content-Class", "urn:content-classes:calendarmessage")
+            alt_container.attach(part_cal)
+
+        msg.attach(alt_container)
+
+        # Also attach .ics as an explicit calendar attachment for Outlook / Apple Mail
+        if ics_content:
+            cal_attachment = MIMEBase("text", "calendar", name="invite.ics")
+            cal_attachment.set_payload(ics_content.encode("utf-8"))
+            cal_attachment.add_header("Content-Disposition", 'attachment; filename="invite.ics"')
+            cal_attachment.add_header("Content-Class", "urn:content-classes:calendarmessage")
+            msg.attach(cal_attachment)
 
         if self.use_ssl:
             with smtplib.SMTP_SSL(self.host, self.port, timeout=15) as server:
@@ -176,6 +263,8 @@ class EmailDispatcherService:
         meeting_link: str = "https://meet.google.com/hkt-ops-2026",
         citations: list[dict[str, Any]] | None = None,
         recipient_role: str = "Candidate",
+        start_utc: datetime | None = None,
+        end_utc: datetime | None = None,
     ) -> dict[str, Any]:
         """Dispatch a verified interview invitation email via SMTP Gateway."""
         if not self.enabled or not self.user or not self.password:
@@ -202,8 +291,25 @@ class EmailDispatcherService:
             f"{content}\n\n"
             f"Waktu Wawancara: {slot_wib}\n"
             f"Link Google Meet: {meeting_link}\n\n"
+            f"Undangan kalender interaktif (.ics) terlampir pada email ini.\n\n"
             f"---\n"
-            f"SmartHiring AI Orchestrator (Tencent Cloud Hackathon 2026)"
+            f"SmartHiring AI Orchestrator (Tencent Cloud Hackathon 2026)\n"
+            f"Menara BTPN Lt. 32, Jakarta Selatan 12950, Indonesia"
+        )
+
+        # Setup start & end UTC for .ics
+        now = datetime.now(UTC)
+        cal_start = start_utc or (now + timedelta(days=2, hours=3))
+        cal_end = end_utc or (cal_start + timedelta(hours=1))
+
+        ics_content = self._generate_ics(
+            start_utc=cal_start,
+            end_utc=cal_end,
+            summary=f"User Technical Interview: {recipient_name}",
+            description=content,
+            meeting_link=meeting_link,
+            recipient_email=to_email,
+            recipient_name=recipient_name,
         )
 
         try:
@@ -214,6 +320,7 @@ class EmailDispatcherService:
                 subject=subject,
                 plain_text=plain_text,
                 html_body=html_body,
+                ics_content=ics_content,
             )
             logger.info("Real email successfully dispatched to %s with Message-ID: %s", to_email, msg_id)
             return {

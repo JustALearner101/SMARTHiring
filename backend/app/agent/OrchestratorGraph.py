@@ -1,5 +1,6 @@
 from typing import Any
 
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,9 +10,12 @@ from app.agent.GuardrailNode import GuardrailNode
 from app.agent.PlannerTriageNode import PlannerTriageNode
 from app.agent.SecondaryValidatorNode import SecondaryValidatorNode
 
+# In-memory checkpointer persisting multi-round negotiation states
+orchestrator_checkpointer = MemorySaver()
+
 
 def build_orchestrator_graph(session: AsyncSession) -> Any:
-    """Builds and compiles the Pipeline 1 StateGraph."""
+    """Builds and compiles the Pipeline 1 StateGraph with checkpointer support."""
     retriever_node = ContextRetrieverNode(session)
 
     graph = StateGraph(OrchestratorAgentState)
@@ -45,7 +49,7 @@ def build_orchestrator_graph(session: AsyncSession) -> Any:
     graph.add_conditional_edges("planner", route_after_planner, ["validator", END])
     graph.add_edge("validator", END)
 
-    return graph.compile()
+    return graph.compile(checkpointer=orchestrator_checkpointer)
 
 
 async def run_orchestrator_pipeline(
@@ -58,7 +62,7 @@ async def run_orchestrator_pipeline(
     negotiation_round: int = 1,
     max_rounds: int = 3,
 ) -> OrchestratorAgentState:
-    """Convenience runner for Pipeline 1."""
+    """Convenience runner for Pipeline 1 with checkpoint persistence."""
     app = build_orchestrator_graph(session)
 
     initial_state: OrchestratorAgentState = {
@@ -73,5 +77,11 @@ async def run_orchestrator_pipeline(
         "audit_entries": [],
     }
 
-    result = await app.ainvoke(initial_state)
+    config = {
+        "configurable": {
+            "thread_id": str(thread_id or f"sess_{scenario_id or 'default'}"),
+        }
+    }
+
+    result = await app.ainvoke(initial_state, config=config)
     return result  # type: ignore[return-value]

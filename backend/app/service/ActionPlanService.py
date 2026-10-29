@@ -1,3 +1,4 @@
+import logging
 import time
 from datetime import UTC, datetime, timedelta
 
@@ -12,8 +13,11 @@ from app.dto.ActionPlanDTO import (
     ProposedSlotDTO,
     SourceCitationDTO,
 )
+from app.exception.CustomException import ConflictException, NotFoundException
 from app.repository.ActionPlanRepository import ActionPlanRepository
 from app.service.AuditLogService import AuditLogService
+
+logger = logging.getLogger(__name__)
 
 
 class ActionPlanService:
@@ -33,25 +37,35 @@ class ActionPlanService:
         now = datetime.now(UTC)
 
         # Lazy auto-execution if 60-second undo window expired
-        if plan.vapproval_status == "APPROVED" and plan.dundo_deadline and now >= plan.dundo_deadline:
-            meta = plan.vagent_metadata or {}
-            cand_item = next((it for it in meta.get("items", []) if "candidate" in str(it.get("recipient_role", "")).lower()), None)
-            candidate_channel = cand_item.get("channel", "email") if cand_item else meta.get("candidate_channel", "email")
-            state: OrchestratorAgentState = {
-                "proposed_slot": meta.get("proposed_slot"),
-                "candidate_id": int(meta.get("candidate_id", 1)),
-                "candidate_name": meta.get("candidate_name", "Rina Kusuma"),
-                "candidate_channel": candidate_channel,
-                "interviewer_id": int(meta.get("interviewer_id", 1)),
-                "interviewer_name": meta.get("interviewer_name", "Budi Santoso"),
-                "items": meta.get("items", []),
-                "negotiation_round": meta.get("negotiation_round", 1),
-                "max_rounds": 3,
-                "sources_cited": meta.get("sources_cited", []),
-            }
-            await self.executor_node.execute_plan(state, approved_by="HR Admin (Auto-Dispatch)")
-            await self.action_plan_repo.update_plan_status(plan.nid, status="EXECUTED")
-            plan = await self.action_plan_repo.get_action_plan(plan.nid)
+        dundo = plan.dundo_deadline
+        if dundo and dundo.tzinfo is None:
+            dundo = dundo.replace(tzinfo=UTC)
+
+        if plan.vapproval_status == "APPROVED" and dundo and now >= dundo:
+            try:
+                meta = plan.vagent_metadata or {}
+                cand_item = next((it for it in meta.get("items", []) if "candidate" in str(it.get("recipient_role", "")).lower()), None)
+                candidate_channel = cand_item.get("channel", "email") if cand_item else meta.get("candidate_channel", "email")
+                state: OrchestratorAgentState = {
+                    "proposed_slot": meta.get("proposed_slot"),
+                    "candidate_id": int(meta.get("candidate_id", 1)),
+                    "candidate_name": meta.get("candidate_name", "Rina Kusuma"),
+                    "candidate_channel": candidate_channel,
+                    "interviewer_id": int(meta.get("interviewer_id", 1)),
+                    "interviewer_name": meta.get("interviewer_name", "Budi Santoso"),
+                    "items": meta.get("items", []),
+                    "negotiation_round": meta.get("negotiation_round", 1),
+                    "max_rounds": 3,
+                    "sources_cited": meta.get("sources_cited", []),
+                    "thread_id": plan.nid_thread or (int(meta["thread_id"]) if meta.get("thread_id") else None),
+                }
+                await self.executor_node.execute_plan(state, approved_by="HR Admin (Auto-Dispatch)")
+                await self.action_plan_repo.update_plan_status(plan.nid, status="EXECUTED")
+                refreshed = await self.action_plan_repo.get_action_plan(plan.nid)
+                if refreshed:
+                    plan = refreshed
+            except Exception:
+                logger.exception("Failed lazy execution of action plan #%s", plan.nid)
 
         meta = plan.vagent_metadata or {}
         slot_data = meta.get("proposed_slot") or {
@@ -132,7 +146,7 @@ class ActionPlanService:
         p_id = int(plan_id) if plan_id.isdigit() else 1
         plan = await self.action_plan_repo.get_action_plan(p_id)
         if not plan:
-            raise ValueError(f"Plan ID {plan_id} tidak ditemukan.")
+            raise NotFoundException(f"Plan ID {plan_id} tidak ditemukan.")
 
         now = datetime.now(UTC)
         meta = plan.vagent_metadata or {}
@@ -144,6 +158,21 @@ class ActionPlanService:
             plan.vagent_metadata = meta
             self.session.add(plan)
             await self.session.commit()
+
+        # Atomic conditional update prevents concurrent double approval race condition
+        undo_deadline = None if request.send_immediately else now + timedelta(seconds=60)
+        approved_plan = await self.action_plan_repo.atomic_approve_plan(
+            plan_id=p_id,
+            approved_by_id=1,
+            undo_deadline=undo_deadline,
+            immediate=request.send_immediately,
+        )
+        if not approved_plan:
+            existing = await self.action_plan_repo.get_action_plan(p_id)
+            status_desc = existing.vapproval_status if existing else "NOT_FOUND"
+            raise ConflictException(
+                f"Plan #{plan_id} tidak dapat disetujui karena status saat ini: {status_desc}."
+            )
 
         cand_item = next((it for it in meta.get("items", []) if "candidate" in str(it.get("recipient_role", "")).lower()), None)
         candidate_channel = cand_item.get("channel", "email") if cand_item else meta.get("candidate_channel", "email")
@@ -161,16 +190,18 @@ class ActionPlanService:
                 "negotiation_round": meta.get("negotiation_round", 1),
                 "max_rounds": 3,
                 "sources_cited": meta.get("sources_cited", []),
+                "thread_id": plan.nid_thread or (int(meta["thread_id"]) if meta.get("thread_id") else None),
             }
             await self.executor_node.execute_plan(state, approved_by=request.approved_by)
-            await self.action_plan_repo.update_plan_status(p_id, status="EXECUTED", approved_by_id=1)
+            await self.audit_service.log_event(
+                event_type="ACTION_EXECUTED",
+                actor=request.approved_by,
+                actor_type="HUMAN",
+                title="Action Plan Executed Immediately by HR",
+                description=f"Rencana aksi #{p_id} disetujui dan dieksekusi secara instan.",
+                metadata={"plan_id": p_id},
+            )
         else:
-            # 60s Undo Window
-            plan.dundo_deadline = now + timedelta(seconds=60)
-            plan.vapproval_status = "APPROVED"
-            self.session.add(plan)
-            await self.session.commit()
-
             await self.audit_service.log_event(
                 event_type="HUMAN_APPROVED",
                 actor=request.approved_by,
@@ -192,9 +223,15 @@ class ActionPlanService:
         p_id = int(plan_id) if plan_id.isdigit() else 1
         plan = await self.action_plan_repo.get_action_plan(p_id)
         if not plan:
-            raise ValueError(f"Plan ID {plan_id} tidak ditemukan.")
+            raise NotFoundException(f"Plan ID {plan_id} tidak ditemukan.")
 
-        await self.action_plan_repo.update_plan_status(p_id, status="UNDONE")
+        undone_plan = await self.action_plan_repo.atomic_undo_plan(p_id)
+        if not undone_plan:
+            existing = await self.action_plan_repo.get_action_plan(p_id)
+            status_desc = existing.vapproval_status if existing else "NOT_FOUND"
+            raise ConflictException(
+                f"Plan #{plan_id} tidak dapat dibatalkan (Status saat ini: {status_desc})."
+            )
 
         await self.audit_service.log_event(
             event_type="ACTION_UNDONE",

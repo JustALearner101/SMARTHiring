@@ -26,6 +26,7 @@ from app.controller import (
 from app.core.AppConfig import settings
 from app.db.DatabaseSession import engine
 from app.exception import register_exception_handlers
+from app.middleware import RateLimiterMiddleware
 
 
 @asynccontextmanager
@@ -61,6 +62,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# 1. Rate Limiter Middleware
+app.add_middleware(RateLimiterMiddleware)
+
+# 2. CORS Middleware (outermost, runs first to ensure CORS headers on all responses)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.BACKEND_CORS_ORIGINS,

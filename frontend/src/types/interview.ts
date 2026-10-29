@@ -83,6 +83,9 @@ export interface InterviewSession {
   audio_url?: string;
   audio_duration?: string; // e.g. "45:20"
   job_status: JobStatus;
+  progress_percentage?: number;
+  current_step?: string;
+  asr_engine?: string;
   competency_points?: CompetencySummaryPoint[];
   hr_decision?: HrDecision;
 }

@@ -222,6 +222,20 @@ class InterviewAnalyzerGraph:
             fallback_fn=fallback_evaluations,
         )
 
+        def find_best_segment(quote: str, seg_list: list[dict[str, Any]]) -> int | None:
+            if not seg_list:
+                return None
+            quote_words = set(quote.lower().split())
+            best_id = seg_list[1].get("id") if len(seg_list) > 1 else seg_list[0].get("id")
+            best_score = -1
+            for s in seg_list:
+                seg_words = set(s.get("text", "").lower().split())
+                overlap = len(quote_words & seg_words)
+                if overlap > best_score:
+                    best_score = overlap
+                    best_id = s.get("id")
+            return best_id
+
         first_seg_id = segments[1].get("id") if len(segments) > 1 else (segments[0].get("id") if segments else None)
 
         created_points = []
@@ -245,7 +259,7 @@ class InterviewAnalyzerGraph:
             if first_seg_id:
                 ev = SummaryEvidence(
                     nid_summary_point=sp.nid,
-                    nid_transcript=first_seg_id,
+                    nid_transcript=find_best_segment(eval_item.verbatim_quote, segments) or first_seg_id,
                     vquote=eval_item.verbatim_quote,
                 )
                 self.session.add(ev)
@@ -268,7 +282,7 @@ class InterviewAnalyzerGraph:
                 if first_seg_id:
                     ev = SummaryEvidence(
                         nid_summary_point=sp.nid,
-                        nid_transcript=first_seg_id,
+                        nid_transcript=find_best_segment(eval_item.verbatim_quote, segments) or first_seg_id,
                         vquote=eval_item.verbatim_quote,
                     )
                     self.session.add(ev)

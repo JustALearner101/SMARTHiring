@@ -4,7 +4,8 @@ import React, { useState } from "react";
 import { NegotiationThread } from "@/types/orchestration";
 import { Modal } from "@/components/ui/modal";
 import Button from "@/components/ui/button/Button";
-import { AlertIcon, LockIcon } from "@/icons";
+import { AlertIcon, BoltIcon, LockIcon } from "@/icons";
+import { Link } from "@/i18n/navigation";
 
 interface ThreadDetailModalProps {
   isOpen: boolean;
@@ -71,7 +72,7 @@ export default function ThreadDetailModal({
             <div className="text-error-600 dark:text-error-400 mt-0.5">
               <AlertIcon />
             </div>
-            <div>
+            <div className="flex-1">
               <h4 className="text-xs font-bold text-error-800 dark:text-error-300">
                 Pilar LIMITS: Deadlock Reached — AI Autonomous Loop Halted
               </h4>
@@ -79,6 +80,15 @@ export default function ThreadDetailModal({
                 {thread.escalation_reason ||
                   "Kandidat telah menolak 3 kali slot yang diajukan AI secara berturut-turut. Sesuai aturan akuntabilitas, sistem menghentikan negosiasi otomatis dan meminta intervensi manusia (HR Takeover)."}
               </p>
+              <div className="mt-3 flex items-center gap-2">
+                <Link
+                  href={`/orchestration/scheduling?thread_id=${thread.id}&action=triage&candidate_id=${thread.candidate_id}&interviewer_id=${thread.interviewer_id}&interviewer_name=${encodeURIComponent(thread.interviewer_name)}`}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-brand-600 px-3 py-1.5 text-xs font-bold text-white shadow-theme-xs hover:bg-brand-700 transition-colors"
+                >
+                  <BoltIcon className="h-3.5 w-3.5" />
+                  <span>Triage Jadwal di Orchestrator</span>
+                </Link>
+              </div>
             </div>
           </div>
         </div>

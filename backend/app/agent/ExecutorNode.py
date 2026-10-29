@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -42,7 +42,13 @@ class ExecutorNode:
         now = datetime.now(UTC)
 
         start_utc = datetime.fromisoformat(start_utc_str) if start_utc_str else now
-        end_utc = datetime.fromisoformat(end_utc_str) if end_utc_str else (now + slot.get("duration_minutes", 60))
+        if start_utc.tzinfo is None:
+            start_utc = start_utc.replace(tzinfo=UTC)
+
+        duration = int(slot.get("duration_minutes") or 60)
+        end_utc = datetime.fromisoformat(end_utc_str) if end_utc_str else (start_utc + timedelta(minutes=duration))
+        if end_utc.tzinfo is None:
+            end_utc = end_utc.replace(tzinfo=UTC)
 
         # 1. Book Calendar Event
         cal_event = CalendarEvent(
@@ -58,11 +64,23 @@ class ExecutorNode:
         self.session.add(cal_event)
 
         # 2. Upsert Negotiation Thread
-        stmt = select(NegotiationThread).where(
-            NegotiationThread.nid_candidate == cand_id,
-            NegotiationThread.nid_interviewer == inter_id,
-        )
-        existing_thread = (await self.session.execute(stmt)).scalars().first()
+        thread_id = state.get("thread_id")
+        existing_thread = None
+        if thread_id:
+            existing_thread = (await self.session.execute(
+                select(NegotiationThread).where(NegotiationThread.nid == thread_id)
+            )).scalars().first()
+
+        if not existing_thread:
+            stmt = (
+                select(NegotiationThread)
+                .where(
+                    NegotiationThread.nid_candidate == cand_id,
+                    NegotiationThread.nid_interviewer == inter_id,
+                )
+                .order_by(NegotiationThread.nid.desc())
+            )
+            existing_thread = (await self.session.execute(stmt)).scalars().first()
 
         agreed_slot_desc = slot.get("formatted_wib") or str(start_utc)
 
