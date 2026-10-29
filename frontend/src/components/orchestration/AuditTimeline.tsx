@@ -37,13 +37,13 @@ export default function AuditTimeline({ logs, maxHeight }: AuditTimelineProps) {
   const getStatusIcon = (badge: AuditEvent["status_badge"]) => {
     switch (badge) {
       case "success":
-        return <CheckCircleIcon className="h-3.5 w-3.5 text-emerald-500" />;
+        return <CheckCircleIcon className="text-emerald-500" />;
       case "warning":
-        return <TimeIcon className="h-3.5 w-3.5 text-amber-500" />;
+        return <TimeIcon className="text-amber-500" />;
       case "error":
-        return <CloseIcon className="h-3.5 w-3.5 text-rose-500" />;
+        return <CloseIcon className="text-rose-500" />;
       default:
-        return <ShootingStarIcon className="h-3.5 w-3.5 text-brand-500" />;
+        return <ShootingStarIcon className="text-brand-500" />;
     }
   };
 
@@ -93,7 +93,7 @@ export default function AuditTimeline({ logs, maxHeight }: AuditTimelineProps) {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
-              <TimeIcon className="h-4 w-4" />
+              <TimeIcon/>
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -213,7 +213,7 @@ export default function AuditTimeline({ logs, maxHeight }: AuditTimelineProps) {
         {filteredLogs.length === 0 ? (
           <div className="flex h-full min-h-[220px] flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 p-6 text-center dark:border-gray-800">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100 text-gray-400 dark:bg-gray-800">
-              <TimeIcon className="h-5 w-5" />
+              <TimeIcon/>
             </div>
             <p className="mt-2.5 text-xs font-semibold text-gray-700 dark:text-gray-300">
               No events in this category
@@ -286,7 +286,7 @@ export default function AuditTimeline({ logs, maxHeight }: AuditTimelineProps) {
             <span className="h-1.5 w-1.5 rounded-full bg-brand-500"></span>
             <span>View Full SHA-256 Ledger</span>
           </span>
-          <ArrowRightIcon className="h-3.5 w-3.5 text-gray-400 group-hover:text-brand-500 group-hover:translate-x-0.5 transition-all" />
+          <ArrowRightIcon className="text-gray-400 group-hover:text-brand-500 group-hover:translate-x-0.5 transition-all" />
         </Link>
       </div>
     </div>

@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.controller import notification_router
+
 from app.controller import (
     action_plan_router,
     audit_log_router,
@@ -55,7 +57,8 @@ TAGS_METADATA = [
     {"name": "CalendarMatrix", "description": "Interviewer calendar matrix and cross-timezone slot availability."},
     {"name": "SlotConflictChecker", "description": "Pre-flight slot conflict detection, prayer blackout checks, and 15-minute buffer enforcement."},
     {"name": "AuditLogs", "description": "Immutable SHA-256 hash-chained system audit logs and chain-of-custody tracking."},
-    {"name": "SystemLogs", "description": "Technical system access, error stacktraces, and mutation logs."} 
+    {"name": "SystemLogs", "description": "Technical system access, error stacktraces, and mutation logs."},
+    {"name": "Notifications", "description": "Aggregated user-scoped notifications and task alerts."} 
 ]
 
 app = FastAPI(
@@ -103,3 +106,4 @@ app.include_router(calendar_matrix_router, prefix=settings.API_V1_STR)
 app.include_router(slot_conflict_checker_router, prefix=settings.API_V1_STR)
 app.include_router(audit_log_router, prefix=settings.API_V1_STR)
 app.include_router(system_log_router, prefix=settings.API_V1_STR)
+app.include_router(notification_router, prefix=settings.API_V1_STR)

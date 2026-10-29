@@ -1,10 +1,7 @@
 "use client";
 
+import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "@/i18n/navigation";
-import { cn } from "@/utils";
-import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
-import { Dropdown } from "../ui/dropdown/Dropdown";
 import {
   AlertIcon,
   CheckCircleIcon,
@@ -14,131 +11,118 @@ import {
   LockIcon,
   TrashBinIcon,
 } from "@/icons";
-import { orchestrationService, simulatorService } from "@/services";
+import { notificationService, type SystemNotification } from "@/services";
+import { cn } from "@/utils";
+import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { Dropdown } from "../ui/dropdown/Dropdown";
 
-export type NotificationCategory = "APPROVAL" | "SECURITY" | "TRIAGE" | "INTERVIEW";
+export type NotificationCategory = SystemNotification["category"];
+export type { SystemNotification };
 
-export interface SystemNotification {
-  id: string;
-  title: string;
-  message: string;
-  category: NotificationCategory;
-  timestamp: string;
-  isRead: boolean;
-  link: string;
+type NotificationFilter = "ALL" | NotificationCategory;
+
+function getStoredIdSet(storageKey: string): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) return new Set();
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? new Set(
+          parsed.filter((item): item is string => typeof item === "string")
+        )
+      : new Set();
+  } catch {
+    return new Set();
+  }
 }
 
-const INITIAL_NOTIFICATIONS: SystemNotification[] = [
-  {
-    id: "notif-appr-01",
-    title: "Action Plan Awaiting Approval",
-    message: "AI Orchestrator drafted interview plan for Rina Kusuma (Technical Round with Budi Santoso).",
-    category: "APPROVAL",
-    timestamp: "Just now",
-    isRead: false,
-    link: "/",
-  },
-  {
-    id: "notif-sec-01",
-    title: "Prompt Injection Blocked",
-    message: "AI Guardrail detected & sanitized suspicious prompt injection from candidate WhatsApp channel.",
-    category: "SECURITY",
-    timestamp: "12 min ago",
-    isRead: false,
-    link: "/audit/guardrail",
-  },
-  {
-    id: "notif-tri-01",
-    title: "Candidate Reschedule Request",
-    message: "Rina Kusuma requested Friday noon slot. AI detected Friday prayer blackout and proposed 14:00 WIB.",
-    category: "TRIAGE",
-    timestamp: "35 min ago",
-    isRead: false,
-    link: "/simulator/whatsapp",
-  },
-  {
-    id: "notif-eval-01",
-    title: "Interview Rubric Summary Ready",
-    message: "AI Copilot extracted competency evidence and score predictions for Technical Interview.",
-    category: "INTERVIEW",
-    timestamp: "1 hr ago",
-    isRead: true,
-    link: "/interviews/review",
-  },
-];
+function saveStoredIdSet(storageKey: string, ids: Set<string>): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(storageKey, JSON.stringify(Array.from(ids)));
+  } catch {
+    // Ignore storage quota or private browsing errors
+  }
+}
+
+function formatNotificationTime(timestamp: string): string {
+  const parsed = new Date(timestamp);
+  if (Number.isNaN(parsed.getTime())) {
+    return timestamp;
+  }
+
+  const diffSeconds = Math.floor((Date.now() - parsed.getTime()) / 1000);
+  if (diffSeconds < 60) return "Just now";
+  if (diffSeconds < 3600) return `${Math.floor(diffSeconds / 60)} min ago`;
+  if (diffSeconds < 86400) return `${Math.floor(diffSeconds / 3600)} hr ago`;
+  if (diffSeconds < 604800) return `${Math.floor(diffSeconds / 86400)}d ago`;
+
+  return parsed.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
 
 export default function NotificationDropdown() {
   const router = useRouter();
+  const { user, isAuthenticated } = useAuth();
+
   const [isOpen, setIsOpen] = useState(false);
-  const [activeFilter, setActiveFilter] = useState<"ALL" | "APPROVAL" | "SECURITY">("ALL");
-  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
-  const [readIds, setReadIds] = useState<Set<string>>(new Set());
-  const [isAllCleared, setIsAllCleared] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<NotificationFilter>("ALL");
 
-  // Cached query with TanStack Query: Stale time 60s, so repeated renders/refresh do not refetch!
-  const { data: dynamicItems = [] } = useQuery({
-    queryKey: ["notifications", "live"],
-    queryFn: async () => {
-      const [plan, simNotifs] = await Promise.allSettled([
-        orchestrationService.getCurrentActionPlan(),
-        simulatorService.listSimulatorNotifications(),
-      ]);
+  // Per-user in-memory sync map backed by localStorage (avoids cascading setState in useEffect)
+  const [userReadMap, setUserReadMap] = useState<Record<string, string[]>>({});
+  const [userDeletedMap, setUserDeletedMap] = useState<
+    Record<string, string[]>
+  >({});
 
-      const items: SystemNotification[] = [];
+  const userKey = user?.username || user?.id || "anonymous";
+  const readStorageKey = `read_notifs_${userKey}`;
+  const deletedStorageKey = `deleted_notifs_${userKey}`;
 
-      // Check if there is an active plan waiting for HR approval
-      if (
-        plan.status === "fulfilled" &&
-        plan.value &&
-        plan.value.status === "PENDING_APPROVAL"
-      ) {
-        const planMsg = plan.value.candidate_name
-          ? `Action plan for ${plan.value.candidate_name} (${plan.value.candidate_position || "Interview"}) is awaiting your sign-off.`
-          : `Action plan #${plan.value.id} is awaiting your sign-off before sending.`;
-
-        items.push({
-          id: `plan-${plan.value.id}`,
-          title: "Human Approval Required",
-          message: planMsg,
-          category: "APPROVAL",
-          timestamp: "Live",
-          isRead: false,
-          link: "/",
-        });
-      }
-
-      // Ingest simulator notifications
-      if (simNotifs.status === "fulfilled" && Array.isArray(simNotifs.value)) {
-        for (const item of simNotifs.value) {
-          items.push({
-            id: item.id,
-            title: item.title,
-            message: item.message,
-            category: item.type === "guardrail_blocked" ? "SECURITY" : "TRIAGE",
-            timestamp: "Recent",
-            isRead: false,
-            link: item.action_url || "/simulator/whatsapp",
-          });
-        }
-      }
-
-      return items;
-    },
-    staleTime: 60 * 1000,
+  // Fetch live user-scoped notifications from GET /api/v1/notifications
+  const { data: rawNotifs = [], isLoading } = useQuery({
+    queryKey: ["notifications", userKey],
+    queryFn: () => notificationService.getNotifications(),
+    enabled: isAuthenticated,
+    refetchInterval: 30 * 1000,
+    staleTime: 15 * 1000,
   });
 
-  // Pure derived state — avoids cascading setState renders
-  const notifications = useMemo<SystemNotification[]>(() => {
-    if (isAllCleared) return [];
+  // Merge live notifications with per-user read & deleted state from localStorage
+  const notifications = useMemo<
+    (SystemNotification & { isRead: boolean })[]
+  >(() => {
+    if (!isAuthenticated) return [];
 
-    const existingIds = new Set(INITIAL_NOTIFICATIONS.map((n) => n.id));
-    const freshDynamic = dynamicItems.filter((d) => !existingIds.has(d.id));
-    const merged = [...freshDynamic, ...INITIAL_NOTIFICATIONS];
+    const readSet =
+      userReadMap[userKey] !== undefined
+        ? new Set(userReadMap[userKey])
+        : getStoredIdSet(readStorageKey);
 
-    return merged
-      .filter((item) => !deletedIds.has(item.id))
-      .map((item) => (readIds.has(item.id) ? { ...item, isRead: true } : item));
-  }, [dynamicItems, deletedIds, readIds, isAllCleared]);
+    const deletedSet =
+      userDeletedMap[userKey] !== undefined
+        ? new Set(userDeletedMap[userKey])
+        : getStoredIdSet(deletedStorageKey);
+
+    return rawNotifs
+      .filter((item) => !deletedSet.has(item.id))
+      .map((item) => ({
+        ...item,
+        isRead: Boolean(item.isRead) || readSet.has(item.id),
+      }));
+  }, [
+    isAuthenticated,
+    rawNotifs,
+    userKey,
+    readStorageKey,
+    deletedStorageKey,
+    userReadMap,
+    userDeletedMap,
+  ]);
 
   const unreadCount = useMemo(() => {
     return notifications.filter((n) => !n.isRead).length;
@@ -150,20 +134,68 @@ export default function NotificationDropdown() {
   }, [notifications, activeFilter]);
 
   const handleMarkAllAsRead = () => {
-    setReadIds(new Set(notifications.map((n) => n.id)));
+    const currentRead =
+      userReadMap[userKey] !== undefined
+        ? new Set(userReadMap[userKey])
+        : getStoredIdSet(readStorageKey);
+
+    for (const item of notifications) {
+      currentRead.add(item.id);
+    }
+
+    saveStoredIdSet(readStorageKey, currentRead);
+    setUserReadMap((prev) => ({
+      ...prev,
+      [userKey]: Array.from(currentRead),
+    }));
   };
 
   const handleClearAll = () => {
-    setIsAllCleared(true);
+    const currentDeleted =
+      userDeletedMap[userKey] !== undefined
+        ? new Set(userDeletedMap[userKey])
+        : getStoredIdSet(deletedStorageKey);
+
+    for (const item of notifications) {
+      currentDeleted.add(item.id);
+    }
+
+    saveStoredIdSet(deletedStorageKey, currentDeleted);
+    setUserDeletedMap((prev) => ({
+      ...prev,
+      [userKey]: Array.from(currentDeleted),
+    }));
   };
 
   const handleDeleteNotification = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    setDeletedIds((prev) => new Set([...prev, id]));
+    const currentDeleted =
+      userDeletedMap[userKey] !== undefined
+        ? new Set(userDeletedMap[userKey])
+        : getStoredIdSet(deletedStorageKey);
+
+    currentDeleted.add(id);
+    saveStoredIdSet(deletedStorageKey, currentDeleted);
+    setUserDeletedMap((prev) => ({
+      ...prev,
+      [userKey]: Array.from(currentDeleted),
+    }));
   };
 
-  const handleItemClick = (item: SystemNotification) => {
-    setReadIds((prev) => new Set([...prev, item.id]));
+  // Smart Deep Link: marks as read for active user and navigates to full context page for review
+  const handleNotificationClick = (item: SystemNotification) => {
+    const currentRead =
+      userReadMap[userKey] !== undefined
+        ? new Set(userReadMap[userKey])
+        : getStoredIdSet(readStorageKey);
+
+    currentRead.add(item.id);
+    saveStoredIdSet(readStorageKey, currentRead);
+    setUserReadMap((prev) => ({
+      ...prev,
+      [userKey]: Array.from(currentRead),
+    }));
+
     setIsOpen(false);
     router.push(item.link);
   };
@@ -173,29 +205,37 @@ export default function NotificationDropdown() {
       case "APPROVAL":
         return (
           <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400 border border-brand-200 dark:border-brand-500/20">
-            <CheckCircleIcon/> Approval
+            <CheckCircleIcon /> Approval
           </span>
         );
       case "SECURITY":
         return (
           <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold bg-error-50 text-error-600 dark:bg-error-500/15 dark:text-error-400 border border-error-200 dark:border-error-500/20">
-            <LockIcon/> Security
+            <LockIcon /> Security
           </span>
         );
       case "TRIAGE":
         return (
           <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold bg-warning-50 text-warning-600 dark:bg-warning-500/15 dark:text-warning-400 border border-warning-200 dark:border-warning-500/20">
-            <AlertIcon/> Triage
+            <AlertIcon /> Triage
           </span>
         );
       case "INTERVIEW":
         return (
           <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold bg-success-50 text-success-600 dark:bg-success-500/15 dark:text-success-400 border border-success-200 dark:border-success-500/20">
-            <DocsIcon/> Evaluation
+            <DocsIcon /> Evaluation
           </span>
         );
     }
   };
+
+  const filterTabs: { key: NotificationFilter; label: string }[] = [
+    { key: "ALL", label: `All (${notifications.length})` },
+    { key: "APPROVAL", label: "Approvals" },
+    { key: "TRIAGE", label: "Triage" },
+    { key: "SECURITY", label: "Security" },
+    { key: "INTERVIEW", label: "Interview" },
+  ];
 
   return (
     <div className="relative">
@@ -207,7 +247,7 @@ export default function NotificationDropdown() {
         aria-label="Notifications"
       >
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 z-10 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-error-500 px-1 text-[11px] font-bold text-white shadow-sm animate-in zoom-in">
+          <span className="absolute -top-1 -end-1 z-10 flex h-5 min-w-5 items-center justify-center rounded-full bg-error-500 px-1 text-[11px] font-bold text-white shadow-sm animate-in zoom-in">
             {unreadCount}
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-error-400 opacity-75" />
           </span>
@@ -232,7 +272,7 @@ export default function NotificationDropdown() {
       <Dropdown
         isOpen={isOpen}
         onClose={() => setIsOpen(false)}
-        className="absolute -left-16 sm:left-auto sm:right-0 mt-3 flex h-[460px] w-[340px] sm:w-[410px] flex-col rounded-2xl border border-gray-200 bg-white p-4 shadow-theme-lg dark:border-gray-800 dark:bg-gray-900 z-99999"
+        className="absolute -start-16 sm:start-auto sm:end-0 mt-3 flex h-[460px] w-[340px] sm:w-[410px] flex-col rounded-2xl border border-gray-200 bg-white p-4 shadow-theme-lg dark:border-gray-800 dark:bg-gray-900 z-99999"
       >
         {/* Header Bar */}
         <div className="flex items-center justify-between border-b border-gray-100 pb-3 dark:border-gray-800">
@@ -271,48 +311,34 @@ export default function NotificationDropdown() {
         </div>
 
         {/* Filter Chips */}
-        <div className="mt-2.5 flex items-center gap-1.5 border-b border-gray-100 pb-2.5 dark:border-gray-800">
-          <button
-            type="button"
-            onClick={() => setActiveFilter("ALL")}
-            className={cn(
-              "rounded-lg px-2.5 py-1 text-xs font-medium transition-colors",
-              activeFilter === "ALL"
-                ? "bg-brand-500 text-white"
-                : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
-            )}
-          >
-            All ({notifications.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveFilter("APPROVAL")}
-            className={cn(
-              "rounded-lg px-2.5 py-1 text-xs font-medium transition-colors",
-              activeFilter === "APPROVAL"
-                ? "bg-brand-500 text-white"
-                : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
-            )}
-          >
-            Approvals
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveFilter("SECURITY")}
-            className={cn(
-              "rounded-lg px-2.5 py-1 text-xs font-medium transition-colors",
-              activeFilter === "SECURITY"
-                ? "bg-brand-500 text-white"
-                : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
-            )}
-          >
-            Security
-          </button>
+        <div className="mt-2.5 flex items-center gap-1.5 overflow-x-auto no-scrollbar border-b border-gray-100 pb-2.5 dark:border-gray-800">
+          {filterTabs.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveFilter(tab.key)}
+              className={cn(
+                "shrink-0 whitespace-nowrap rounded-lg px-2.5 py-1 text-xs font-medium transition-colors",
+                activeFilter === tab.key
+                  ? "bg-brand-500 text-white"
+                  : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
 
         {/* Notification Items List */}
-        <div className="flex-1 overflow-y-auto space-y-2 py-2 pr-1 custom-scrollbar">
-          {notifications.length === 0 ? (
+        <div className="flex-1 overflow-y-auto space-y-2 py-2 pe-1 custom-scrollbar">
+          {isLoading && notifications.length === 0 ? (
+            <div className="py-16 flex flex-col items-center justify-center text-center">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand-500 border-t-transparent mb-2.5" />
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                Loading notifications...
+              </p>
+            </div>
+          ) : notifications.length === 0 ? (
             <div className="py-16 flex flex-col items-center justify-center text-center">
               <span className="rounded-full bg-gray-100 p-3 text-gray-400 dark:bg-gray-800 dark:text-gray-500 mb-2">
                 <CheckCircleIcon />
@@ -332,7 +358,7 @@ export default function NotificationDropdown() {
             filteredNotifications.map((item) => (
               <div
                 key={item.id}
-                onClick={() => handleItemClick(item)}
+                onClick={() => handleNotificationClick(item)}
                 className={cn(
                   "cursor-pointer rounded-xl p-3 transition-all border text-start group relative",
                   item.isRead
@@ -358,7 +384,7 @@ export default function NotificationDropdown() {
                       title="Delete notification"
                       aria-label="Delete notification"
                     >
-                      <CloseLineIcon/>
+                      <CloseLineIcon />
                     </button>
                   </div>
                 </div>
@@ -368,7 +394,7 @@ export default function NotificationDropdown() {
                 </p>
 
                 <div className="mt-2 flex items-center justify-between text-[11px] text-gray-400">
-                  <span>{item.timestamp}</span>
+                  <span>{formatNotificationTime(item.timestamp)}</span>
                   <span className="text-brand-500 dark:text-brand-400 font-medium hover:underline">
                     View Details →
                   </span>
