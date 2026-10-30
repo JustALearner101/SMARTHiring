@@ -3,16 +3,16 @@ from collections.abc import Sequence
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.model.AuditModel import SystemLog
+from app.model.AuditModel import AuditLog
 from app.repository.BaseRepository import BaseRepository
 
 
-class AuditLogRepository(BaseRepository[SystemLog]):
+class AuditLogRepository(BaseRepository[AuditLog]):
     def __init__(self, session: AsyncSession) -> None:
-        super().__init__(SystemLog, session)
+        super().__init__(AuditLog, session)
 
-    async def get_latest_audit_log(self) -> SystemLog | None:
-        stmt = select(SystemLog).order_by(SystemLog.nid.desc()).limit(1)
+    async def get_latest_audit_log(self) -> AuditLog | None:
+        stmt = select(AuditLog).order_by(AuditLog.nid.desc()).limit(1)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -26,8 +26,8 @@ class AuditLogRepository(BaseRepository[SystemLog]):
         masked_detail: str,
         prev_hash: str,
         current_hash: str,
-    ) -> SystemLog:
-        log = SystemLog(
+    ) -> AuditLog:
+        log = AuditLog(
             nid_job=job_id,
             vactor_type=actor_type,
             vactor_id=actor_id,
@@ -46,10 +46,10 @@ class AuditLogRepository(BaseRepository[SystemLog]):
         self,
         offset: int = 0,
         limit: int = 20,
-    ) -> tuple[Sequence[SystemLog], int]:
+    ) -> tuple[Sequence[AuditLog], int]:
         items, total = await self.paginate(
             offset=offset,
             limit=limit,
-            order_by=SystemLog.nid.desc(),
+            order_by=(AuditLog.dcrea.desc(), AuditLog.nid.desc()),
         )
         return items, total

@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from datetime import date
 
-from sqlalchemy import extract, select
+from sqlalchemy import extract, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.model.CalendarModel import Holiday
@@ -13,7 +13,10 @@ class HolidayRepository(BaseRepository[Holiday]):
         super().__init__(Holiday, session)
 
     async def list_holidays(self, year: int | None = None) -> Sequence[Holiday]:
-        stmt = select(Holiday).order_by(Holiday.dholiday_date.asc())
+        stmt = select(Holiday).order_by(
+            func.coalesce(Holiday.dmodi, Holiday.dcrea).desc(),
+            Holiday.nid.desc(),
+        )
         if year:
             stmt = stmt.where(extract("year", Holiday.dholiday_date) == year)
         result = await self.session.execute(stmt)

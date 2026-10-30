@@ -56,3 +56,24 @@ class BusinessRuleException(AppException):
 
     def __init__(self, message: str = "Melanggar aturan operasional bisnis", data: Any = None) -> None:
         super().__init__(message=message, status_code=422, data=data)
+
+
+class RateLimitException(AppException):
+    """HTTP 429 Too Many Requests."""
+
+    def __init__(self, message: str = "Terlalu banyak permintaan. Silakan coba lagi nanti.", data: Any = None) -> None:
+        super().__init__(message=message, status_code=429, data=data)
+
+
+class PayloadTooLargeException(AppException):
+    """HTTP 413 Payload Too Large."""
+
+    def __init__(self, message: str = "Ukuran file atau payload melebihi batas yang diizinkan", data: Any = None) -> None:
+        super().__init__(message=message, status_code=413, data=data)
+
+
+class UnsupportedMediaTypeException(AppException):
+    """HTTP 415 Unsupported Media Type."""
+
+    def __init__(self, message: str = "Format file atau tipe media tidak didukung", data: Any = None) -> None:
+        super().__init__(message=message, status_code=415, data=data)

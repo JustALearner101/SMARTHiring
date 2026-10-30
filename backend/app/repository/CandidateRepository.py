@@ -16,6 +16,19 @@ class CandidateRepository(BaseRepository[Candidate]):
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_next_sequence_number(self) -> int:
+        stmt = select(func.coalesce(func.max(Candidate.nid), 0))
+        max_nid = (await self.session.execute(stmt)).scalar_one()
+        return int(max_nid) + 1
+
+    async def list_by_email(self, email: str) -> Sequence[Candidate]:
+        stmt = (
+            select(Candidate)
+            .where(func.lower(Candidate.vemail) == email.strip().lower())
+            .order_by(Candidate.nid.desc())
+        )
+        return (await self.session.execute(stmt)).scalars().all()
+
     async def search(
         self,
         query: str | None = None,
@@ -23,7 +36,10 @@ class CandidateRepository(BaseRepository[Candidate]):
         offset: int = 0,
         limit: int = 20,
     ) -> tuple[Sequence[Candidate], int]:
-        stmt = select(Candidate).order_by(Candidate.nid.desc())
+        stmt = select(Candidate).order_by(
+            func.coalesce(Candidate.dmodi, Candidate.dcrea).desc(),
+            Candidate.nid.desc(),
+        )
         count_stmt = select(func.count()).select_from(Candidate)
 
         conditions = []

@@ -17,17 +17,19 @@ import {
   PageIcon,
 } from "../icons/index";
 
+import type { UserRole } from "@/types/auth";
+
 type NavItem = {
   key: string;
   icon: React.ReactNode;
   path?: string;
-  roles?: ("HR" | "USER_INTERVIEWER" | "TECH_INTERVIEWER" | "AUDITOR")[];
+  roles?: UserRole[];
   new?: boolean;
   target?: string;
   subItems?: {
     key: string;
     path: string;
-    roles?: ("HR" | "USER_INTERVIEWER" | "TECH_INTERVIEWER" | "AUDITOR")[];
+    roles?: UserRole[];
     pro?: boolean;
     new?: boolean;
     target?: string;
@@ -39,53 +41,54 @@ const navItems: NavItem[] = [
     icon: <GridIcon />,
     key: "dashboard",
     path: "/",
+    roles: ["HR", "ADMIN", "INTERVIEWER"],
   },
   {
     icon: <BoltIcon />,
     key: "orchestration",
-    roles: ["HR", "USER_INTERVIEWER"],
+    roles: ["HR", "ADMIN", "INTERVIEWER"],
     subItems: [
-      { key: "scheduling", path: "/orchestration/scheduling", roles: ["HR"] },
-      { key: "triageThreads", path: "/orchestration/threads", roles: ["HR"] },
-      { key: "calendarMatrix", path: "/orchestration/calendar", roles: ["HR", "USER_INTERVIEWER"] },
+      { key: "scheduling", path: "/orchestration/scheduling", roles: ["HR", "ADMIN"] },
+      { key: "triageThreads", path: "/orchestration/threads", roles: ["HR", "ADMIN"] },
+      { key: "calendarMatrix", path: "/orchestration/calendar", roles: ["HR", "ADMIN", "INTERVIEWER"] },
     ],
   },
   {
     icon: <PageIcon />,
     key: "interviews",
-    roles: ["HR", "USER_INTERVIEWER", "AUDITOR"],
+    roles: ["HR", "ADMIN", "INTERVIEWER"],
     subItems: [
-      { key: "interviewSessions", path: "/interviews/sessions", roles: ["HR", "USER_INTERVIEWER"] },
-      { key: "reviewEvidence", path: "/interviews/review", roles: ["HR", "USER_INTERVIEWER", "AUDITOR"] },
+      { key: "interviewSessions", path: "/interviews/sessions", roles: ["HR", "ADMIN", "INTERVIEWER"] },
+      { key: "reviewEvidence", path: "/interviews/review", roles: ["HR", "ADMIN", "INTERVIEWER"] },
     ],
   },
   {
     icon: <FolderIcon />,
     key: "masterData",
-    roles: ["HR"],
+    roles: ["HR", "ADMIN", "INTERVIEWER"],
     subItems: [
-      { key: "candidates", path: "/master/candidates", roles: ["HR"] },
-      { key: "contacts", path: "/master/contacts", roles: ["HR"] },
-      { key: "rubrics", path: "/master/rubrics", roles: ["HR"] },
-      { key: "operationalRules", path: "/master/operational-rules", roles: ["HR"] },
+      { key: "candidates", path: "/master/candidates", roles: ["HR", "ADMIN"] },
+      { key: "contacts", path: "/master/contacts", roles: ["HR", "ADMIN"] },
+      { key: "rubrics", path: "/master/rubrics", roles: ["HR", "ADMIN", "INTERVIEWER"] },
+      { key: "operationalRules", path: "/master/operational-rules", roles: ["HR", "ADMIN"] },
     ],
   },
   {
     icon: <ChatIcon />,
     key: "simulator",
-    roles: ["HR", "USER_INTERVIEWER"],
+    roles: ["HR", "ADMIN", "INTERVIEWER"],
     subItems: [
-      { key: "interviewerEmail", path: "/simulator/email", roles: ["HR", "USER_INTERVIEWER"] },
-      { key: "candidateWhatsapp", path: "/simulator/whatsapp", roles: ["HR"] },
+      { key: "interviewerEmail", path: "/simulator/email", roles: ["HR", "ADMIN", "INTERVIEWER"] },
+      { key: "candidateWhatsapp", path: "/simulator/whatsapp", roles: ["HR", "ADMIN"] },
     ],
   },
   {
     icon: <DocsIcon />,
     key: "auditSecurity",
-    roles: ["HR", "AUDITOR"],
+    roles: ["ADMIN"],
     subItems: [
-      { key: "auditLogs", path: "/audit/logs", roles: ["HR", "AUDITOR"] },
-      { key: "guardrailAlerts", path: "/audit/guardrail", roles: ["HR", "AUDITOR"] },
+      { key: "auditLogs", path: "/audit/logs", roles: ["ADMIN"] },
+      { key: "guardrailAlerts", path: "/audit/guardrail", roles: ["ADMIN"] },
     ],
   },
 ];

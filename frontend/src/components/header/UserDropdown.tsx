@@ -54,17 +54,16 @@ export default function UserDropdown() {
             HR LEAD
           </span>
         );
-      case "USER_INTERVIEWER":
-      case "TECH_INTERVIEWER":
+      case "INTERVIEWER":
         return (
-          <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700 dark:bg-blue-500/15 dark:text-blue-400">
+          <span className="rounded-md bg-blue-light-50 px-2 py-0.5 text-[10px] font-bold text-blue-light-700 dark:bg-blue-light-500/15 dark:text-blue-light-400">
             INTERVIEWER
           </span>
         );
-      case "AUDITOR":
+      case "ADMIN":
         return (
-          <span className="rounded-md bg-purple-50 px-2 py-0.5 text-[10px] font-bold text-purple-700 dark:bg-purple-500/15 dark:text-purple-400">
-            AUDITOR
+          <span className="rounded-md bg-brand-50 px-2 py-0.5 text-[10px] font-bold text-brand-700 dark:bg-brand-500/15 dark:text-brand-400">
+            SYSTEM ADMIN
           </span>
         );
       default:

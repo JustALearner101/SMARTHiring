@@ -7,7 +7,7 @@ import TextArea from "@/components/form/input/TextArea";
 import Select from "@/components/form/Select";
 import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
-import { Modal, ConfirmationModal } from "@/components/ui/modal";
+import { ConfirmationModal, Modal } from "@/components/ui/modal";
 import {
   Table,
   TableBody,
@@ -15,22 +15,34 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/context/ToastContext";
 import { Link } from "@/i18n/navigation";
 import {
+  AlertIcon,
+  AudioIcon,
   BoltIcon,
+  CheckCircleIcon,
+  InfoIcon,
+  LockIcon,
   PencilIcon,
   PlusIcon,
   TrashBinIcon,
 } from "@/icons";
 import { masterService } from "@/services";
-import { ApplicationStatus, Candidate, PreferredChannel, Timezone } from "@/types/master";
-import { useAuth } from "@/context/AuthContext";
-import { useToast } from "@/context/ToastContext";
+import {
+  ApplicationStatus,
+  Candidate,
+  PaginatedResponse,
+  PreferredChannel,
+  Timezone,
+} from "@/types/master";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
 export default function CandidatesPage() {
   const { role } = useAuth();
+  const canManageCandidates = role === "HR" || role === "ADMIN";
   const { showSuccess, showError } = useToast();
   const [isSaving, setIsSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -43,14 +55,22 @@ export default function CandidatesPage() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [activeCandidate, setActiveCandidate] = useState<Candidate | null>(null);
 
-  // Form State
+  // Re-application Modal State (Repeat Applicant Cycle)
+  const [reapplyTarget, setReapplyTarget] = useState<Candidate | null>(null);
+  const [reapplyPosition, setReapplyPosition] = useState("");
+  const [reapplyNotes, setReapplyNotes] = useState("");
+  const [isReapplyModalOpen, setIsReapplyModalOpen] = useState(false);
+
+  // Offering Transition Confirmation Modal (from Technical Test / On Hold)
+  const [offerTarget, setOfferTarget] = useState<Candidate | null>(null);
+
+  // Form State (Status is system-managed automatically, never manually typed)
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     phone: "",
     preferred_channel: "whatsapp" as PreferredChannel,
     applied_position: "",
-    status: "SCREENING" as ApplicationStatus,
     timezone: "WIB" as Timezone,
     resume_url: "",
     notes: "",
@@ -58,7 +78,7 @@ export default function CandidatesPage() {
     expected_salary: "" as string | number,
   });
 
-  // TanStack Query: Caches candidates in memory with 1-min freshness and 0ms navigation
+  // TanStack Query: Caches candidates in memory and syncs automatically on workflow invalidations
   const queryClient = useQueryClient();
   const { data: candidatesData, isLoading } = useQuery({
     queryKey: ["candidates"],
@@ -84,16 +104,44 @@ export default function CandidatesPage() {
     });
   }, [candidates, searchQuery, statusFilter, timezoneFilter]);
 
+  // Detect prior application history by email while filling "Add New Candidate"
+  const matchingPriorApplications = useMemo(() => {
+    if (activeCandidate || !formData.email.trim()) return [];
+    const targetEmail = formData.email.trim().toLowerCase();
+    return candidates.filter((c) => c.email.trim().toLowerCase() === targetEmail);
+  }, [activeCandidate, candidates, formData.email]);
+
+  const hasActiveDuplicateInForm = useMemo(() => {
+    if (!formData.applied_position.trim()) return false;
+    const targetPos = formData.applied_position.trim().toLowerCase();
+    return matchingPriorApplications.some(
+      (c) =>
+        c.applied_position.trim().toLowerCase() === targetPos &&
+        c.status !== "REJECTED" &&
+        c.status !== "OFFERED"
+    );
+  }, [formData.applied_position, matchingPriorApplications]);
+
+  const hasNewerActiveCycleForRole = (cand: Candidate) =>
+    candidates.some(
+      (other) =>
+        other.id !== cand.id &&
+        other.email.trim().toLowerCase() === cand.email.trim().toLowerCase() &&
+        other.applied_position.trim().toLowerCase() ===
+          cand.applied_position.trim().toLowerCase() &&
+        other.status !== "REJECTED" &&
+        other.status !== "OFFERED"
+    );
+
   // Open Add Modal
   const handleOpenAdd = () => {
     setActiveCandidate(null);
     setFormData({
       name: "",
       email: "",
-      phone: "+628",
+      phone: "",
       preferred_channel: "whatsapp",
       applied_position: "",
-      status: "SCREENING",
       timezone: "WIB",
       resume_url: "",
       notes: "",
@@ -112,7 +160,6 @@ export default function CandidatesPage() {
       phone: cand.phone,
       preferred_channel: cand.preferred_channel,
       applied_position: cand.applied_position,
-      status: cand.status,
       timezone: cand.timezone,
       resume_url: cand.resume_url || "",
       notes: cand.notes || "",
@@ -131,11 +178,17 @@ export default function CandidatesPage() {
       );
       return;
     }
-    // Open confirmation dialog — form modal remains open in the background so user can go back if needed
+    if (!activeCandidate && hasActiveDuplicateInForm) {
+      showError(
+        "Lamaran Aktif Sudah Ada",
+        "Kandidat dengan email ini masih memiliki lamaran aktif pada posisi yang sama."
+      );
+      return;
+    }
     setIsSaveConfirmOpen(true);
   };
 
-  // Step 2: Execute Save Candidate upon user confirmation in Modal
+  // Step 2: Execute Save Candidate upon user confirmation
   const handleExecuteSaveCandidate = async () => {
     const editing = activeCandidate;
     const currentSalaryNum =
@@ -157,7 +210,6 @@ export default function CandidatesPage() {
           phone: formData.phone,
           preferred_channel: formData.preferred_channel,
           applied_position: formData.applied_position,
-          status: formData.status,
           timezone: formData.timezone,
           resume_url: formData.resume_url,
           notes: formData.notes,
@@ -166,8 +218,11 @@ export default function CandidatesPage() {
         });
         queryClient.setQueryData(
           ["candidates"],
-          (old: { items: Candidate[]; total: number; page: number; page_size: number; total_pages: number } | undefined) => ({
-            items: (old?.items || []).map((c) => (c.id === editing.id ? updated : c)),
+          (old: PaginatedResponse<Candidate> | undefined) => ({
+            items: [
+              updated,
+              ...(old?.items || []).filter((c) => c.id !== editing.id),
+            ],
             total: old?.total || 0,
             page: old?.page || 1,
             page_size: old?.page_size || 100,
@@ -176,7 +231,7 @@ export default function CandidatesPage() {
         );
         showSuccess(
           "Kandidat Diperbarui",
-          `Data kandidat ${formData.name} berhasil disimpan ke database.`
+          `Profil kandidat ${formData.name} berhasil disimpan ke database.`
         );
       } else {
         const created = await masterService.createCandidate({
@@ -185,7 +240,7 @@ export default function CandidatesPage() {
           phone: formData.phone,
           preferred_channel: formData.preferred_channel,
           applied_position: formData.applied_position,
-          status: formData.status,
+          status: "SCREENING",
           timezone: formData.timezone,
           resume_url: formData.resume_url,
           notes: formData.notes,
@@ -194,7 +249,7 @@ export default function CandidatesPage() {
         });
         queryClient.setQueryData(
           ["candidates"],
-          (old: { items: Candidate[]; total: number; page: number; page_size: number; total_pages: number } | undefined) => ({
+          (old: PaginatedResponse<Candidate> | undefined) => ({
             items: [created, ...(old?.items || [])],
             total: (old?.total || 0) + 1,
             page: old?.page || 1,
@@ -202,9 +257,13 @@ export default function CandidatesPage() {
             total_pages: old?.total_pages || 1,
           })
         );
+        const cycleLabel =
+          (created.application_cycle ?? 1) > 1
+            ? ` (Cycle #${created.application_cycle})`
+            : "";
         showSuccess(
           "Kandidat Ditambahkan",
-          `Kandidat ${formData.name} (${created.candidate_code}) berhasil ditambahkan ke antrean.`
+          `Kandidat ${formData.name} (${created.candidate_code})${cycleLabel} otomatis masuk tahap Screening.`
         );
       }
       void queryClient.invalidateQueries({ queryKey: ["candidates"] });
@@ -213,48 +272,276 @@ export default function CandidatesPage() {
     } catch (error) {
       console.error("Failed to save candidate:", error);
       const msg =
-        error instanceof Error ? error.message : "Terjadi kesalahan saat menyimpan data kandidat ke server.";
+        error instanceof Error
+          ? error.message
+          : "Terjadi kesalahan saat menyimpan data kandidat ke server.";
       showError("Gagal Menyimpan Data", msg);
     } finally {
       setIsSaving(false);
     }
   };
 
-  // Confirm Delete
-  const handleConfirmDelete = () => {
+  // Execute 1-Click Re-application (New Application Cycle for REJECTED Candidate)
+  const handleExecuteReapply = async () => {
+    if (!reapplyTarget) return;
+    setIsSaving(true);
+    try {
+      const created = await masterService.reapplyCandidate(reapplyTarget.id, {
+        applied_position: reapplyPosition.trim() || reapplyTarget.applied_position,
+        notes: reapplyNotes.trim() || undefined,
+      });
+      queryClient.setQueryData(
+        ["candidates"],
+        (old: PaginatedResponse<Candidate> | undefined) => ({
+          items: [created, ...(old?.items || [])],
+          total: (old?.total || 0) + 1,
+          page: old?.page || 1,
+          page_size: old?.page_size || 100,
+          total_pages: old?.total_pages || 1,
+        })
+      );
+      void queryClient.invalidateQueries({ queryKey: ["candidates"] });
+      setIsReapplyModalOpen(false);
+      setReapplyTarget(null);
+      showSuccess(
+        `Siklus Baru Dibuat (Cycle #${created.application_cycle ?? 2})`,
+        `${created.name} terdaftar kembali sebagai ${created.candidate_code} dengan status awal Screening. Riwayat lama tetap utuh untuk audit.`
+      );
+    } catch (error) {
+      console.error("Failed to reapply candidate:", error);
+      const msg =
+        error instanceof Error
+          ? error.message
+          : "Gagal membuat siklus lamaran baru untuk kandidat ini.";
+      showError("Re-application Gagal", msg);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Execute Move to Offering (for candidates passing Technical Test / On Hold)
+  const handleConfirmMoveToOffering = async () => {
+    if (!offerTarget) return;
+    setIsSaving(true);
+    try {
+      const updated = await masterService.updateCandidate(offerTarget.id, {
+        status: "OFFERED",
+      });
+      queryClient.setQueryData(
+        ["candidates"],
+        (old: PaginatedResponse<Candidate> | undefined) => ({
+          items: [
+            updated,
+            ...(old?.items || []).filter((c) => c.id !== offerTarget.id),
+          ],
+          total: old?.total || 0,
+          page: old?.page || 1,
+          page_size: old?.page_size || 100,
+          total_pages: old?.total_pages || 1,
+        })
+      );
+      void queryClient.invalidateQueries({ queryKey: ["candidates"] });
+      showSuccess(
+        "Status Diperbarui ke Offering",
+        `${offerTarget.name} (${offerTarget.candidate_code}) telah dinyatakan lolos ke tahap Offering.`
+      );
+      setOfferTarget(null);
+    } catch (error) {
+      console.error("Failed to advance candidate to offering:", error);
+      const msg =
+        error instanceof Error ? error.message : "Gagal memperbarui status kandidat ke Offering.";
+      showError("Gagal Memperbarui Status", msg);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Confirm Delete (Wired to guarded backend DELETE /api/v1/candidates/{id})
+  const handleConfirmDelete = async () => {
     if (!activeCandidate) return;
+    const targetId = activeCandidate.id;
     const targetName = activeCandidate.name;
-    queryClient.setQueryData(
-      ["candidates"],
-      (old: { items: Candidate[]; total: number; page: number; page_size: number; total_pages: number } | undefined) => ({
-        items: (old?.items || []).filter((c) => c.id !== activeCandidate.id),
-        total: Math.max(0, (old?.total || 1) - 1),
-        page: old?.page || 1,
-        page_size: old?.page_size || 100,
-        total_pages: old?.total_pages || 1,
-      })
-    );
-    void queryClient.invalidateQueries({ queryKey: ["candidates"] });
-    setIsDeleteModalOpen(false);
-    showSuccess("Kandidat Dihapus", `Data kandidat ${targetName} telah dihapus dari antrean.`);
+    setIsSaving(true);
+    try {
+      await masterService.deleteCandidate(targetId);
+      queryClient.setQueryData(
+        ["candidates"],
+        (old: PaginatedResponse<Candidate> | undefined) => ({
+          items: (old?.items || []).filter((c) => c.id !== targetId),
+          total: Math.max(0, (old?.total || 1) - 1),
+          page: old?.page || 1,
+          page_size: old?.page_size || 100,
+          total_pages: old?.total_pages || 1,
+        })
+      );
+      void queryClient.invalidateQueries({ queryKey: ["candidates"] });
+      setIsDeleteModalOpen(false);
+      setActiveCandidate(null);
+      showSuccess("Kandidat Dihapus", `Data kandidat ${targetName} berhasil dihapus dari database.`);
+    } catch (error) {
+      console.error("Failed to delete candidate:", error);
+      const msg =
+        error instanceof Error
+          ? error.message
+          : "Gagal menghapus kandidat. Kandidat mungkin sudah tertaut pada riwayat wawancara.";
+      showError("Tidak Dapat Menghapus Kandidat", msg);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Render Status Badge
   const renderStatusBadge = (status: ApplicationStatus) => {
     switch (status) {
       case "ESCALATED":
-        return <Badge color="warning" size="sm">Escalated</Badge>;
+        return (
+          <Badge color="warning" size="sm">
+            Next Round Ready
+          </Badge>
+        );
       case "INTERVIEW_SCHEDULED":
-        return <Badge color="primary" size="sm">Scheduled</Badge>;
+        return (
+          <Badge color="primary" size="sm">
+            Scheduled
+          </Badge>
+        );
+      case "PENDING_HR_REVIEW":
+        return (
+          <Badge color="warning" size="sm">
+            Pending HR Follow-Up
+          </Badge>
+        );
+      case "TECHNICAL_TEST":
+        return (
+          <Badge color="info" size="sm">
+            Technical Test
+          </Badge>
+        );
       case "COMPLETED":
-        return <Badge color="info" size="sm">Completed</Badge>;
+        return (
+          <Badge color="info" size="sm">
+            On Hold (Reviewed)
+          </Badge>
+        );
       case "OFFERED":
-        return <Badge color="success" size="sm">Offered</Badge>;
+        return (
+          <Badge color="success" size="sm">
+            Offering
+          </Badge>
+        );
       case "REJECTED":
-        return <Badge color="error" size="sm">Rejected</Badge>;
+        return (
+          <Badge color="error" size="sm">
+            Rejected
+          </Badge>
+        );
       default:
-        return <Badge color="light" size="sm">Screening</Badge>;
+        return (
+          <Badge color="light" size="sm">
+            Screening
+          </Badge>
+        );
     }
+  };
+
+  // Context-Aware Workflow Action per Status
+  const renderWorkflowAction = (cand: Candidate) => {
+    if (cand.status === "SCREENING" || cand.status === "ESCALATED") {
+      const isNextRound = cand.status === "ESCALATED";
+      return (
+        <Link
+          href={`/orchestration/scheduling?candidateId=${cand.id}`}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-semibold text-white shadow-theme-xs hover:bg-brand-600 active:bg-brand-700 transition-all duration-150"
+          title={
+            isNextRound
+              ? "Jadwalkan interview tahap berikutnya (User / Technical)"
+              : "Eskalasi & jadwalkan HR Interview via AI Orchestrator"
+          }
+        >
+          <BoltIcon className="text-white" />
+          <span>{isNextRound ? "Schedule Next" : "Schedule HR"}</span>
+        </Link>
+      );
+    }
+
+    if (cand.status === "INTERVIEW_SCHEDULED") {
+      return (
+        <Link
+          href={`/interviews/sessions?candidateId=${cand.id}&action=upload`}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 shadow-theme-xs hover:bg-brand-100 dark:border-brand-500/30 dark:bg-brand-500/15 dark:text-brand-300 transition-all duration-150"
+          title="Unggah rekaman hasil wawancara ke AI Copilot"
+        >
+          <AudioIcon />
+          <span>Upload Audio</span>
+        </Link>
+      );
+    }
+
+    if (cand.status === "PENDING_HR_REVIEW") {
+      return (
+        <Link
+          href={`/interviews/sessions?scope=awaiting_hr&candidateCode=${encodeURIComponent(cand.candidate_code)}`}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-warning-500 px-3 py-1.5 text-xs font-semibold text-white shadow-theme-xs hover:bg-warning-600 transition-all duration-150"
+          title="Tinjau hasil evaluasi Pewawancara dan berikan tindak lanjut final HR"
+        >
+          <CheckCircleIcon className="text-white" />
+          <span>HR Follow-Up</span>
+        </Link>
+      );
+    }
+
+    if (cand.status === "TECHNICAL_TEST" || cand.status === "COMPLETED") {
+      return (
+        <div className="inline-flex items-center gap-1.5">
+          <Link
+            href={`/orchestration/scheduling?candidateId=${cand.id}`}
+            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 shadow-theme-xs hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+            title="Jadwalkan interview lanjutan"
+          >
+            <BoltIcon />
+            <span>Schedule</span>
+          </Link>
+          {canManageCandidates && (
+            <button
+              type="button"
+              onClick={() => setOfferTarget(cand)}
+              className="inline-flex items-center gap-1 rounded-lg bg-success-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-theme-xs hover:bg-success-700 transition-all"
+              title="Luluskan kandidat ke tahap Offering"
+            >
+              <CheckCircleIcon />
+              <span>Offer</span>
+            </button>
+          )}
+        </div>
+      );
+    }
+
+    if (cand.status === "REJECTED" && canManageCandidates) {
+      const alreadyReapplied = hasNewerActiveCycleForRole(cand);
+      return (
+        <button
+          type="button"
+          disabled={alreadyReapplied}
+          onClick={() => {
+            setReapplyTarget(cand);
+            setReapplyPosition(cand.applied_position);
+            setReapplyNotes("");
+            setIsReapplyModalOpen(true);
+          }}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 shadow-theme-xs hover:border-brand-400 hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-45 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-brand-500/40 dark:hover:text-brand-400 transition-all"
+          title={
+            alreadyReapplied
+              ? "Siklus lamaran baru kandidat ini sudah aktif"
+              : "Daftarkan siklus lamaran baru (Re-apply) dengan riwayat lama tetap tersimpan"
+          }
+        >
+          <PlusIcon />
+          <span>{alreadyReapplied ? "Cycle Active" : "Re-apply"}</span>
+        </button>
+      );
+    }
+
+    return null;
   };
 
   return (
@@ -270,16 +557,16 @@ export default function CandidatesPage() {
               Candidate List
             </h3>
             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-              List of candidates who have been through ATS selection and are ready to be escalated to the interview stage by the AI Orchestrator.
+              Status aplikasi bergerak otomatis mengikuti alur AI Scheduling, Interview Copilot, dan keputusan HR di Review &amp; Evidence.
             </p>
           </div>
           <Button
             variant="primary"
             size="sm"
-            startIcon={<PlusIcon/>}
+            startIcon={<PlusIcon />}
             onClick={handleOpenAdd}
-            disabled={role !== "HR"}
-            title={role !== "HR" ? "Hanya HR Admin yang berwenang menambah kandidat" : "Tambah kandidat baru"}
+            disabled={!canManageCandidates}
+            title={!canManageCandidates ? "Hanya HR atau Admin yang berwenang menambah kandidat" : "Tambah kandidat baru"}
           >
             Add Candidate
           </Button>
@@ -287,25 +574,25 @@ export default function CandidatesPage() {
 
         {/* Filter Controls Bar */}
         <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-12">
-          {/* Search Box */}
           <div className="sm:col-span-6">
             <InputField
-              placeholder="Search name"
+              placeholder="Search name, code, email, or position..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
 
-          {/* Status Filter */}
           <div className="sm:col-span-3">
             <Select
               options={[
                 { value: "ALL", label: "All Status" },
                 { value: "SCREENING", label: "Screening" },
-                { value: "ESCALATED", label: "Escalated" },
                 { value: "INTERVIEW_SCHEDULED", label: "Scheduled" },
-                { value: "COMPLETED", label: "Completed" },
-                { value: "OFFERED", label: "Offered" },
+                { value: "PENDING_HR_REVIEW", label: "Pending HR Follow-Up" },
+                { value: "ESCALATED", label: "Next Round Ready" },
+                { value: "TECHNICAL_TEST", label: "Technical Test" },
+                { value: "COMPLETED", label: "On Hold (Reviewed)" },
+                { value: "OFFERED", label: "Offering" },
                 { value: "REJECTED", label: "Rejected" },
               ]}
               value={statusFilter}
@@ -313,7 +600,6 @@ export default function CandidatesPage() {
             />
           </div>
 
-          {/* Timezone Filter */}
           <div className="sm:col-span-3">
             <Select
               options={[
@@ -352,20 +638,20 @@ export default function CandidatesPage() {
                   Application Status
                 </TableCell>
                 <TableCell isHeader className="pe-5 ps-3 py-3 text-end text-xs font-semibold text-gray-600 dark:text-gray-300">
-                  Action
+                  Workflow Action
                 </TableCell>
               </TableRow>
             </TableHeader>
             <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
               {isLoading ? (
                 <TableRow>
-                  <TableCell className="py-8 text-center text-xs text-gray-400">
+                  <TableCell colSpan={7} className="py-8 text-center text-xs text-gray-400">
                     Loading candidates from database...
                   </TableCell>
                 </TableRow>
               ) : filteredCandidates.length === 0 ? (
                 <TableRow>
-                  <TableCell className="py-8 text-center text-xs text-gray-400">
+                  <TableCell colSpan={7} className="py-8 text-center text-xs text-gray-400">
                     No candidate data matches the search criteria.
                   </TableCell>
                 </TableRow>
@@ -375,14 +661,21 @@ export default function CandidatesPage() {
                     {/* Candidate Info */}
                     <TableCell className="ps-4 pe-3 py-3.5">
                       <div className="flex flex-col">
-                        <span className="font-semibold text-sm text-gray-900 dark:text-white/90">
-                          {cand.name}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-semibold text-sm text-gray-900 dark:text-white/90">
+                            {cand.name}
+                          </span>
+                          {(cand.application_cycle ?? 1) > 1 && (
+                            <span className="inline-flex items-center rounded-md bg-warning-50 px-1.5 py-0.5 text-[10px] font-bold text-warning-700 dark:bg-warning-500/15 dark:text-warning-300">
+                              Cycle #{cand.application_cycle}
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className="text-[11px] font-mono font-medium text-brand-600 dark:text-brand-400">
                             {cand.candidate_code}
                           </span>
-                          <span className="text-gray-300 dark:text-gray-700">•</span>
+                          <span className="text-gray-300 dark:text-gray-700">&bull;</span>
                           <span className="text-xs text-gray-500 dark:text-gray-400">
                             {cand.email}
                           </span>
@@ -395,16 +688,22 @@ export default function CandidatesPage() {
                       {cand.applied_position}
                     </TableCell>
 
-                    {/* Salary (Role Guarded: Visible only to HR) */}
+                    {/* Salary (Role Guarded: Visible to HR & Admin) */}
                     <TableCell className="px-3 py-3.5">
-                      {role === "HR" ? (
+                      {canManageCandidates ? (
                         cand.current_salary != null || cand.expected_salary != null ? (
                           <div className="flex flex-col text-xs font-mono">
                             <span className="font-semibold text-gray-800 dark:text-gray-200">
-                              Exp: {cand.expected_salary ? `Rp ${(cand.expected_salary / 1000000).toLocaleString("id-ID")}M` : "-"}
+                              Exp:{" "}
+                              {cand.expected_salary
+                                ? `Rp ${(cand.expected_salary / 1000000).toLocaleString("id-ID")}M`
+                                : "-"}
                             </span>
                             <span className="text-[11px] text-gray-500 dark:text-gray-400">
-                              Cur: {cand.current_salary ? `Rp ${(cand.current_salary / 1000000).toLocaleString("id-ID")}M` : "-"}
+                              Cur:{" "}
+                              {cand.current_salary
+                                ? `Rp ${(cand.current_salary / 1000000).toLocaleString("id-ID")}M`
+                                : "-"}
                             </span>
                           </div>
                         ) : (
@@ -412,7 +711,8 @@ export default function CandidatesPage() {
                         )
                       ) : (
                         <span className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-                          🔒 Confidential (HR)
+                          <LockIcon />
+                          <span>Confidential (HR)</span>
                         </span>
                       )}
                     </TableCell>
@@ -452,26 +752,18 @@ export default function CandidatesPage() {
                     {/* Actions */}
                     <TableCell className="pe-5 ps-3 py-3.5 text-end whitespace-nowrap">
                       <div className="flex items-center justify-end gap-1.5">
-                        {/* Escalate button */}
-                        <Link
-                          href={`/orchestration/scheduling?candidateId=${cand.id}`}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-0.5 text-xs font-semibold text-white shadow-theme-xs hover:bg-brand-600 active:bg-brand-700 transition-all duration-150"
-                          title="Eskalasi ke User Interview"
-                        >
-                          <BoltIcon className="text-white" />
-                          <span>Escalate</span>
-                        </Link>
+                        {renderWorkflowAction(cand)}
 
-                        {/* Edit & Delete: HR only */}
-                        {role === "HR" && (
+                        {/* Edit & Delete: HR & Admin */}
+                        {canManageCandidates && (
                           <>
                             <button
                               type="button"
                               onClick={() => handleOpenEdit(cand)}
                               className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-theme-xs hover:border-brand-300 hover:bg-gray-50 hover:text-brand-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-brand-500/30 dark:hover:bg-gray-700/60 dark:hover:text-brand-400 transition-all"
-                              title="Edit Kandidat"
+                              title="Edit Profil Kandidat"
                             >
-                              <PencilIcon/>
+                              <PencilIcon />
                             </button>
 
                             <button
@@ -483,7 +775,7 @@ export default function CandidatesPage() {
                               className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-theme-xs hover:border-error-300 hover:bg-error-50 hover:text-error-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-error-500/30 dark:hover:bg-error-500/15 dark:hover:text-error-400 transition-all"
                               title="Hapus Kandidat"
                             >
-                              <TrashBinIcon/>
+                              <TrashBinIcon />
                             </button>
                           </>
                         )}
@@ -498,24 +790,57 @@ export default function CandidatesPage() {
 
         {/* Footer Summary */}
         <div className="mt-4 flex items-center justify-between text-xs text-gray-400">
-          <span>Menampilkan {filteredCandidates.length} dari {candidates.length} total kandidat</span>
-          <span className="font-mono">API Contract: tblm_candidate</span>
+          <span>
+            Menampilkan {filteredCandidates.length} dari {candidates.length} total siklus aplikasi kandidat
+          </span>
+          <span className="font-mono">Automated Lifecycle: tblm_candidate</span>
         </div>
       </div>
 
-      {/* Unified Candidate Form Modal (Add / Edit) */}
+      {/* Unified Candidate Form Modal (Add / Edit — No Manual Status Override) */}
       <Modal isOpen={isFormModalOpen} onClose={() => setIsFormModalOpen(false)} className="max-w-4xl m-4">
-        <div className="p-10">
+        <div className="p-8 sm:p-10">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
             {activeCandidate
-              ? `Edit Candidate (${activeCandidate.candidate_code})`
+              ? `Edit Candidate Profile`
               : "Add New Candidate"}
           </h3>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
             {activeCandidate
-              ? "Update candidate profile and contact channel preferences."
-              : "Register candidate data that has passed the initial ATS screening stage."}
+              ? "Perbarui profil dan preferensi komunikasi kandidat. Status aplikasi dikelola secara otomatis oleh sistem."
+              : "Kandidat baru otomatis masuk tahap Screening dan siap dijadwalkan untuk HR Interview."}
           </p>
+
+          {/* Repeat Applicant / Duplicate Live Detection Banner */}
+          {!activeCandidate && matchingPriorApplications.length > 0 && (
+            <div
+              className={`mt-4 flex items-start gap-2.5 rounded-xl border p-3.5 text-xs ${
+                hasActiveDuplicateInForm
+                  ? "border-error-200 bg-error-50 text-error-800 dark:border-error-500/30 dark:bg-error-500/10 dark:text-error-300"
+                  : "border-warning-200 bg-warning-50 text-warning-800 dark:border-warning-500/30 dark:bg-warning-500/10 dark:text-warning-300"
+              }`}
+            >
+              {hasActiveDuplicateInForm ? (
+                <AlertIcon className="shrink-0 mt-0.5" />
+              ) : (
+                <InfoIcon className="shrink-0 mt-0.5" />
+              )}
+              <div className="text-start">
+                {hasActiveDuplicateInForm ? (
+                  <span>
+                    <strong>Lamaran Aktif Terdeteksi:</strong> Kandidat ini masih memiliki lamaran aktif pada posisi{" "}
+                    <strong>{formData.applied_position}</strong>. Gunakan lamaran yang sedang berjalan.
+                  </span>
+                ) : (
+                  <span>
+                    <strong>Riwayat Pelamar Terdeteksi ({matchingPriorApplications[0].candidate_code} &bull; {matchingPriorApplications[0].status}):</strong>{" "}
+                    Menyimpan data ini akan otomatis membuat <strong>Cycle #{(matchingPriorApplications[0].application_cycle ?? 1) + 1}</strong> baru berstatus{" "}
+                    <strong>Screening</strong> tanpa mengubah riwayat evaluasi lama.
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="mt-5 space-y-3.5">
             <FormField label="Full Name" required>
@@ -553,7 +878,7 @@ export default function CandidatesPage() {
               />
             </FormField>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FormField label="Preferred Channel" required>
                 <Select
                   options={[
@@ -561,7 +886,9 @@ export default function CandidatesPage() {
                     { value: "email", label: "Email" },
                   ]}
                   value={formData.preferred_channel}
-                  onChange={(e) => setFormData({ ...formData, preferred_channel: e.target.value as PreferredChannel })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, preferred_channel: e.target.value as PreferredChannel })
+                  }
                 />
               </FormField>
 
@@ -576,25 +903,10 @@ export default function CandidatesPage() {
                   onChange={(e) => setFormData({ ...formData, timezone: e.target.value as Timezone })}
                 />
               </FormField>
-
-              <FormField label="Application Status" required>
-                <Select
-                  options={[
-                    { value: "SCREENING", label: "Screening" },
-                    { value: "ESCALATED", label: "Escalated" },
-                    { value: "INTERVIEW_SCHEDULED", label: "Scheduled" },
-                    { value: "COMPLETED", label: "Completed" },
-                    { value: "OFFERED", label: "Offered" },
-                    { value: "REJECTED", label: "Rejected" },
-                  ]}
-                  value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value as ApplicationStatus })}
-                />
-              </FormField>
             </div>
 
-            {/* Salary Data (HR Only) */}
-            {role === "HR" && (
+            {/* Salary Data (HR & Admin Only) */}
+            {canManageCandidates && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-xl border border-brand-100 bg-brand-50/40 dark:border-brand-900/40 dark:bg-brand-950/20">
                 <FormField label="Current Salary (IDR)" hint="Confidential - HR Only">
                   <InputField
@@ -619,7 +931,7 @@ export default function CandidatesPage() {
             <FormField label="Additional Notes" hint="Notes will be referenced by AI when composing the invitation draft.">
               <TextArea
                 rows={2}
-                placeholder="e.g. Passed initial technical tests. Has a preference for daytime interviews."
+                placeholder="e.g. Passed initial CV screening. Prefers morning interview slots."
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               />
@@ -631,11 +943,82 @@ export default function CandidatesPage() {
               Cancel
             </Button>
             <Button variant="primary" disabled={isSaving} onClick={handlePreSaveCandidate}>
-              {activeCandidate ? "Update" : "Save"}
+              {activeCandidate ? "Update Profile" : "Save Candidate"}
             </Button>
           </div>
         </div>
       </Modal>
+
+      {/* Re-application Cycle Modal for REJECTED Candidates */}
+      <Modal
+        isOpen={isReapplyModalOpen}
+        onClose={() => setIsReapplyModalOpen(false)}
+        className="max-w-lg m-4"
+      >
+        <div className="p-6 sm:p-8">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+            Register New Application Cycle (Re-apply)
+          </h3>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Membuat siklus lamaran baru berstatus <strong>Screening</strong> untuk{" "}
+            <strong>{reapplyTarget?.name}</strong>. Rekaman wawancara dan keputusan{" "}
+            <code className="font-mono">REJECTED</code> pada{" "}
+            <code className="font-mono">{reapplyTarget?.candidate_code}</code> tetap tersimpan utuh untuk audit.
+          </p>
+
+          <div className="mt-4 space-y-3">
+            <FormField label="Position Applied" required>
+              <InputField
+                value={reapplyPosition}
+                onChange={(e) => setReapplyPosition(e.target.value)}
+                placeholder="e.g., Senior Frontend Engineer"
+              />
+            </FormField>
+
+            <FormField label="Re-application Context / Notes">
+              <TextArea
+                rows={2}
+                value={reapplyNotes}
+                onChange={(e) => setReapplyNotes(e.target.value)}
+                placeholder="e.g. Mendaftar kembali setelah 6 bulan dengan portofolio baru."
+              />
+            </FormField>
+          </div>
+
+          <div className="mt-6 flex justify-end gap-2.5 pt-3 border-t border-gray-100 dark:border-gray-800">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isSaving}
+              onClick={() => setIsReapplyModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={isSaving}
+              onClick={handleExecuteReapply}
+              startIcon={<PlusIcon />}
+            >
+              Create Cycle #{(reapplyTarget?.application_cycle ?? 1) + 1}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Move to Offering Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={Boolean(offerTarget)}
+        onClose={() => setOfferTarget(null)}
+        onConfirm={handleConfirmMoveToOffering}
+        isLoading={isSaving}
+        title="Advance Candidate to Offering"
+        description={`Apakah Anda yakin ingin meluluskan "${offerTarget?.name}" (${offerTarget?.candidate_code}) ke tahap Offering?`}
+        confirmText="Yes, Move to Offering"
+        cancelText="Cancel"
+        variant="primary"
+      />
 
       {/* Save Confirmation Modal (Add or Edit) */}
       <ConfirmationModal
@@ -646,8 +1029,8 @@ export default function CandidatesPage() {
         title={activeCandidate ? "Confirm Update Candidate" : "Confirm Add Candidate"}
         description={
           activeCandidate
-            ? "Are you sure you want to update this candidate's information? Please make sure the changes are correct."
-            : "Are you sure you want to register this candidate? Please ensure the entered information is accurate."
+            ? "Are you sure you want to update this candidate's profile information?"
+            : "Are you sure you want to register this candidate into the Screening queue?"
         }
         confirmText={activeCandidate ? "Yes, Save Changes" : "Yes, Add Candidate"}
         cancelText="Cancel"
@@ -659,8 +1042,9 @@ export default function CandidatesPage() {
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
         onConfirm={handleConfirmDelete}
+        isLoading={isSaving}
         title="Confirm Delete Candidate"
-        description={`Are you sure you want to delete candidate "${activeCandidate?.name}"? This action cannot be undone.`}
+        description={`Are you sure you want to delete candidate "${activeCandidate?.name}"? Candidates already linked to interview sessions or audit history will be protected against deletion.`}
         confirmText="Yes, Delete"
         cancelText="Cancel"
         variant="danger"

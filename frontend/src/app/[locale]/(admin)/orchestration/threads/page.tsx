@@ -98,7 +98,12 @@ export default function TriageThreadsPage() {
         };
       };
 
-      setThreads((prev) => prev.map(applyReply));
+      setThreads((prev) => {
+        const existing = prev.find((t) => t.id === threadId);
+        if (!existing) return prev;
+        const updated = applyReply(existing);
+        return [updated, ...prev.filter((t) => t.id !== threadId)];
+      });
       setSelectedThread((current) => (current ? applyReply(current) : current));
     } catch (error) {
       console.error("Failed to send thread reply:", error);
@@ -117,12 +122,9 @@ export default function TriageThreadsPage() {
               <h3 className="text-theme-xl font-bold text-gray-900 dark:text-white">
                 Active Triage & Negotiation Threads
               </h3>
-              <span className="rounded bg-warning-50 px-2 py-0.5 font-mono text-[10px] font-bold text-warning-700 dark:bg-warning-500/15 dark:text-warning-300">
-                Pilar LIMITS
-              </span>
             </div>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Pemantauan alur negosiasi jadwal asinkron otomatis antara AI, Kandidat (WhatsApp/Email), dan Interviewer dengan batas maksimal 3 putaran.
+              Monitoring the automatic asynchronous scheduling process between the AI, candidates (WhatsApp/email), and interviewers, with a maximum of three rounds.
             </p>
           </div>
           <div className="flex items-center gap-2">

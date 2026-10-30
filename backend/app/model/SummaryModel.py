@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     BigInteger,
@@ -12,6 +15,11 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.model.BaseModel import TableBaseModel
+
+if TYPE_CHECKING:
+    from app.model.JobModel import Job, TranscriptSegment
+    from app.model.RubricModel import Competency
+    from app.model.UserModel import User
 
 
 class SummaryPoint(TableBaseModel):
@@ -45,9 +53,9 @@ class SummaryPoint(TableBaseModel):
         index=True,
     )
 
-    competency: Mapped["Competency"] = relationship("Competency")  # noqa: F821
-    job: Mapped["Job"] = relationship("Job", back_populates="summary_points")  # noqa: F821
-    evidences: Mapped[list["SummaryEvidence"]] = relationship(
+    competency: Mapped[Competency] = relationship("Competency")
+    job: Mapped[Job] = relationship("Job", back_populates="summary_points")
+    evidences: Mapped[list[SummaryEvidence]] = relationship(
         "SummaryEvidence",
         back_populates="summary_point",
         cascade="all, delete-orphan",
@@ -73,8 +81,8 @@ class SummaryEvidence(TableBaseModel):
         index=True,
     )
 
-    transcript: Mapped["TranscriptSegment"] = relationship("TranscriptSegment")  # noqa: F821
-    summary_point: Mapped["SummaryPoint"] = relationship("SummaryPoint", back_populates="evidences")
+    transcript: Mapped[TranscriptSegment] = relationship("TranscriptSegment")
+    summary_point: Mapped[SummaryPoint] = relationship("SummaryPoint", back_populates="evidences")
 
 
 class Flag(TableBaseModel):
@@ -115,13 +123,13 @@ class Flag(TableBaseModel):
     )
     dreviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    job: Mapped["Job"] = relationship("Job", back_populates="flags")  # noqa: F821
-    transcript: Mapped["TranscriptSegment | None"] = relationship("TranscriptSegment")  # noqa: F821
-    reviewed_by: Mapped["User | None"] = relationship("User")  # noqa: F821
+    job: Mapped[Job] = relationship("Job", back_populates="flags")
+    transcript: Mapped[TranscriptSegment | None] = relationship("TranscriptSegment")
+    reviewed_by: Mapped[User | None] = relationship("User")
 
 
 class HrDecision(TableBaseModel):
-    """Immutable human HR decision on interview outcome (tblt_hr_decision)."""
+    """Immutable human decision or interviewer recommendation on interview outcome (tblt_hr_decision)."""
 
     __tablename__ = "tblt_hr_decision"
     __table_args__ = (
@@ -129,9 +137,24 @@ class HrDecision(TableBaseModel):
             "vdecision IN ('PROCEED', 'HOLD', 'REJECT')",
             name="ck_tblt_hr_decision_val",
         ),
+        CheckConstraint(
+            "vnext_stage IS NULL OR vnext_stage IN ('NEXT_INTERVIEW', 'TECHNICAL_TEST', 'OFFERED')",
+            name="ck_tblt_hr_decision_next_stage",
+        ),
+        CheckConstraint(
+            "vactor_role IN ('INTERVIEWER', 'HR')",
+            name="ck_tblt_hr_decision_actor_role",
+        ),
+        CheckConstraint(
+            "vworkflow_status IN ('PENDING_HR_FOLLOWUP', 'FINALIZED')",
+            name="ck_tblt_hr_decision_workflow_status",
+        ),
     )
 
     vdecision: Mapped[str] = mapped_column(String(50), nullable=False)
+    vnext_stage: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    vactor_role: Mapped[str] = mapped_column(String(30), nullable=False, default="HR", server_default="HR")
+    vworkflow_status: Mapped[str] = mapped_column(String(30), nullable=False, default="FINALIZED", server_default="FINALIZED")
     vnote: Mapped[str | None] = mapped_column(Text, nullable=True)
     vsummary_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     nid_job: Mapped[int] = mapped_column(
@@ -152,5 +175,5 @@ class HrDecision(TableBaseModel):
         nullable=False,
     )
 
-    job: Mapped["Job"] = relationship("Job", back_populates="hr_decisions")  # noqa: F821
-    decided_by: Mapped["User"] = relationship("User")  # noqa: F821
+    job: Mapped[Job] = relationship("Job", back_populates="hr_decisions")
+    decided_by: Mapped[User] = relationship("User")

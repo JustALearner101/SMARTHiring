@@ -1,4 +1,6 @@
-from typing import Any
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     BigInteger,
@@ -14,21 +16,37 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.model.BaseModel import TableBaseModel
 
+if TYPE_CHECKING:
+    from app.model.UserModel import User
+
 
 class Profile(TableBaseModel):
-    """Interview round profile with rubric versioning (tblm_profile)."""
+    """Interview round profile with user/division ownership and rubric versioning (tblm_profile)."""
 
     __tablename__ = "tblm_profile"
     __table_args__ = (
         UniqueConstraint("vcode", "vversion_no", name="uq_tblm_profile_code_version"),
+        CheckConstraint(
+            "vtarget_role IN ('HR', 'INTERVIEWER')",
+            name="ck_tblm_profile_target_role",
+        ),
     )
 
     vcode: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     vname: Mapped[str] = mapped_column(String(255), nullable=False)
-    vversion_no: Mapped[str] = mapped_column(String(50), nullable=False)
+    vversion_no: Mapped[str] = mapped_column(String(50), nullable=False, default="v1.0")
+    vtarget_role: Mapped[str] = mapped_column(String(50), nullable=False, default="HR", server_default="HR")
+    vdepartment: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    nid_owner_user: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("tblm_user.nid", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     vsummary_format: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
-    competencies: Mapped[list["Competency"]] = relationship(
+    owner: Mapped[User | None] = relationship("User")
+    competencies: Mapped[list[Competency]] = relationship(
         "Competency",
         back_populates="profile",
         cascade="all, delete-orphan",
@@ -59,4 +77,4 @@ class Competency(TableBaseModel):
         index=True,
     )
 
-    profile: Mapped["Profile"] = relationship("Profile", back_populates="competencies")
+    profile: Mapped[Profile] = relationship("Profile", back_populates="competencies")

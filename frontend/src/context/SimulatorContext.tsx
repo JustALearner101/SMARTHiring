@@ -263,7 +263,7 @@ export function SimulatorProvider({ children }: { children: React.ReactNode }) {
       let apiFlagged = false;
       let apiReason: string | null = null;
 
-      // Pilar SOURCES: guardrail scan is authoritative on the backend
+      // guardrail scan is authoritative on the backend
       try {
         const scanned = await sendWhatsAppMessageRequest({
           thread_id: "thread-orchestrate-001",

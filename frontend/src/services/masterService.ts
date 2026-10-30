@@ -1,6 +1,7 @@
 import { API_ENDPOINTS } from "@/constants";
 import {
   buildQuery,
+  jsonDelete,
   jsonPatch,
   jsonPost,
   jsonPut,
@@ -10,6 +11,9 @@ import type {
   Candidate,
   CandidateCreateInput,
   CandidateUpdateInput,
+  CompetencyCreateInput,
+  CompetencyItem,
+  CompetencyUpdateInput,
   InterviewerContact,
   InterviewerCreateInput,
   InterviewerUpdateInput,
@@ -18,6 +22,7 @@ import type {
   OperationalPolicy,
   PaginatedResponse,
   RubricProfile,
+  RubricProfileCreateInput,
 } from "@/types/master";
 
 export interface CandidateListParams {
@@ -59,6 +64,29 @@ export async function updateCandidate(
   );
 }
 
+export async function deleteCandidate(candidateId: string): Promise<{ id: string }> {
+  return request<{ id: string }>(
+    `${API_ENDPOINTS.CANDIDATES}/${encodeURIComponent(candidateId)}`,
+    jsonDelete()
+  );
+}
+
+export interface CandidateReapplyInput {
+  applied_position?: string;
+  notes?: string;
+  expected_salary?: number;
+}
+
+export async function reapplyCandidate(
+  candidateId: string,
+  input: CandidateReapplyInput = {}
+): Promise<Candidate> {
+  return request<Candidate>(
+    `${API_ENDPOINTS.CANDIDATES}/${encodeURIComponent(candidateId)}/reapply`,
+    jsonPost(input)
+  );
+}
+
 export async function listContacts(department?: string): Promise<InterviewerContact[]> {
   const qs = buildQuery({ department });
   return request<InterviewerContact[]>(`${API_ENDPOINTS.CONTACTS}${qs}`);
@@ -77,6 +105,13 @@ export async function updateContact(
   return request<InterviewerContact>(
     `${API_ENDPOINTS.CONTACTS}/${encodeURIComponent(userId)}`,
     jsonPatch(input)
+  );
+}
+
+export async function deleteContact(userId: string): Promise<{ id: string }> {
+  return request<{ id: string }>(
+    `${API_ENDPOINTS.CONTACTS}/${encodeURIComponent(userId)}`,
+    jsonDelete()
   );
 }
 
@@ -101,6 +136,58 @@ export async function createHoliday(
   return request<NationalHoliday>(API_ENDPOINTS.HOLIDAYS, jsonPost(input));
 }
 
-export async function listRubrics(): Promise<RubricProfile[]> {
-  return request<RubricProfile[]>(API_ENDPOINTS.RUBRICS);
+export async function deleteHoliday(holidayId: string): Promise<{ id: string }> {
+  return request<{ id: string }>(
+    `${API_ENDPOINTS.HOLIDAYS}/${encodeURIComponent(holidayId)}`,
+    jsonDelete()
+  );
+}
+
+export async function listRubrics(forInterviewerId?: string): Promise<RubricProfile[]> {
+  const qs = buildQuery({ for_interviewer_id: forInterviewerId });
+  return request<RubricProfile[]>(`${API_ENDPOINTS.RUBRICS}${qs}`);
+}
+
+export async function createRubricProfile(
+  input: RubricProfileCreateInput
+): Promise<RubricProfile> {
+  return request<RubricProfile>(API_ENDPOINTS.RUBRICS, jsonPost(input));
+}
+
+export async function deleteRubricProfile(profileId: string): Promise<{ id: string }> {
+  return request<{ id: string }>(
+    `${API_ENDPOINTS.RUBRICS}/${encodeURIComponent(profileId)}`,
+    jsonDelete()
+  );
+}
+
+export async function createCompetency(
+  profileId: string,
+  input: CompetencyCreateInput
+): Promise<CompetencyItem> {
+  return request<CompetencyItem>(
+    `${API_ENDPOINTS.RUBRICS}/${encodeURIComponent(profileId)}/competencies`,
+    jsonPost(input)
+  );
+}
+
+export async function updateCompetency(
+  profileId: string,
+  competencyId: string,
+  input: CompetencyUpdateInput
+): Promise<CompetencyItem> {
+  return request<CompetencyItem>(
+    `${API_ENDPOINTS.RUBRICS}/${encodeURIComponent(profileId)}/competencies/${encodeURIComponent(competencyId)}`,
+    jsonPatch(input)
+  );
+}
+
+export async function deleteCompetency(
+  profileId: string,
+  competencyId: string
+): Promise<{ id: string }> {
+  return request<{ id: string }>(
+    `${API_ENDPOINTS.RUBRICS}/${encodeURIComponent(profileId)}/competencies/${encodeURIComponent(competencyId)}`,
+    jsonDelete()
+  );
 }

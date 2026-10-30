@@ -7,7 +7,11 @@ import { AlertIcon, CheckCircleIcon } from "@/icons";
 interface CalendarMatrixViewProps {
   events: CalendarMatrixEvent[];
   selectedTimezone: "WIB" | "WITA" | "WIT";
-  onSelectSlot?: (date: string, time: string) => void;
+  onSelectSlot?: (
+    date: string,
+    time: string,
+    interviewer?: { id: string; name: string; role: string }
+  ) => void;
 }
 
 export default function CalendarMatrixView({
@@ -74,7 +78,7 @@ export default function CalendarMatrixView({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-gray-100 pb-4 dark:border-gray-800">
         <div className="flex items-center gap-3">
           <label className="text-xs font-bold text-gray-700 dark:text-gray-300">
-            Pilih Interviewer:
+            Select Interviewer:
           </label>
           <select
             value={currentInterviewer.id}
@@ -93,15 +97,15 @@ export default function CalendarMatrixView({
         <div className="flex flex-wrap items-center gap-3 text-[11px]">
           <span className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
             <span className="h-2.5 w-2.5 rounded-full bg-brand-500" />
-            Interview Terjadwal (AI)
+            Scheduled Interview
           </span>
           <span className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
             <span className="h-2.5 w-2.5 rounded-full bg-purple-500" />
-            Rapat Internal
+            Internal Meeting
           </span>
           <span className="flex items-center gap-1.5 font-bold text-warning-700 dark:text-warning-400">
             <span className="h-2.5 w-2.5 rounded-full bg-warning-500" />
-            [rule-jumatan] Sholat Jumat
+            Friday Prayer
           </span>
         </div>
       </div>
@@ -167,18 +171,23 @@ export default function CalendarMatrixView({
                     return (
                       <div
                         key={d.dateStr}
-                        onClick={() =>
-                          !isFridayPrayerHour &&
-                          !isNonWorking &&
-                          onSelectSlot &&
-                          onSelectSlot(d.dateStr, hour)
-                        }
+                        onClick={() => {
+                          if (!isFridayPrayerHour && !isNonWorking && cellEvents.length === 0 && onSelectSlot) {
+                            onSelectSlot(d.dateStr, hour, {
+                              id: currentInterviewer.id,
+                              name: currentInterviewer.name,
+                              role: currentInterviewer.role,
+                            });
+                          }
+                        }}
                         className={`p-1 border-e border-gray-100 dark:border-gray-800 relative transition-all ${
                           isFridayPrayerHour
                             ? "bg-warning-100/40 dark:bg-warning-900/20 cursor-not-allowed"
                             : isNonWorking
                             ? "cursor-not-allowed"
-                            : "hover:bg-brand-50/30 cursor-pointer"
+                            : cellEvents.length > 0
+                            ? ""
+                            : "hover:bg-brand-50/40 dark:hover:bg-brand-500/10 cursor-pointer group"
                         }`}
                       >
                         {/* Friday Prayer Block Banner */}
@@ -189,8 +198,15 @@ export default function CalendarMatrixView({
                               <span>BLOCKED</span>
                             </span>
                             <span className="text-[9px] font-mono mt-0.5">
-                              [rule-jumatan] Sholat Jumat
+                              Friday Prayer
                             </span>
+                          </div>
+                        )}
+
+                        {/* Empty Slot Hover Hint */}
+                        {!isFridayPrayerHour && !isNonWorking && cellEvents.length === 0 && (
+                          <div className="hidden group-hover:flex items-center justify-center h-full text-[10px] font-semibold text-brand-600 dark:text-brand-400">
+                            + Add Slot
                           </div>
                         )}
 
@@ -208,7 +224,7 @@ export default function CalendarMatrixView({
                                 e.stopPropagation();
                                 setSelectedEvent(evt);
                               }}
-                              className={`rounded-lg p-1.5 text-[10px] leading-tight shadow-xs transition-transform hover:scale-[1.02] ${
+                              className={`rounded-lg p-1.5 text-[10px] leading-tight shadow-xs transition-transform hover:scale-[1.02] cursor-pointer ${
                                 isInterview
                                   ? "bg-brand-500 text-white font-semibold"
                                   : isMeeting
@@ -243,18 +259,18 @@ export default function CalendarMatrixView({
           <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-5 shadow-theme-lg dark:border-gray-800 dark:bg-gray-900">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3 dark:border-gray-800">
               <h4 className="text-sm font-bold text-gray-900 dark:text-white">
-                Detail Agenda Kalender
+                Calendar Agenda Details
               </h4>
               <button
                 onClick={() => setSelectedEvent(null)}
                 className="text-gray-400 hover:text-gray-600 text-xs"
               >
-                Tutup
+                Close
               </button>
             </div>
             <div className="mt-3 space-y-2 text-xs">
               <div>
-                <span className="text-gray-400 block text-[10px]">Judul:</span>
+                <span className="text-gray-400 block text-[10px]">Title:</span>
                 <span className="font-bold text-gray-900 dark:text-white">
                   {selectedEvent.title}
                 </span>
@@ -266,14 +282,14 @@ export default function CalendarMatrixView({
                 </span>
               </div>
               <div>
-                <span className="text-gray-400 block text-[10px]">Waktu:</span>
+                <span className="text-gray-400 block text-[10px]">Time:</span>
                 <span className="font-mono text-brand-600 dark:text-brand-400">
                   {selectedEvent.start.replace("T", " ")} s/d {selectedEvent.end.split("T")[1]}
                 </span>
               </div>
               {selectedEvent.description && (
                 <div>
-                  <span className="text-gray-400 block text-[10px]">Keterangan:</span>
+                  <span className="text-gray-400 block text-[10px]">Description:</span>
                   <p className="text-gray-600 dark:text-gray-400 leading-relaxed">
                     {selectedEvent.description}
                   </p>

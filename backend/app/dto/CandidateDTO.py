@@ -9,6 +9,8 @@ ApplicationStatus = Literal[
     "SCREENING",
     "ESCALATED",
     "INTERVIEW_SCHEDULED",
+    "PENDING_HR_REVIEW",
+    "TECHNICAL_TEST",
     "COMPLETED",
     "OFFERED",
     "REJECTED",
@@ -29,6 +31,8 @@ class CandidateDTO(BaseDTO):
     notes: str | None = None
     current_salary: int | None = None
     expected_salary: int | None = None
+    application_cycle: int = 1
+    previous_application_id: str | None = None
     created_at: datetime | str
 
 
@@ -57,4 +61,10 @@ class CandidateUpdateDTO(BaseDTO):
     resume_url: str | None = None
     notes: str | None = None
     current_salary: int | None = None
+    expected_salary: int | None = None
+
+
+class CandidateReapplyDTO(BaseDTO):
+    applied_position: str | None = None
+    notes: str | None = None
     expected_salary: int | None = None

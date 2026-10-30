@@ -6,7 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.DatabaseSession import get_db
 from app.dto.ActionPlanDTO import ActionPlanDTO
 from app.dto.BaseDTO import ApiResponse
-from app.dto.OrchestratorCommandDTO import CommandRequestDTO, PresetScenarioDTO
+from app.dto.OrchestratorCommandDTO import (
+    CommandRequestDTO,
+    InboundReplyRequestDTO,
+    PresetScenarioDTO,
+)
 from app.service.OrchestratorCommandService import OrchestratorCommandService
 
 router = APIRouter(prefix="/orchestrator", tags=["OrchestratorCommands"])
@@ -29,3 +33,13 @@ async def process_command(
     service = OrchestratorCommandService(db)
     result = await service.execute_command(request)
     return ApiResponse(data=result, message="Instruksi natural language berhasil diproses")
+
+
+@router.post("/inbound-reply", response_model=ApiResponse[ActionPlanDTO | dict[str, Any]])
+async def handle_inbound_reply(
+    request: InboundReplyRequestDTO,
+    db: AsyncSession = Depends(get_db),
+) -> ApiResponse[ActionPlanDTO | dict[str, Any]]:
+    service = OrchestratorCommandService(db)
+    result = await service.handle_inbound_reply(request)
+    return ApiResponse(data=result, message="Balasan kandidat/interviewer berhasil diproses")

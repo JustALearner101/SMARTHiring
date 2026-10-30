@@ -65,11 +65,8 @@ export default function TimezoneMatrixHeader({
         <div>
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-bold text-gray-900 dark:text-white">
-              Tri-Zone Synchronizer (WIB / WITA / WIT)
+              Tri-Zone Synchronizer
             </h3>
-            <span className="rounded bg-brand-50 px-2 py-0.5 font-mono text-[10px] font-bold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
-              PERMISSIONS
-            </span>
           </div>
           <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
             AI secara otomatis mengonversi jam kalender interviewer dan kandidat antar zona waktu Indonesia tanpa kebingungan.

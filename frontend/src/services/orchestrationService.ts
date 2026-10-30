@@ -6,6 +6,7 @@ import {
   request,
 } from "./base";
 import type {
+  ActionItemDraft,
   ActionPlan,
   CalendarMatrixEvent,
   DisambiguationProfile,
@@ -79,6 +80,7 @@ export async function getCurrentActionPlan(): Promise<ActionPlan | null> {
 export interface ApprovalInput {
   approved_by?: string;
   send_immediately?: boolean;
+  customized_items?: ActionItemDraft[];
 }
 
 export async function approveActionPlan(
@@ -90,6 +92,7 @@ export async function approveActionPlan(
     jsonPost({
       approved_by: input.approved_by ?? "HR Admin (You)",
       send_immediately: input.send_immediately ?? false,
+      customized_items: input.customized_items,
     })
   );
   return normalizePlan(plan);

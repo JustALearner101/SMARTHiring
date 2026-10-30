@@ -17,6 +17,7 @@ from app.controller.InterviewTranscriptController import (
 from app.controller.NegotiationThreadController import (
     router as negotiation_thread_router,
 )
+from app.controller.NotificationController import router as notification_router
 from app.controller.OperationalPolicyController import (
     router as operational_policy_router,
 )
@@ -31,6 +32,7 @@ from app.controller.SimulatorWhatsAppController import (
 from app.controller.SlotConflictCheckerController import (
     router as slot_conflict_checker_router,
 )
+from app.controller.SystemLogController import router as system_log_router
 
 __all__ = [
     "action_plan_router",
@@ -44,10 +46,12 @@ __all__ = [
     "interview_session_router",
     "interview_transcript_router",
     "negotiation_thread_router",
+    "notification_router",
     "operational_policy_router",
     "orchestrator_command_router",
     "rubric_router",
     "simulator_email_router",
     "simulator_whatsapp_router",
     "slot_conflict_checker_router",
+    "system_log_router",
 ]

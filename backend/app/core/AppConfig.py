@@ -49,9 +49,13 @@ class Settings(BaseSettings):
 
     # LLM / AI Providers
     OPENAI_API_KEY: str = ""
+    OPENAI_BASE_URL: str | None = None
+    OPENAI_MODEL: str = "gpt-4o-mini"
     GOOGLE_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
     GROQ_API_KEY: str = ""
+    ELEVENLABS_API_KEY: str = ""
+    ELEVENLABS_MODEL: str = "scribe_v1"
     OLLAMA_BASE_URL: str = "http://localhost:11434"
 
     # LangSmith / Observability
@@ -62,6 +66,16 @@ class Settings(BaseSettings):
 
     # Experimental Feature Flags
     ENABLE_EXPERIMENTAL_ADK_AGENT: bool = False
+
+    # SMTP / Email Gateway (Sumopod)
+    SMTP_ENABLED: bool = True
+    SMTP_HOST: str = "smtp.sumopod.com"
+    SMTP_PORT: int = 465
+    SMTP_SSL: bool = True
+    SMTP_USER: str = "cmvrou21uns4x08tdsx9ug8gu"
+    SMTP_PASSWORD: str = "ECsqDrJXsGktokRYd0Y1lcoeaEm1YrHj"
+    SMTP_FROM_EMAIL: str = "notifications@smarthiring.ai"
+    SMTP_FROM_NAME: str = "SmartHiring AI Orchestrator"
 
 
 @lru_cache

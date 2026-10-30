@@ -16,7 +16,7 @@ async def login(
     dto: LoginRequestDTO,
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[LoginResponseDTO]:
-    """Authenticate internal system user (HR, Interviewer, Auditor) and issue signed JWT."""
+    """Authenticate internal system user (HR, Interviewer, Admin) and issue signed JWT."""
     service = AuthService(db)
     result = await service.authenticate(dto)
     return ApiResponse(data=result, message=f"Login berhasil sebagai {result.user.name} ({result.user.role})")
@@ -37,7 +37,7 @@ async def get_current_user_profile(
 async def list_active_users(
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[list[UserDTO]]:
-    """List active system users for demo role switching (HR, Interviewer, Auditor)."""
+    """List active system users for demo role switching (HR, Interviewer, Admin)."""
     service = AuthService(db)
     users = await service.list_active_users()
     return ApiResponse(data=users, message="Daftar pengguna aktif berhasil diambil")

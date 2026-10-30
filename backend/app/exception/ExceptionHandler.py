@@ -1,4 +1,5 @@
 import logging
+import traceback
 from typing import Any
 
 from fastapi import FastAPI, Request, status
@@ -8,6 +9,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.AppConfig import settings
 from app.exception.CustomException import AppException
+from app.repository.SystemLogRepository import SystemLogRepository
 
 logger = logging.getLogger("heketon.api")
 
@@ -87,7 +89,19 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        stacktrace_str = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
         logger.exception("Unhandled server exception at %s %s: %s", request.method, request.url.path, str(exc))
+
+        await SystemLogRepository.log_direct(
+            vlog_level="ERROR",
+            vlog_message=f"Internal Server Error: {exc!s}",
+            vlog_stacktrace=stacktrace_str,
+            vlog_source="EXCEPTION_HANDLER",
+            vlog_path=request.url.path,
+            vlog_method=request.method,
+            vlog_status_code="500",
+        )
+
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             headers=_cors_headers(request),

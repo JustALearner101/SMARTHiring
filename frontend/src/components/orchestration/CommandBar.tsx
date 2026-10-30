@@ -9,6 +9,7 @@ interface CommandBarProps {
   onExecuteCommand: (prompt: string, scenarioId?: string) => void;
   isProcessing: boolean;
   activeCandidateName?: string;
+  initialCommand?: string;
   scenarios: PresetScenario[];
 }
 
@@ -16,12 +17,14 @@ export default function CommandBar({
   onExecuteCommand,
   isProcessing,
   activeCandidateName,
+  initialCommand,
   scenarios,
 }: CommandBarProps) {
   const [commandText, setCommandText] = useState(
-    activeCandidateName
-      ? `Schedule ${activeCandidateName}'s interview with Mr. Budi for next week`
-      : "Schedule Rina Kusuma's interview with Mr. Budi for next week"
+    initialCommand ||
+      (activeCandidateName
+        ? `Schedule ${activeCandidateName}'s interview with Mr. Budi for next week`
+        : "Schedule Rina Kusuma's interview with Mr. Budi for next week")
   );
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -40,7 +43,7 @@ export default function CommandBar({
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between border-b border-gray-100 pb-3 dark:border-gray-800">
         <div className="flex items-center gap-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-500 text-white shadow-theme-xs">
-            <ShootingStarIcon/>
+            <ShootingStarIcon />
           </div>
           <div>
             <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
@@ -61,7 +64,7 @@ export default function CommandBar({
       <form onSubmit={handleSubmit} className="mt-4">
         <div className="relative flex items-center">
           <div className="pointer-events-none absolute inset-y-0 start-0 flex items-center ps-4 text-brand-500">
-            <BoltIcon/>
+            <BoltIcon />
           </div>
           <input
             type="text"
@@ -69,11 +72,21 @@ export default function CommandBar({
             placeholder="Example: Schedule Rina Kusuma's interview with Mr. Budi for next week..."
             value={commandText}
             onChange={(e) => setCommandText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleSubmit(e);
+              }
+            }}
             disabled={isProcessing}
           />
           <div className="absolute inset-y-0 end-2 flex items-center">
             <Button
-              type="submit"
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                handleSubmit(e);
+              }}
               variant="primary"
               size="sm"
               isLoading={isProcessing}

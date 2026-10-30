@@ -9,7 +9,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { AlertIcon, CheckCircleIcon, TimeIcon, ArrowRightIcon } from "@/icons";
+import { AlertIcon, CheckCircleIcon, TimeIcon, ArrowRightIcon, BoltIcon } from "@/icons";
+import { Link } from "@/i18n/navigation";
 
 interface ThreadTableProps {
   threads: NegotiationThread[];
@@ -199,13 +200,22 @@ export default function ThreadTable({
                     {/* Action */}
                     <TableCell className="py-3.5 px-4 text-end">
                       {isDeadlock ? (
-                        <button
-                          onClick={() => onSelectThread(thread)}
-                          className="inline-flex items-center gap-1 rounded-xl bg-error-600 px-3 py-1.5 text-xs font-bold text-white shadow-theme-xs hover:bg-error-700 transition-colors"
-                        >
-                          <AlertIcon />
-                          <span>Intervene Now</span>
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Link
+                            href={`/orchestration/scheduling?thread_id=${thread.id}&action=triage&candidate_id=${thread.candidate_id}&interviewer_id=${thread.interviewer_id}&interviewer_name=${encodeURIComponent(thread.interviewer_name)}`}
+                            className="inline-flex items-center gap-1 rounded-xl bg-brand-600 px-2.5 py-1.5 text-xs font-bold text-white shadow-theme-xs hover:bg-brand-700 transition-colors"
+                          >
+                            <BoltIcon className="h-3.5 w-3.5" />
+                            <span>Triage Jadwal</span>
+                          </Link>
+                          <button
+                            onClick={() => onSelectThread(thread)}
+                            className="inline-flex items-center gap-1 rounded-xl bg-error-600 px-2.5 py-1.5 text-xs font-bold text-white shadow-theme-xs hover:bg-error-700 transition-colors"
+                          >
+                            <AlertIcon />
+                            <span>Intervene</span>
+                          </button>
+                        </div>
                       ) : (
                         <button
                           onClick={() => onSelectThread(thread)}

@@ -12,6 +12,14 @@ class PresetScenarioDTO(BaseDTO):
 class CommandRequestDTO(BaseDTO):
     command: str
     scenario_id: str | None = None
+    thread_id: int | None = None
+
+
+class InboundReplyRequestDTO(BaseDTO):
+    thread_id: int | None = None
+    sender_role: str = "CANDIDATE"  # "CANDIDATE" | "INTERVIEWER"
+    channel: str = "whatsapp"  # "whatsapp" | "email"
+    reply_text: str
 
 
 class DisambiguationProfileDTO(BaseDTO):

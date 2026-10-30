@@ -30,19 +30,16 @@ export default function OperationalPolicyBanner({
           <div>
             <h4 className="text-xs font-bold text-warning-900 dark:text-warning-200 flex items-center gap-2">
               <span>Operational Rule Guardrails Active</span>
-              <span className="rounded bg-warning-200/60 px-1.5 py-0.5 font-mono text-[10px] font-bold text-warning-800 dark:bg-warning-800/60 dark:text-warning-300">
-                Pilar PERMISSIONS
-              </span>
             </h4>
             <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-warning-800 dark:text-warning-300">
               <span className="flex items-center gap-1">
-                <span className="font-semibold">• Jam Kerja:</span> {workStart} - {workEnd}
+                <span className="font-semibold">• Work Hours:</span> {workStart} - {workEnd}
               </span>
               <span className="flex items-center gap-1 font-semibold text-error-700 dark:text-error-400">
-                <span>• Sholat Jumat:</span> {prayerStart} - {prayerEnd} (Blocked)
+                <span>• Friday Prayer:</span> {prayerStart} - {prayerEnd} (Blocked)
               </span>
               <span className="flex items-center gap-1">
-                <span className="font-semibold">• Buffer Antar-Interview:</span> Min. {bufferMinutes} Menit
+                <span className="font-semibold">• Buffer:</span> Min. {bufferMinutes} Minutes
               </span>
             </div>
           </div>

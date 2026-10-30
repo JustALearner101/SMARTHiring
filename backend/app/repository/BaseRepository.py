@@ -1,5 +1,6 @@
 import uuid
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, select
@@ -40,7 +41,17 @@ class BaseRepository[ModelType: Base]:
     async def list_all(
         self, *, skip: int = 0, limit: int = 100
     ) -> Sequence[ModelType]:
-        stmt = select(self.model).offset(skip).limit(limit)
+        stmt = select(self.model)
+        if hasattr(self.model, "dmodi") and hasattr(self.model, "dcrea"):
+            stmt = stmt.order_by(
+                func.coalesce(self.model.dmodi, self.model.dcrea).desc(),
+                self.pk_column.desc(),
+            )
+        elif hasattr(self.model, "dcrea"):
+            stmt = stmt.order_by(self.model.dcrea.desc(), self.pk_column.desc())
+        else:
+            stmt = stmt.order_by(self.pk_column.desc())
+        stmt = stmt.offset(skip).limit(limit)
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
@@ -61,7 +72,10 @@ class BaseRepository[ModelType: Base]:
             count_stmt = count_stmt.where(*where_conditions)
 
         if order_by is not None:
-            stmt = stmt.order_by(order_by)
+            if isinstance(order_by, (list, tuple)):
+                stmt = stmt.order_by(*order_by)
+            else:
+                stmt = stmt.order_by(order_by)
 
         total = (await self.session.execute(count_stmt)).scalar_one() or 0
         items = (await self.session.execute(stmt.offset(offset).limit(limit))).scalars().all()
@@ -84,6 +98,8 @@ class BaseRepository[ModelType: Base]:
     ) -> ModelType:
         for field, value in obj_in.items():
             setattr(db_obj, field, value)
+        if hasattr(db_obj, "dmodi"):
+            db_obj.dmodi = datetime.now(UTC)  # type: ignore[attr-defined]
         self.session.add(db_obj)
         await self.session.commit()
         await self.session.refresh(db_obj)

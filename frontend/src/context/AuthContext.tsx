@@ -2,6 +2,7 @@
 
 import { authService } from "@/services/authService";
 import type { LoginRequest, UserProfile, UserRole } from "@/types/auth";
+import { normalizeUserRole } from "@/utils/rbac";
 import { useRouter } from "@/i18n/navigation";
 import React, {
   createContext,
@@ -41,8 +42,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         const storedUser = localStorage.getItem("auth_user");
 
         if (storedToken && storedUser) {
+          const parsed = JSON.parse(storedUser) as UserProfile;
+          const normalized = normalizeUserRole(parsed.role) ?? "INTERVIEWER";
+          const hydratedUser: UserProfile = { ...parsed, role: normalized };
           setToken(storedToken);
-          setUser(JSON.parse(storedUser) as UserProfile);
+          setUser(hydratedUser);
+          localStorage.setItem("auth_role", normalized);
         }
       } catch (e) {
         console.error("Failed to restore session from localStorage:", e);
@@ -61,15 +66,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       try {
         const response = await authService.login(credentials);
         const { access_token, user: loggedUser } = response;
+        const normalized = normalizeUserRole(loggedUser.role) ?? "INTERVIEWER";
+        const normalizedUser: UserProfile = { ...loggedUser, role: normalized };
 
         setToken(access_token);
-        setUser(loggedUser);
+        setUser(normalizedUser);
 
         localStorage.setItem("auth_token", access_token);
-        localStorage.setItem("auth_user", JSON.stringify(loggedUser));
-        localStorage.setItem("auth_role", loggedUser.role);
+        localStorage.setItem("auth_user", JSON.stringify(normalizedUser));
+        localStorage.setItem("auth_role", normalizedUser.role);
 
-        return loggedUser;
+        return normalizedUser;
       } finally {
         setIsLoading(false);
       }
@@ -88,7 +95,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const switchDemoUser = useCallback(
     async (username: string) => {
-      // Default dev password for all seeded accounts is "password123"
       await login({ username, password: "password123" });
     },
     [login]
@@ -97,9 +103,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const refreshProfile = useCallback(async () => {
     try {
       const freshUser = await authService.getMe();
-      setUser(freshUser);
-      localStorage.setItem("auth_user", JSON.stringify(freshUser));
-      localStorage.setItem("auth_role", freshUser.role);
+      const normalized = normalizeUserRole(freshUser.role) ?? "INTERVIEWER";
+      const normalizedUser: UserProfile = { ...freshUser, role: normalized };
+      setUser(normalizedUser);
+      localStorage.setItem("auth_user", JSON.stringify(normalizedUser));
+      localStorage.setItem("auth_role", normalizedUser.role);
     } catch (e) {
       console.warn("Session expired during profile refresh:", e);
       logout();

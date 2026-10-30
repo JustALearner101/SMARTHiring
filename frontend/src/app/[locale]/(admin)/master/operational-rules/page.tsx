@@ -60,13 +60,12 @@ const normalizePolicy = (policy: OperationalPolicy): OperationalPolicy => ({
   injection_guardrail_enabled: Boolean(policy.injection_guardrail_enabled),
 });
 
-const sortHolidays = (items: NationalHoliday[]): NationalHoliday[] =>
-  [...items].sort((a, b) => a.date.localeCompare(b.date));
-
 export default function OperationalRulesPage() {
   const { role } = useAuth();
+  const canManageRules = role === "HR" || role === "ADMIN";
   const { showSuccess, showError } = useToast();
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeletingHoliday, setIsDeletingHoliday] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   // Confirmation Modals
@@ -91,7 +90,7 @@ export default function OperationalRulesPage() {
       ]);
       return {
         policy: apiPolicy && !Array.isArray(apiPolicy) ? normalizePolicy(apiPolicy) : null,
-        holidays: Array.isArray(apiHolidays) ? sortHolidays(apiHolidays) : [],
+        holidays: Array.isArray(apiHolidays) ? apiHolidays : [],
       };
     },
   });
@@ -165,7 +164,10 @@ export default function OperationalRulesPage() {
           ["operationalRules"],
           (old: { policy: OperationalPolicy | null; holidays: NationalHoliday[] } | undefined) => ({
             policy: old?.policy || null,
-            holidays: sortHolidays([...(old?.holidays || []), createdHoliday]),
+            holidays: [
+              createdHoliday,
+              ...(old?.holidays || []).filter((h) => h.id !== createdHoliday.id),
+            ],
           })
         );
       }
@@ -191,21 +193,33 @@ export default function OperationalRulesPage() {
     setDeleteTargetHoliday(item);
   };
 
-  // Step 2: Confirm Delete Holiday
-  const handleConfirmDeleteHoliday = () => {
+  // Step 2: Confirm Delete Holiday (Wired to DELETE /api/v1/holidays/{id})
+  const handleConfirmDeleteHoliday = async () => {
     if (!deleteTargetHoliday) return;
     const deletedName = deleteTargetHoliday.name;
     const targetId = deleteTargetHoliday.id;
-    queryClient.setQueryData(
-      ["operationalRules"],
-      (old: { policy: OperationalPolicy | null; holidays: NationalHoliday[] } | undefined) => ({
-        policy: old?.policy || null,
-        holidays: (old?.holidays || []).filter((h) => h.id !== targetId),
-      })
-    );
-    void queryClient.invalidateQueries({ queryKey: ["operationalRules"] });
-    setDeleteTargetHoliday(null);
-    showSuccess("Hari Libur Dihapus", `Hari libur "${deletedName}" telah dihapus dari kalender.`);
+    setIsDeletingHoliday(true);
+    try {
+      await masterService.deleteHoliday(targetId);
+      queryClient.setQueryData(
+        ["operationalRules"],
+        (old: { policy: OperationalPolicy | null; holidays: NationalHoliday[] } | undefined) => ({
+          policy: old?.policy || null,
+          holidays: (old?.holidays || []).filter((h) => h.id !== targetId),
+        })
+      );
+      void queryClient.invalidateQueries({ queryKey: ["operationalRules"] });
+      setDeleteTargetHoliday(null);
+      showSuccess("Hari Libur Dihapus", `Hari libur "${deletedName}" berhasil dihapus dari database.`);
+    } catch (error) {
+      console.error("Failed to delete holiday:", error);
+      showError(
+        "Gagal Menghapus",
+        error instanceof Error ? error.message : "Terjadi kesalahan saat menghapus hari libur."
+      );
+    } finally {
+      setIsDeletingHoliday(false);
+    }
   };
 
   return (
@@ -328,8 +342,8 @@ export default function OperationalRulesPage() {
                   variant="primary"
                   className="w-full"
                   onClick={handleSavePolicy}
-                  disabled={role !== "HR" || isSaving}
-                  title={role !== "HR" ? "Hanya HR Admin yang berwenang memperbarui aturan operasional." : undefined}
+                  disabled={!canManageRules || isSaving}
+                  title={!canManageRules ? "Hanya HR atau Admin yang berwenang memperbarui aturan operasional." : undefined}
                 >
                   {isSaving ? "Menyimpan Perubahan..." : "Save Operational Rules"}
                 </Button>
@@ -344,7 +358,7 @@ export default function OperationalRulesPage() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-gray-100 pb-4 dark:border-gray-800">
               <div>
                 <h3 className="text-theme-xl font-semibold text-gray-800 dark:text-white/90">
-                  National Holidays (2026)
+                  National Holidays
                 </h3>
                 <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                   Official calendar. AI automatically blocks all interview slots on these dates.
@@ -355,8 +369,8 @@ export default function OperationalRulesPage() {
                 size="sm"
                 startIcon={<PlusIcon/>}
                 onClick={() => setIsAddHolidayOpen(true)}
-                disabled={role !== "HR"}
-                title={role !== "HR" ? "Hanya HR Admin yang berwenang menambahkan hari libur." : undefined}
+                disabled={!canManageRules}
+                title={!canManageRules ? "Hanya HR atau Admin yang berwenang menambahkan hari libur." : undefined}
               >
                 Add Holiday
               </Button>
@@ -384,13 +398,13 @@ export default function OperationalRulesPage() {
                 <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
                   {isLoading ? (
                     <TableRow>
-                      <TableCell className="py-8 text-center text-xs text-gray-400">
+                      <TableCell colSpan={4} className="py-8 text-center text-xs text-gray-400">
                         Loading holidays from database...
                       </TableCell>
                     </TableRow>
                   ) : holidays.length === 0 ? (
                     <TableRow>
-                      <TableCell className="py-8 text-center text-xs text-gray-400">
+                      <TableCell colSpan={4} className="py-8 text-center text-xs text-gray-400">
                         No holidays registered in the database.
                       </TableCell>
                     </TableRow>
@@ -411,7 +425,7 @@ export default function OperationalRulesPage() {
                           )}
                         </TableCell>
                         <TableCell className="pe-5 ps-3 py-3 text-end whitespace-nowrap">
-                          {role === "HR" ? (
+                          {canManageRules ? (
                             <button
                               type="button"
                               onClick={() => handleOpenDeleteHoliday(h)}
@@ -509,6 +523,7 @@ export default function OperationalRulesPage() {
         isOpen={!!deleteTargetHoliday}
         onClose={() => setDeleteTargetHoliday(null)}
         onConfirm={handleConfirmDeleteHoliday}
+        isLoading={isDeletingHoliday}
         title="Confirm Delete Holiday"
         description={`Are you sure you want to remove "${deleteTargetHoliday?.name}" from the calendar? The AI will resume scheduling interviews on this date.`}
         confirmText="Yes, Delete"

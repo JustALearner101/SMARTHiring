@@ -1,10 +1,10 @@
-from datetime import UTC, datetime, timedelta
 import sys
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import jwt
 from fastapi import Depends, Header
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-import jwt
 from pwdlib import PasswordHash
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -69,11 +69,16 @@ async def get_optional_current_user(
         except Exception:
             pass
 
-    # 2. Seamless demo fallback header (e.g. X-Demo-Role: HR)
+    # 2. Seamless demo fallback header (e.g. X-Demo-Role: HR | ADMIN | INTERVIEWER)
     if demo_role:
+        normalized_role = demo_role.strip().upper()
+        if normalized_role in ("USER_INTERVIEWER", "TECH_INTERVIEWER"):
+            normalized_role = "INTERVIEWER"
+        elif normalized_role == "AUDITOR":
+            normalized_role = "ADMIN"
         stmt = (
             select(User)
-            .where(User.vrole == demo_role.strip().upper(), User.vstatus == "ACTIVE")
+            .where(User.vrole == normalized_role, User.vstatus == "ACTIVE")
             .order_by(User.nid.asc())
             .limit(1)
         )

@@ -29,7 +29,7 @@ async def list_interviewers(
 @router.post("", response_model=ApiResponse[InterviewerContactDTO], status_code=status.HTTP_201_CREATED)
 async def create_interviewer(
     dto: InterviewerCreateDTO,
-    _current_user: User = Depends(require_roles(["HR"])),
+    _current_user: User = Depends(require_roles(["HR", "ADMIN"])),
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[InterviewerContactDTO]:
     service = ContactService(db)
@@ -41,7 +41,7 @@ async def create_interviewer(
 async def update_interviewer(
     user_id: str,
     dto: InterviewerUpdateDTO,
-    _current_user: User = Depends(require_roles(["HR"])),
+    _current_user: User = Depends(require_roles(["HR", "ADMIN"])),
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[InterviewerContactDTO]:
     service = ContactService(db)
@@ -50,3 +50,13 @@ async def update_interviewer(
         raise NotFoundException("Kontak tidak ditemukan")
     return ApiResponse(data=updated, message="Kontak pewawancara berhasil diperbarui")
 
+
+@router.delete("/{user_id}", response_model=ApiResponse[dict[str, str]])
+async def delete_interviewer(
+    user_id: str,
+    current_user: User = Depends(require_roles(["HR", "ADMIN"])),
+    db: AsyncSession = Depends(get_db),
+) -> ApiResponse[dict[str, str]]:
+    service = ContactService(db)
+    await service.delete_interviewer(user_id, current_user=current_user)
+    return ApiResponse(data={"deleted_id": user_id}, message="Akun pewawancara berhasil dinonaktifkan")

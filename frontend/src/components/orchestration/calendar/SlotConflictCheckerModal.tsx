@@ -11,7 +11,7 @@ import {
 import { InterviewerContact } from "@/types/master";
 import { listContacts } from "@/services/masterService";
 import { checkSlotConflict } from "@/services/orchestrationService";
-import { AlertIcon, CheckCircleIcon, LockIcon } from "@/icons";
+import { AlertIcon, CheckCircleIcon, LockIcon, CheckLineIcon, CloseLineIcon } from "@/icons";
 
 type ConflictTone = "success" | "warning" | "error";
 
@@ -164,7 +164,7 @@ export default function SlotConflictCheckerModal({
             </span>
           </div>
           <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-            Simulator instan untuk menguji apakah usulan slot melanggar aturan Sholat Jumat, jam kerja, atau bentrok agenda.
+            An instant simulator to check whether a proposed time slot violates the rules regarding Friday prayers, work hours, or conflicts with other schedules.
           </p>
         </div>
       </div>
@@ -172,7 +172,7 @@ export default function SlotConflictCheckerModal({
       {/* Preset 1-Click Quick Tests */}
       <div className="mt-4">
         <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block mb-1.5">
-          Preset Uji Coba Cepat (Hackathon Showcase):
+          Quick Test Presets:
         </span>
         <div className="flex flex-wrap gap-2">
           <button
@@ -180,21 +180,24 @@ export default function SlotConflictCheckerModal({
             onClick={() => setPreset("2026-10-30", "12:00")}
             className="rounded-lg border border-warning-200 bg-warning-50 px-2.5 py-1 text-xs font-semibold text-warning-800 hover:bg-warning-100 dark:border-warning-800 dark:bg-warning-950/40 dark:text-warning-300"
           >
-            ⚠️ Uji Blokir Sholat Jumat (Jumat 12:00)
+            <AlertIcon />
+            Test Friday Prayer Block (Friday 12:00)
           </button>
           <button
             type="button"
             onClick={() => setPreset("2026-10-29", "08:00")}
             className="rounded-lg border border-error-200 bg-error-50 px-2.5 py-1 text-xs font-semibold text-error-800 hover:bg-error-100 dark:border-error-800 dark:bg-error-950/40 dark:text-error-300"
           >
-            ❌ Uji Luar Jam Kerja (08:00)
+            <CloseLineIcon />
+            Test Outside Work Hours (08:00)
           </button>
           <button
             type="button"
             onClick={() => setPreset("2026-10-29", "10:00")}
             className="rounded-lg border border-success-200 bg-success-50 px-2.5 py-1 text-xs font-semibold text-success-800 hover:bg-success-100 dark:border-success-800 dark:bg-success-950/40 dark:text-success-300"
           >
-            ✓ Uji Slot Valid (Kamis 10:00)
+            <CheckLineIcon />
+            Test Valid Slot (Thursday 10:00)
           </button>
         </div>
       </div>
