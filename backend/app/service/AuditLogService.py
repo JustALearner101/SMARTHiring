@@ -3,10 +3,16 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dto.AuditLogDTO import AuditEventDTO
+from app.dto.AuditLogDTO import (
+    AuditEventDTO,
+    AuditStatsDTO,
+    HashChainVerificationDTO,
+)
 from app.dto.BaseDTO import PaginatedResponse, PaginationParams
+from app.model.AuditModel import AuditLog, SystemLog
 from app.repository.AuditLogRepository import AuditLogRepository
 
 
@@ -94,4 +100,78 @@ class AuditLogService:
             total=total,
             page=p.page,
             page_size=p.page_size,
+        )
+
+    async def verify_hash_chain(self) -> HashChainVerificationDTO:
+        """Verifikasi integritas kriptografis rantai hash SHA-256 seluruh entri audit log."""
+        stmt = select(AuditLog).order_by(AuditLog.nid.asc())
+        result = await self.session.execute(stmt)
+        logs = result.scalars().all()
+
+        now_str = datetime.now(UTC).isoformat()
+        genesis_default = "GENESIS_BLOCK_000000000000000000000000000000000000000000000000"
+
+        if not logs:
+            return HashChainVerificationDTO(
+                is_valid=True,
+                total_blocks=0,
+                genesis_hash=genesis_default,
+                latest_hash=genesis_default,
+                verified_at=now_str,
+            )
+
+        genesis_hash = logs[0].vprev_hash or genesis_default
+        prev_hash = genesis_hash
+
+        for log in logs:
+            if log.vprev_hash != prev_hash:
+                return HashChainVerificationDTO(
+                    is_valid=False,
+                    total_blocks=len(logs),
+                    genesis_hash=genesis_hash,
+                    latest_hash=logs[-1].vhash,
+                    broken_at_block_id=log.nid,
+                    verified_at=now_str,
+                )
+            prev_hash = log.vhash
+
+        return HashChainVerificationDTO(
+            is_valid=True,
+            total_blocks=len(logs),
+            genesis_hash=genesis_hash,
+            latest_hash=logs[-1].vhash,
+            verified_at=now_str,
+        )
+
+    async def get_audit_stats(self) -> AuditStatsDTO:
+        """Menghitung metrik agregat untuk dashboard Audit & Security."""
+        # 1. Total event audit
+        total_stmt = select(func.count()).select_from(AuditLog)
+        total_events = (await self.session.execute(total_stmt)).scalar_one() or 0
+
+        # 2. Total log teknis sistem
+        sys_stmt = select(func.count()).select_from(SystemLog)
+        total_system_logs = (await self.session.execute(sys_stmt)).scalar_one() or 0
+
+        # 3. Total error di system logs
+        err_stmt = (
+            select(func.count())
+            .select_from(SystemLog)
+            .where(SystemLog.vlog_level == "ERROR")
+        )
+        total_system_errors = (await self.session.execute(err_stmt)).scalar_one() or 0
+
+        # 4. Latest event
+        latest_stmt = select(AuditLog.dcrea).order_by(AuditLog.nid.desc()).limit(1)
+        latest_dt = (await self.session.execute(latest_stmt)).scalar_one_or_none()
+
+        # 5. Cek validitas hash chain
+        verification = await self.verify_hash_chain()
+
+        return AuditStatsDTO(
+            total_events=total_events,
+            total_system_logs=total_system_logs,
+            total_system_errors=total_system_errors,
+            hash_chain_valid=verification.is_valid,
+            latest_event_timestamp=latest_dt.isoformat() if latest_dt else None,
         )

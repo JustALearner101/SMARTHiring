@@ -89,8 +89,8 @@ const navItems: NavItem[] = [
     key: "auditSecurity",
     roles: ["ADMIN"],
     subItems: [
+      { key: "auditOverview", path: "/audit", roles: ["ADMIN"] },
       { key: "auditLogs", path: "/audit/logs", roles: ["ADMIN"] },
-      { key: "guardrailAlerts", path: "/audit/guardrail", roles: ["ADMIN"] },
     ],
   },
 ];

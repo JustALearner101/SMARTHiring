@@ -40,14 +40,14 @@ class ContextRetrieverNode:
                         "phone": u.vphone_number or "+6281200000000",
                         "working_hours": u.vworking_hours or "09:00 - 17:00",
                         "avatar_initials": "".join([w[0].upper() for w in u.vname.split()[:2]]),
-                        "notes": f"Kontak divisi {u.vdepartment} ({u.vtimezone})",
+                        "notes": f"{u.vdepartment} contact ({u.vtimezone})",
                     }
                     for u in ambiguous_users
                 ]
                 return {
                     "is_disambiguation_needed": True,
                     "status": "CLARIFICATION_NEEDED",
-                    "disambiguation_message": "Ditemukan lebih dari satu kontak bernama 'Pak Budi'. Silakan pilih pewawancara yang dimaksud:",
+                    "disambiguation_message": "Multiple contacts found matching 'Budi'. Please select the intended interviewer:",
                     "disambiguation_profiles": profiles,
                 }
 
@@ -142,8 +142,10 @@ class ContextRetrieverNode:
         target_date = (now + timedelta(days=2)).date()
 
         day_keywords = {
-            "senin": 0, "selasa": 1, "rabu": 2, "kamis": 3,
-            "jumat": 4, "sabtu": 5, "minggu": 6,
+            "monday": 0, "senin": 0, "tuesday": 1, "selasa": 1,
+            "wednesday": 2, "rabu": 2, "thursday": 3, "kamis": 3,
+            "friday": 4, "jumat": 4, "saturday": 5, "sabtu": 5,
+            "sunday": 6, "minggu": 6,
         }
         for kw, target_wd in day_keywords.items():
             if kw in cmd_lower:
@@ -153,9 +155,9 @@ class ContextRetrieverNode:
                 target_date = (now + timedelta(days=days_ahead)).date()
                 break
 
-        if "besok" in cmd_lower:
+        if "besok" in cmd_lower or "tomorrow" in cmd_lower:
             target_date = (now + timedelta(days=1)).date()
-        elif "lusa" in cmd_lower:
+        elif "lusa" in cmd_lower or "day after tomorrow" in cmd_lower:
             target_date = (now + timedelta(days=2)).date()
 
         available_slots = []

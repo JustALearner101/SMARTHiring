@@ -37,8 +37,8 @@
       "interviewerEmail": "Interviewer Email",
       "candidateWhatsapp": "Candidate WhatsApp",
       "auditSecurity": "Audit & Security",
-      "auditLogs": "Audit Logs (Hash Chain)",
-      "guardrailAlerts": "Guardrail & Injection"
+      "auditOverview": "Security Center",
+      "auditLogs": "Audit Logs"
     }
   },
   "header": {

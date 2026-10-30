@@ -18,7 +18,7 @@ async def list_holidays(
 ) -> ApiResponse[list[NationalHolidayDTO]]:
     service = HolidayService(db)
     holidays = await service.list_holidays(year=year)
-    return ApiResponse(data=holidays, message="Berhasil mengambil daftar hari libur")
+    return ApiResponse(data=holidays, message="Holidays retrieved successfully")
 
 
 @router.post("", response_model=ApiResponse[NationalHolidayDTO], status_code=status.HTTP_201_CREATED)
@@ -29,7 +29,7 @@ async def create_holiday(
 ) -> ApiResponse[NationalHolidayDTO]:
     service = HolidayService(db)
     created = await service.create_holiday(dto)
-    return ApiResponse(data=created, message="Hari libur berhasil ditambahkan")
+    return ApiResponse(data=created, message="Holiday added successfully")
 
 
 @router.delete("/{holiday_id}", response_model=ApiResponse[dict[str, str]])
@@ -40,4 +40,4 @@ async def delete_holiday(
 ) -> ApiResponse[dict[str, str]]:
     service = HolidayService(db)
     await service.delete_holiday(holiday_id)
-    return ApiResponse(data={"deleted_id": holiday_id}, message="Hari libur berhasil dihapus")
+    return ApiResponse(data={"deleted_id": holiday_id}, message="Holiday deleted successfully")

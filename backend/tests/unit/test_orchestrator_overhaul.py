@@ -139,7 +139,7 @@ async def test_orchestrator_inbound_out_of_scope_api(client: AsyncClient, test_s
         assert res.status_code == 200
         body = res.json()["data"]
         assert body["status"] == "DEADLOCK_ESCALATED"
-        assert "di luar wewenang" in body["message"]
+        assert "outside the agent's authority" in body["message"]
     finally:
         await test_session.delete(thread)
         await test_session.commit()
@@ -172,7 +172,7 @@ async def test_orchestrator_inbound_round_limit_escalation_api(client: AsyncClie
         assert res.status_code == 200
         body = res.json()["data"]
         assert body["status"] == "DEADLOCK_ESCALATED"
-        assert "3 putaran" in body["message"]
+        assert "3 rounds" in body["message"]
     finally:
         await test_session.delete(thread)
         await test_session.commit()

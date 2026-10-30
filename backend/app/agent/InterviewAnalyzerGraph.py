@@ -80,7 +80,7 @@ class InterviewAnalyzerGraph:
                 10000,
                 25000,
                 "INTERVIEWER",
-                f"Selamat datang {cand_name} di sesi wawancara untuk posisi {cand_pos}. Bisa ceritakan latar belakang profesional Anda?",
+                f"Welcome {cand_name} to this interview session for the {cand_pos} position. Could you tell us about your professional background?",
                 0.98,
             ),
             (
@@ -88,7 +88,7 @@ class InterviewAnalyzerGraph:
                 27000,
                 75000,
                 "CANDIDATE",
-                f"Terima kasih. Saya memiliki pengalaman mendalam di bidang {cand_pos}. {notes if notes else 'Fokus utama saya adalah merancang sistem yang reliabel dan scalable serta berkolaborasi lintas tim.'}",
+                f"Thank you. I have in-depth experience in {cand_pos}. {notes if notes else 'My main focus is designing reliable and scalable systems and collaborating across teams.'}",
                 0.95,
             ),
             (
@@ -96,7 +96,7 @@ class InterviewAnalyzerGraph:
                 78000,
                 110000,
                 "INTERVIEWER",
-                "Bagaimana pendekatan Anda ketika menghadapi perbedaan pandangan teknis di dalam tim engineering?",
+                "How do you approach situations when there are differing technical opinions within the engineering team?",
                 0.97,
             ),
             (
@@ -104,7 +104,7 @@ class InterviewAnalyzerGraph:
                 112000,
                 160000,
                 "CANDIDATE",
-                "Saya mengutamakan diskusi berbasis data dan benchmark empiris, bukan asumsi pribadi. Jika ada perbedaan, kami membuat proof-of-concept kecil untuk menguji hipotesis bersama.",
+                "I prioritize data-driven discussions and empirical benchmarks rather than personal assumptions. When differences arise, we build a small proof-of-concept to validate hypotheses together.",
                 0.96,
             ),
         ]
@@ -149,7 +149,7 @@ class InterviewAnalyzerGraph:
                     nid_job=job_id,
                     nid_transcript=seg.get("id"),
                     vflag_type="EMBEDDED_INSTRUCTION",
-                    vneutral_text=f"Potensi instruksi tersembunyi terdeteksi pada segmen #{seg.get('segment_no')}: {note}",
+                    vneutral_text=f"Potential hidden instruction detected in segment #{seg.get('segment_no')}: {note}",
                     vstatus="OPEN",
                 )
                 self.session.add(fl)
@@ -160,7 +160,7 @@ class InterviewAnalyzerGraph:
                     nid_job=job_id,
                     nid_transcript=seg.get("id"),
                     vflag_type="UNCERTAIN_SEGMENT",
-                    vneutral_text=f"Akurasi transkripsi rendah (confidence < 80%) pada segmen #{seg.get('segment_no')}.",
+                    vneutral_text=f"Low transcription confidence (< 80%) on segment #{seg.get('segment_no')}.",
                     vstatus="OPEN",
                 )
                 self.session.add(fl)
@@ -198,19 +198,19 @@ class InterviewAnalyzerGraph:
                         competency_code=comp.vcode,
                         coverage_status="COVERED",
                         verification_status="VERIFIED",
-                        content=f"Kandidat mendemonstrasikan kompetensi '{comp.vname}' dengan bukti nyata dari riwayat pengalaman kerja.",
-                        verbatim_quote=segments[1].get("text", "Bukti wawancara tercatat.") if len(segments) > 1 else "Bukti wawancara.",
+                        content=f"Candidate demonstrated competency '{comp.vname}' with clear evidence from work experience.",
+                        verbatim_quote=segments[1].get("text", "Recorded interview evidence.") if len(segments) > 1 else "Interview evidence.",
                     )
                 )
             return InterviewEvaluationReportSchema(evaluations=items)
 
-        comp_list_desc = "\n".join([f"- Kode: '{c.vcode}' | Nama: '{c.vname}'" for c in competencies])
+        comp_list_desc = "\n".join([f"- Code: '{c.vcode}' | Name: '{c.vname}'" for c in competencies])
         system_instruction = (
-            "Anda adalah AI evaluator wawancara kerja profesional.\n"
-            "Evaluasi transkrip wawancara berikut terhadap daftar rubrik kompetensi yang tersedia.\n"
-            "WAJIB gunakan salah satu 'competency_code' dari daftar berikut:\n"
+            "You are a professional job interview evaluator AI.\n"
+            "Evaluate the following interview transcript against the provided competency rubrics.\n"
+            "You MUST select one of the following 'competency_code' values:\n"
             f"{comp_list_desc}\n\n"
-            "Sertakan kutipan bukti verbatim dari transkrip untuk setiap kompetensi."
+            "Provide verbatim quote evidence from the transcript for each evaluated competency."
         )
 
         report = await LlmFactory.invoke_structured_or_fallback(
@@ -301,7 +301,7 @@ class InterviewAnalyzerGraph:
             actor="AI_INTERVIEW_ANALYZER",
             actor_type="AGENT",
             title="Interview Transcript Analyzed",
-            description=f"Evaluasi wawancara sesi #{state.get('interview_id')} berhasil dipetakan ke {len(created_points)} poin kompetensi rubrik.",
+            description=f"Interview evaluation for session #{state.get('interview_id')} successfully mapped to {len(created_points)} rubric competency points.",
             job_id=job_id,
         )
 

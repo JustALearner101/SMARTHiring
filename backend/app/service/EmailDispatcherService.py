@@ -102,11 +102,11 @@ class EmailDispatcherService:
         sender_domain = self.from_email.split("@")[-1] if "@" in self.from_email else "smarthiring.ai"
 
         return f"""<!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Undangan Interview — SmartHiring AI Orchestrator</title>
+    <title>Interview Invitation — SmartHiring AI Orchestrator</title>
 </head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f1f5f9; margin: 0; padding: 24px;">
     <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);">
@@ -119,14 +119,14 @@ class EmailDispatcherService:
                 SmartHiring AI Orchestrator
             </h1>
             <p style="margin: 8px 0 0 0; font-size: 14px; color: #e0e7ff;">
-                Konfirmasi Jadwal User Technical Interview
+                User Technical Interview Schedule Confirmation
             </p>
         </div>
 
         <!-- Body -->
         <div style="padding: 32px 24px; color: #1e293b; line-height: 1.6;">
             <p style="font-size: 16px; margin: 0 0 16px 0;">
-                Halo <strong>{recipient_name}</strong> ({role}),
+                Hello <strong>{recipient_name}</strong> ({role}),
             </p>
             <p style="font-size: 14px; margin: 0 0 20px 0; color: #475569;">
                 {agenda}
@@ -135,20 +135,20 @@ class EmailDispatcherService:
             <!-- Schedule Card -->
             <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 18px 20px; margin-bottom: 24px;">
                 <div style="font-size: 12px; font-weight: 700; color: #15803d; text-transform: uppercase; margin-bottom: 6px;">
-                    Waktu Wawancara Disepakati:
+                    Confirmed Interview Time:
                 </div>
                 <div style="font-size: 18px; font-weight: 800; color: #166534;">
                     📅 {slot_wib}
                 </div>
                 <div style="font-size: 12px; color: #15803d; margin-top: 4px;">
-                    Bebas konflik jadwal operasional & di luar jendela Sholat Jumat.
+                    Free of operational conflicts & outside Friday prayer blackout window.
                 </div>
             </div>
 
             <!-- Action Button -->
             <div style="text-align: center; margin: 28px 0;">
                 <a href="{meeting_link}" target="_blank" style="background-color: #2563eb; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 700; font-size: 15px; display: inline-block; box-shadow: 0 2px 4px rgba(37, 99, 235, 0.3);">
-                    Masuk Google Meet Interview
+                    Join Google Meet Interview
                 </a>
                 <div style="font-size: 12px; color: #64748b; margin-top: 8px;">
                     Link: <a href="{meeting_link}" style="color: #2563eb;">{meeting_link}</a>
@@ -157,7 +157,7 @@ class EmailDispatcherService:
 
             <!-- Interactive Calendar Notice -->
             <div style="margin-top: 20px; padding: 12px 16px; background-color: #f0fdfa; border: 1px solid #ccfbf1; border-radius: 8px; font-size: 12px; color: #0f766e;">
-                🗓️ <strong>Undangan Kalender Interaktif Terlampir</strong>: Email ini memuat file kalender terintegrasi (<code>invite.ics</code>). Anda dapat langsung mengklik <em>Terima / Accept</em> pada tombol kalender di aplikasi Gmail / Outlook Anda.
+                🗓️ <strong>Interactive Calendar Invitation Attached</strong>: This email includes an integrated calendar file (<code>invite.ics</code>). You can click <em>Accept</em> directly from your Gmail or Outlook calendar prompt.
             </div>
 
             <!-- Sources / Verification -->
@@ -165,7 +165,7 @@ class EmailDispatcherService:
 
             <!-- Human-in-the-Loop Badge -->
             <div style="margin-top: 24px; padding: 12px 16px; background-color: #eff6ff; border-left: 4px solid #3b82f6; border-radius: 4px; font-size: 12px; color: #1e40af;">
-                🛡️ <strong>Human-in-the-Loop & Audit Record</strong>: Undangan ini telah disetujui secara eksplisit oleh HR Lead melalui verifikasi gerbang persetujuan AI Heketon.
+                🛡️ <strong>Human-in-the-Loop & Audit Record</strong>: This invitation has been explicitly approved by the HR Lead through Heketon AI's verification and approval gate.
             </div>
         </div>
 
@@ -173,8 +173,8 @@ class EmailDispatcherService:
         <div style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 20px 24px; text-align: center; font-size: 11px; color: #94a3b8; line-height: 1.5;">
             <strong>SmartHiring Inc. / Heketon Ops</strong><br>
             Menara BTPN Lt. 32, Jl. Dr. Ide Anak Agung Gde Agung Kav 5.5-5.6, Jakarta Selatan 12950, Indonesia<br>
-            Email otomatis dikirimkan terkait proses seleksi interview terverifikasi.<br>
-            <a href="mailto:unsubscribe@{sender_domain}?subject=unsubscribe" style="color: #64748b; text-decoration: underline;">Berhenti Berlangganan / Unsubscribe</a> • <a href="https://heketon.ai/privacy" style="color: #64748b; text-decoration: underline;">Kebijakan Privasi</a>
+            Automated email sent regarding a verified interview selection process.<br>
+            <a href="mailto:unsubscribe@{sender_domain}?subject=unsubscribe" style="color: #64748b; text-decoration: underline;">Unsubscribe</a> • <a href="https://heketon.ai/privacy" style="color: #64748b; text-decoration: underline;">Privacy Policy</a>
         </div>
     </div>
 </body>

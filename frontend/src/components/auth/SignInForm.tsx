@@ -35,7 +35,7 @@ export default function SignInForm() {
       router.push("/");
     } catch (err: unknown) {
       const msg =
-        err instanceof Error ? err.message : "Gagal login. Periksa kembali kredensial Anda.";
+        err instanceof Error ? err.message : "Login failed. Please check your credentials.";
       setErrorMessage(msg);
     } finally {
       setIsSubmitting(false);

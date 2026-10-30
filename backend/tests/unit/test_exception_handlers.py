@@ -25,8 +25,8 @@ def test_custom_exception_status_codes():
 
 
 def test_custom_exception_payload():
-    exc = NotFoundException("Item tidak ditemukan", data={"item_id": 123})
-    assert exc.message == "Item tidak ditemukan"
+    exc = NotFoundException("Item not found", data={"item_id": 123})
+    assert exc.message == "Item not found"
     assert exc.data == {"item_id": 123}
     assert exc.status_code == 404
 
@@ -43,11 +43,11 @@ def test_app() -> FastAPI:
 
     @app.get("/test/not-found")
     async def route_not_found():
-        raise NotFoundException("Resource target tidak ditemukan")
+        raise NotFoundException("Target resource not found")
 
     @app.get("/test/bad-request")
     async def route_bad_request():
-        raise BadRequestException("Format request tidak sesuai")
+        raise BadRequestException("Invalid request format")
 
     @app.get("/test/starlette-http")
     async def route_starlette():
@@ -72,7 +72,7 @@ async def test_handler_not_found_exception(test_app: FastAPI):
         assert response.status_code == 404
         data = response.json()
         assert data["success"] is False
-        assert data["message"] == "Resource target tidak ditemukan"
+        assert data["message"] == "Target resource not found"
         assert data["data"] is None
 
 
@@ -84,7 +84,7 @@ async def test_handler_bad_request_exception(test_app: FastAPI):
         assert response.status_code == 400
         data = response.json()
         assert data["success"] is False
-        assert data["message"] == "Format request tidak sesuai"
+        assert data["message"] == "Invalid request format"
 
 
 @pytest.mark.asyncio
@@ -106,7 +106,7 @@ async def test_handler_validation_error(test_app: FastAPI):
         assert response.status_code == 422
         data = response.json()
         assert data["success"] is False
-        assert "Validasi input gagal" in data["message"]
+        assert "Input validation failed" in data["message"]
         assert "errors" in data["data"]
         assert len(data["data"]["errors"]) > 0
 
@@ -119,5 +119,5 @@ async def test_handler_unhandled_exception(test_app: FastAPI):
         assert response.status_code == 500
         data = response.json()
         assert data["success"] is False
-        assert "kesalahan internal" in data["message"].lower()
+        assert "internal server error" in data["message"].lower()
         assert data["data"] is None

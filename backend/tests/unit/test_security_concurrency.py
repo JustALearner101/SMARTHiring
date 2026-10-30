@@ -168,7 +168,7 @@ async def test_calendar_atomic_double_booking_prevention(test_session: AsyncSess
             candidate_name="Kandidat B",
         )
 
-    assert "berkonflik dengan jadwal lain" in str(exc_info.value.message)
+    assert "conflicts with another scheduled event" in str(exc_info.value.message)
 
 
 # =====================================================================
@@ -207,7 +207,7 @@ def test_file_validator_rejects_unsupported_or_spoofed_file():
     fake_mp3 = b"MZ\x90\x00\x03\x00\x00\x00" + b"\x00" * 30
     with pytest.raises(UnsupportedMediaTypeException) as exc_info:
         validate_audio_video_upload("malware.mp3", fake_mp3)
-    assert "bukan format rekaman audio/video yang valid" in exc_info.value.message
+    assert "is not a valid audio/video recording format" in exc_info.value.message
 
 
 def test_file_validator_rejects_oversized_payload():
@@ -215,7 +215,7 @@ def test_file_validator_rejects_oversized_payload():
     # Test with custom small max_size
     with pytest.raises(PayloadTooLargeException) as exc_info:
         validate_audio_video_upload("big.mp3", tiny_header, max_size=10)
-    assert "melebihi batas maksimum" in exc_info.value.message
+    assert "exceeds maximum limit" in exc_info.value.message
 
 
 async def test_upload_file_endpoint_rejects_invalid_file(client: AsyncClient):
@@ -231,7 +231,7 @@ async def test_upload_file_endpoint_rejects_invalid_file(client: AsyncClient):
     )
     assert res.status_code == 415
     assert res.json()["success"] is False
-    assert "bukan format rekaman" in res.json()["message"]
+    assert "is not a valid audio/video recording format" in res.json()["message"]
 
 
 async def test_upload_file_endpoint_accepts_valid_audio(client: AsyncClient):

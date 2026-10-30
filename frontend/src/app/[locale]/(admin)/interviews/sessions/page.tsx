@@ -186,15 +186,15 @@ function InterviewSessionsContent() {
         await deleteInterviewSession(sessionId);
         setSessions((prev) => prev.filter((s) => s.id !== sessionId));
         showSuccess(
-          "Sesi Wawancara Dihapus",
-          "Sesi wawancara yang belum memiliki keputusan evaluasi berhasil dihapus."
+          "Interview Session Deleted",
+          "Interview session without an evaluation decision was successfully deleted."
         );
       } catch (error) {
         const msg =
           error instanceof Error
             ? error.message
-            : "Gagal menghapus sesi wawancara.";
-        showError("Gagal Menghapus Sesi", msg);
+            : "Failed to delete interview session.";
+        showError("Failed to Delete Session", msg);
         throw error;
       }
     },
@@ -217,7 +217,7 @@ function InterviewSessionsContent() {
                 My Assigned Interview Sessions ({user?.name || "Interviewer"})
               </h4>
               <p className="text-[11px] text-gray-600 dark:text-gray-300">
-                Menampilkan sesi wawancara yang ditugaskan kepada Anda. Hasil evaluasi Anda akan diteruskan secara otomatis ke HR untuk tindak lanjut final.
+                Showing interview sessions assigned to you. Your evaluation recommendations will automatically be forwarded to HR for final review.
               </p>
             </div>
           </div>
@@ -267,10 +267,10 @@ function InterviewSessionsContent() {
 
           <span className="pe-2 text-[11px] text-gray-500 dark:text-gray-400">
             {effectiveScope === "awaiting_hr"
-              ? "Menampilkan rekomendasi pewawancara yang menunggu konfirmasi final HR"
+              ? "Showing interviewer recommendations awaiting final HR confirmation"
               : effectiveScope === "mine"
-              ? "Menampilkan sesi wawancara di mana Anda adalah pewawancara"
-              : "Menampilkan seluruh sesi wawancara pipeline rekrutmen"}
+              ? "Showing interview sessions where you are the interviewer"
+              : "Showing all recruitment pipeline interview sessions"}
           </span>
         </div>
       )}

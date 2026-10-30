@@ -110,7 +110,7 @@ export default function GuardrailAlertsPage() {
               Prompt Injection & Security Guardrails
             </h3>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Monitoring pertahanan keamanan AI terhadap serangan *prompt injection* pada CV pelamar, dokumen meeting, dan balasan chat.
+              Monitoring AI security defense against prompt injection attacks on candidate CVs, meeting notes, and inbound chat messages.
             </p>
           </div>
           <span className="inline-flex items-center rounded-full bg-error-50 px-3 py-1 text-xs font-medium text-error-600 dark:bg-error-500/15 dark:text-error-400">
@@ -126,7 +126,7 @@ export default function GuardrailAlertsPage() {
             Quarantined Instructions & Security Flags
           </h4>
           <p className="mt-1 max-w-md text-xs text-gray-500 dark:text-gray-400">
-            Daftar flag instruksi tertanam (`tblt_flag.vflag_type = EMBEDDED_INSTRUCTION`) yang berhasil diblokir sebelum masuk ke model perencana (Planner).
+            List of embedded instruction flags (`tblt_flag.vflag_type = EMBEDDED_INSTRUCTION`) successfully quarantined before reaching the Planner model.
           </p>
         </div>
 
@@ -137,7 +137,7 @@ export default function GuardrailAlertsPage() {
                 Guardrail Alert Stream
               </h4>
               <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
-                Turunan dari event audit guardrail dan notifikasi simulator WhatsApp.
+                Derived from guardrail audit events and WhatsApp simulator notifications.
               </p>
             </div>
             <div className="flex items-center gap-2 font-mono text-[10px]">
@@ -153,10 +153,10 @@ export default function GuardrailAlertsPage() {
           {alerts.length === 0 ? (
             <div className="mt-4 rounded-xl border border-dashed border-gray-200 p-6 text-center dark:border-gray-800">
               <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                {isLoading ? "Memuat alert guardrail dari database..." : "Tidak ada alert guardrail"}
+                {isLoading ? "Loading guardrail alerts from database..." : "No guardrail alerts"}
               </p>
               <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-                Scanner belum mencatat instruksi tertanam maupun upaya *prompt injection*.
+                The scanner has not recorded any embedded instructions or prompt injection attempts.
               </p>
             </div>
           ) : (

@@ -15,7 +15,7 @@ export interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement
 }
 
 const Select = forwardRef<HTMLSelectElement, SelectProps>(
-  ({ options, placeholder = "Pilih salah satu...", error = false, disabled = false, className = "", value, ...props }, ref) => {
+  ({ options, placeholder = "Select an option...", error = false, disabled = false, className = "", value, ...props }, ref) => {
     return (
       <div className="relative w-full">
         <select

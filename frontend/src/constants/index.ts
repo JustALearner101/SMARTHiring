@@ -38,10 +38,18 @@ export const API_ENDPOINTS = {
   INTERVIEW_TRANSCRIPTS: "/interviews/transcripts",
   INTERVIEW_DECISIONS: "/interviews/decisions",
 
-  // Audit
+  // Audit & Security
   AUDIT_LOGS: "/auditLogs",
+  AUDIT_STATS: "/auditLogs/stats",
+  AUDIT_VERIFY: "/auditLogs/verify",
+  SYSTEM_LOGS: "/systemLogs",
 
   // Notifications
   NOTIFICATIONS: "/notifications",
+
+  // Dashboard
+  DASHBOARD_SUMMARY: "/dashboard/summary",
+  DASHBOARD_UPCOMING_INTERVIEWS: "/dashboard/upcomingInterviews",
+  DASHBOARD_ACTIVITY_FEED: "/dashboard/activityFeed",
 } as const;
 

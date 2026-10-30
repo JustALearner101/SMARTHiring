@@ -22,7 +22,7 @@ async def list_scenarios(
 ) -> ApiResponse[list[PresetScenarioDTO]]:
     service = OrchestratorCommandService(db)
     scenarios = await service.list_preset_scenarios()
-    return ApiResponse(data=scenarios, message="Berhasil mengambil daftar preset skenario")
+    return ApiResponse(data=scenarios, message="Preset scenarios retrieved successfully")
 
 
 @router.post("/command", response_model=ApiResponse[ActionPlanDTO | dict[str, Any]])
@@ -32,7 +32,7 @@ async def process_command(
 ) -> ApiResponse[ActionPlanDTO | dict[str, Any]]:
     service = OrchestratorCommandService(db)
     result = await service.execute_command(request)
-    return ApiResponse(data=result, message="Instruksi natural language berhasil diproses")
+    return ApiResponse(data=result, message="Natural language command processed successfully")
 
 
 @router.post("/inbound-reply", response_model=ApiResponse[ActionPlanDTO | dict[str, Any]])
@@ -42,4 +42,4 @@ async def handle_inbound_reply(
 ) -> ApiResponse[ActionPlanDTO | dict[str, Any]]:
     service = OrchestratorCommandService(db)
     result = await service.handle_inbound_reply(request)
-    return ApiResponse(data=result, message="Balasan kandidat/interviewer berhasil diproses")
+    return ApiResponse(data=result, message="Candidate/interviewer reply processed successfully")

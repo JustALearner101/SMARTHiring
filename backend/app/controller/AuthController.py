@@ -19,7 +19,7 @@ async def login(
     """Authenticate internal system user (HR, Interviewer, Admin) and issue signed JWT."""
     service = AuthService(db)
     result = await service.authenticate(dto)
-    return ApiResponse(data=result, message=f"Login berhasil sebagai {result.user.name} ({result.user.role})")
+    return ApiResponse(data=result, message=f"Logged in successfully as {result.user.name} ({result.user.role})")
 
 
 @router.get("/me", response_model=ApiResponse[UserDTO])
@@ -30,7 +30,7 @@ async def get_current_user_profile(
     """Retrieve currently authenticated user profile from active session token."""
     service = AuthService(db)
     profile = await service.get_user_by_id(current_user.nid)
-    return ApiResponse(data=profile, message="Profil pengguna berhasil dimuat")
+    return ApiResponse(data=profile, message="User profile loaded successfully")
 
 
 @router.get("/users", response_model=ApiResponse[list[UserDTO]])
@@ -40,4 +40,4 @@ async def list_active_users(
     """List active system users for demo role switching (HR, Interviewer, Admin)."""
     service = AuthService(db)
     users = await service.list_active_users()
-    return ApiResponse(data=users, message="Daftar pengguna aktif berhasil diambil")
+    return ApiResponse(data=users, message="Active users retrieved successfully")

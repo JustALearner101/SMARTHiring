@@ -16,7 +16,7 @@ const withNextIntl = createNextIntlPlugin();
  * Page files are intentionally kept in `src/app/[locale]/(admin)/...` so they
  * can be re-enabled later by removing the prefix from this list.
  */
-const DISABLED_ROUTE_PREFIXES = ["/simulator"];
+const DISABLED_ROUTE_PREFIXES = ["/simulator", "/audit/guardrail"];
 
 const nextConfig: NextConfig = {
   output: "standalone",

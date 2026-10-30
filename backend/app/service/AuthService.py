@@ -33,13 +33,13 @@ class AuthService:
     async def authenticate(self, dto: LoginRequestDTO) -> LoginResponseDTO:
         user = await self.user_repo.get_by_username(dto.username.strip())
         if not user:
-            raise UnauthorizedException("Username atau password salah")
+            raise UnauthorizedException("Invalid username or password")
 
         if not verify_password(dto.password, user.vpassword_hash):
-            raise UnauthorizedException("Username atau password salah")
+            raise UnauthorizedException("Invalid username or password")
 
         if user.vstatus != "ACTIVE":
-            raise UnauthorizedException("Akun pengguna berstatus nonaktif")
+            raise UnauthorizedException("User account is inactive")
 
         extra_claims = {
             "username": user.vusername,
@@ -58,7 +58,7 @@ class AuthService:
     async def get_user_by_id(self, user_id: str | int) -> UserDTO:
         user = await self.user_repo.get_by_id(user_id)
         if not user:
-            raise NotFoundException("User tidak ditemukan")
+            raise NotFoundException("User not found")
         return self._to_user_dto(user)
 
     async def list_active_users(self) -> list[UserDTO]:

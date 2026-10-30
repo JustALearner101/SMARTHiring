@@ -65,7 +65,7 @@ class ContactService:
         existing = (await self.session.execute(dup_stmt)).scalars().first()
         if existing:
             raise ConflictException(
-                "Employee ID, Username, atau Email sudah digunakan oleh akun lain di sistem."
+                "Employee ID, Username, or Email is already in use by another account."
             )
 
         user_data = {
@@ -100,7 +100,7 @@ class ContactService:
                 )
             ).scalars().first()
             if dup:
-                raise ConflictException(f"Username '{new_uname}' sudah digunakan.")
+                raise ConflictException(f"Username '{new_uname}' is already in use.")
             updates["vusername"] = new_uname
         if dto.password:
             updates["vpassword_hash"] = get_password_hash(dto.password)
@@ -114,7 +114,7 @@ class ContactService:
                 )
             ).scalars().first()
             if dup_email:
-                raise ConflictException(f"Email '{new_email}' sudah digunakan.")
+                raise ConflictException(f"Email '{new_email}' is already in use.")
             updates["vemail"] = new_email
         if dto.phone is not None:
             updates["vphone_number"] = dto.phone
@@ -133,9 +133,9 @@ class ContactService:
     async def delete_interviewer(self, user_id: str, current_user: User) -> None:
         user = await self.contact_repo.get_by_id(user_id)
         if not user or user.vstatus != "ACTIVE":
-            raise NotFoundException("Kontak pengguna tidak ditemukan")
+            raise NotFoundException("User contact not found")
         if user.nid == current_user.nid:
-            raise BusinessRuleException("Anda tidak dapat menonaktifkan/menghapus akun Anda sendiri yang sedang login.")
+            raise BusinessRuleException("You cannot deactivate or delete your own logged-in account.")
 
         await self.contact_repo.update(user, {"vstatus": "INACTIVE"})
         await self.audit_service.log_event(
@@ -143,7 +143,7 @@ class ContactService:
             actor=current_user.vname,
             actor_type="HUMAN",
             title=f"User Account Deactivated ({user.vusername})",
-            description=f"Akun {user.vname} ({user.vrole}) dinonaktifkan dari direktori aktif dengan tetap menjaga integritas riwayat audit.",
+            description=f"User {user.vname} ({user.vrole}) deactivated from active directory while preserving audit trail integrity.",
             metadata={"deactivated_user_id": user.nid, "username": user.vusername},
         )
 

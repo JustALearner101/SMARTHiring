@@ -104,7 +104,7 @@ class NegotiationThreadService:
         t_id = int(thread_id) if thread_id.isdigit() else 1
         thread = await self.negotiation_repo.get_thread(t_id)
         if not thread:
-            raise ValueError(f"Thread {thread_id} tidak ditemukan.")
+            raise ValueError(f"Thread {thread_id} not found.")
 
         msg_data = {
             "nround_number": thread.ncurrent_round,
@@ -124,7 +124,7 @@ class NegotiationThreadService:
             actor=sender_role,
             actor_type="HUMAN",
             title="Negotiation Thread Reply",
-            description=f"Balasan dikirimkan pada thread #{t_id} via {channel.upper()}: {content[:80]}...",
+            description=f"Reply sent on thread #{t_id} via {channel.upper()}: {content[:80]}...",
             metadata={"thread_id": t_id, "channel": channel, "sender_role": sender_role},
         )
 

@@ -36,7 +36,7 @@ class PlannerTriageNode:
 
         # 1. Check negotiation limits & Out-of-Scope
         if current_round > max_rounds:
-            reason = f"Limits on autonomous negotiations {max_rounds} round exceeded. Escalate to HR for manual resolution."
+            reason = f"Autonomous negotiation limit of {max_rounds} rounds exceeded. Escalate to HR for manual resolution."
             return {
                 "status": "DEADLOCK_ESCALATED",
                 "escalation_reason": reason,
@@ -100,8 +100,8 @@ class PlannerTriageNode:
 
             return PlannerResolutionSchema(
                 target_time_preference=pref,
-                interviewer_message=f"Halo {inter_name}, berikut draf undangan interview dengan {cand_name} untuk posisi {cand_pos}.",
-                candidate_message=f"Halo Kak {cand_name}, kami mengundang Anda ke User Technical Interview via Google Meet pada jadwal yang disepakati.",
+                interviewer_message=f"Hello {inter_name}, here is the interview invitation draft with {cand_name} for the {cand_pos} position.",
+                candidate_message=f"Dear {cand_name}, we invite you to a User Technical Interview via Google Meet at the agreed schedule.",
                 reasoning="Fallback planner resolving standard schedule with corporate formatting.",
             )
 
@@ -165,11 +165,11 @@ class PlannerTriageNode:
                 target_minute = 30
 
             day_offset = 2
-            if "besok" in cmd_lower:
+            if "besok" in cmd_lower or "tomorrow" in cmd_lower:
                 day_offset = 1
-            elif "kamis" in cmd_lower:
+            elif "kamis" in cmd_lower or "thursday" in cmd_lower:
                 day_offset = 3
-            elif "jumat" in cmd_lower:
+            elif "jumat" in cmd_lower or "friday" in cmd_lower:
                 day_offset = 4
 
             target_date = (now + timedelta(days=day_offset)).date()
@@ -197,8 +197,8 @@ class PlannerTriageNode:
                 "id": "src-01",
                 "ref_code": f"[cal-{inter_slug}]",
                 "source_type": "CALENDAR",
-                "title": f"Kalender {inter_name}",
-                "detail": f"Slot kosong terverifikasi pukul {slot_dict.get('formatted_wib', '')} ({inter_tz}) tanpa konflik jadwal lain.",
+                "title": f"Calendar: {inter_name}",
+                "detail": f"Available slot verified at {slot_dict.get('formatted_wib', '')} ({inter_tz}) without conflicts.",
             },
             {
                 "id": "src-02",
@@ -211,14 +211,14 @@ class PlannerTriageNode:
                 "id": "src-03",
                 "ref_code": f"[cand-ats-{state.get('candidate_id', 1)}]",
                 "source_type": "CANDIDATE_ATS",
-                "title": f"Preferensi Kontak {cand_name}",
-                "detail": f"Channel default: {cand_channel.upper()} (Standar Korporasi), Posisi: {cand_pos}.",
+                "title": f"Contact Preferences: {cand_name}",
+                "detail": f"Default channel: {cand_channel.upper()} (Corporate standard), Position: {cand_pos}.",
             },
         ]
 
         # 5. Action Items Draft (3 items)
-        interviewer_text = plan_res.interviewer_message or f"Halo {inter_name}, berikut draf undangan interview dengan {cand_name} untuk posisi {cand_pos}."
-        candidate_text = plan_res.candidate_message or f"Halo Kak {cand_name}, kami mengundang Anda ke User Technical Interview via Google Meet pada jadwal yang disepakati."
+        interviewer_text = plan_res.interviewer_message or f"Hello {inter_name}, here is the interview invitation draft with {cand_name} for the {cand_pos} position."
+        candidate_text = plan_res.candidate_message or f"Dear {cand_name}, we invite you to a User Technical Interview via Google Meet at the agreed schedule."
 
         action_items = [
             {

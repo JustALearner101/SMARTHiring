@@ -110,9 +110,6 @@ export default function AuditTimeline({ logs, maxHeight }: AuditTimelineProps) {
                   </span>
                 </div>
               </div>
-              <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                Pillar 5 (RECORD) &bull; PostgreSQL Immutable Ledger
-              </p>
             </div>
           </div>
           <span className="rounded-md bg-gray-100 px-2 py-0.5 text-[10px] font-mono font-semibold text-gray-600 dark:bg-gray-800 dark:text-gray-300">
@@ -274,20 +271,6 @@ export default function AuditTimeline({ logs, maxHeight }: AuditTimelineProps) {
             ))}
           </ul>
         )}
-      </div>
-
-      {/* Sticky Bottom Footer (Non-shrinking) */}
-      <div className="shrink-0 border-t border-gray-100 pt-3 mt-3 dark:border-gray-800">
-        <Link
-          href="/audit/logs"
-          className="group flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100 dark:bg-gray-800/60 dark:text-gray-300 dark:hover:bg-gray-800 transition-colors"
-        >
-          <span className="flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-brand-500"></span>
-            <span>View Full SHA-256 Ledger</span>
-          </span>
-          <ArrowRightIcon className="text-gray-400 group-hover:text-brand-500 group-hover:translate-x-0.5 transition-all" />
-        </Link>
       </div>
     </div>
   );

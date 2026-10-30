@@ -467,7 +467,7 @@ export default function SessionTable({
                               type="button"
                               onClick={() => setDeleteTarget(session)}
                               className="inline-flex items-center justify-center rounded-lg border border-error-200 bg-error-50/60 p-1.5 text-error-600 transition-colors hover:bg-error-100 dark:border-error-500/25 dark:bg-error-500/10 dark:text-error-400 dark:hover:bg-error-500/20"
-                              title="Hapus sesi wawancara (hanya diizinkan sebelum ada keputusan)"
+                              title="Delete interview session (only permitted before evaluation decision)"
                             >
                               <TrashBinIcon/>
                             </button>
@@ -503,14 +503,14 @@ export default function SessionTable({
         isOpen={Boolean(deleteTarget)}
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleConfirmDelete}
-        title="Hapus Sesi Wawancara?"
+        title="Delete Interview Session?"
         description={
           deleteTarget
-            ? `Sesi wawancara untuk ${deleteTarget.candidate_name} (${deleteTarget.round_name}) belum memiliki keputusan evaluasi dan akan dihapus secara permanen.`
+            ? `The interview session for ${deleteTarget.candidate_name} (${deleteTarget.round_name}) does not have an evaluation decision and will be permanently deleted.`
             : undefined
         }
-        confirmText="Ya, Hapus Sesi"
-        cancelText="Batal"
+        confirmText="Yes, Delete Session"
+        cancelText="Cancel"
         variant="danger"
         isLoading={isDeleting}
       />

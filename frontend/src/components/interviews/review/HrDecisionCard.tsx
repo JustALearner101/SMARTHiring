@@ -70,11 +70,11 @@ export default function HrDecisionCard({
   const [nextStage, setNextStage] = useState<AdvanceNextStage>(inferredDefaultStage);
   const [notes, setNotes] = useState(() => {
     if (isPendingHrFollowup && isHrOrAdmin && initialDecision) {
-      return `Menindaklanjuti rekomendasi pewawancara (${initialDecision.decided_by}): ${initialDecision.notes}`;
+      return `Following up on interviewer recommendation (${initialDecision.decided_by}): ${initialDecision.notes}`;
     }
     return (
       initialDecision?.notes ||
-      "Kandidat mendemonstrasikan kompetensi yang kuat sesuai bukti kutipan transkrip wawancara."
+      "Candidate demonstrated strong competencies based on interview transcript evidence."
     );
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -137,7 +137,7 @@ export default function HrDecisionCard({
               </span>
             </h3>
             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-              Keputusan final telah disahkan secara permanen dan terkunci pada jejak audit.
+              Final decision has been permanently finalized and locked in the audit trail.
             </p>
           </div>
 
@@ -151,7 +151,7 @@ export default function HrDecisionCard({
           <div className="flex flex-wrap items-center justify-between gap-2">
             {renderDecisionOutcomePill(initialDecision)}
             <span className="text-[11px] text-gray-500 dark:text-gray-400">
-              Disahkan oleh <strong>{initialDecision.decided_by}</strong> &bull;{" "}
+              Decided by <strong>{initialDecision.decided_by}</strong> &bull;{" "}
               {initialDecision.decided_at}
             </span>
           </div>
@@ -172,12 +172,12 @@ export default function HrDecisionCard({
               {initialDecision.decision === "ADVANCE" &&
               initialDecision.next_stage === "NEXT_INTERVIEW" ? (
                 <span>
-                  Status kandidat resmi diperbarui menjadi{" "}
+                  Candidate status officially updated to{" "}
                   <strong>Next Round Ready (ESCALATED)</strong>.
                 </span>
               ) : (
                 <span>
-                  Status kandidat di Master Candidates telah tersinkronisasi secara permanen.
+                  Candidate status in Master Candidates has been synchronized permanently.
                 </span>
               )}
             </div>
@@ -225,7 +225,7 @@ export default function HrDecisionCard({
               </span>
             </h3>
             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-              Rekomendasi evaluasi Anda telah terkunci dan diteruskan ke HR untuk konfirmasi tindak lanjut final.
+              Your evaluation recommendation has been locked and forwarded to HR for final review.
             </p>
           </div>
 
@@ -239,7 +239,7 @@ export default function HrDecisionCard({
           <div className="flex flex-wrap items-center justify-between gap-2">
             {renderDecisionOutcomePill(initialDecision)}
             <span className="text-[11px] text-gray-500 dark:text-gray-400">
-              Dikirim oleh <strong>{initialDecision.decided_by}</strong> &bull;{" "}
+              Submitted by <strong>{initialDecision.decided_by}</strong> &bull;{" "}
               {initialDecision.decided_at}
             </span>
           </div>
@@ -272,14 +272,14 @@ export default function HrDecisionCard({
               </span>
             </h3>
             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-              Hanya pewawancara yang ditugaskan yang berhak mengirimkan evaluasi pertama pada sesi ini.
+              Only the assigned interviewer is authorized to submit the initial evaluation for this session.
             </p>
           </div>
         </div>
 
         <div className="rounded-xl border border-warning-200 bg-warning-50/50 p-4 text-start text-xs text-warning-900 dark:border-warning-500/25 dark:bg-warning-500/10 dark:text-warning-200">
-          Sesi wawancara ini ditugaskan kepada pewawancara{" "}
-          <strong>{interviewerName || "Assigned Interviewer"}</strong>. Menunggu rekomendasi hasil wawancara dari pewawancara terkait sebelum HR dapat melakukan tindak lanjut final.
+          This interview session is assigned to interviewer{" "}
+          <strong>{interviewerName || "Assigned Interviewer"}</strong>. Awaiting evaluation recommendation from the assigned interviewer before HR can proceed with final action.
         </div>
       </div>
     );
@@ -299,10 +299,10 @@ export default function HrDecisionCard({
     : "HR Final Decision Gate";
 
   const headerSubtitle = isPendingHrFollowup
-    ? "Tinjau rekomendasi pewawancara di bawah, lalu sahkan keputusan final HR untuk memperbarui status kandidat secara resmi."
+    ? "Review interviewer recommendations below, then finalize the HR decision to officially update candidate status."
     : isInterviewerSubmission
-    ? "Keputusan evaluasi Anda akan dikunci secara satu arah dan diteruskan ke HR untuk tindak lanjut final."
-    : "Status aplikasi kandidat di Master Directory diperbarui secara otomatis dan terkunci begitu keputusan disimpan.";
+    ? "Your evaluation recommendation will be locked one-way and forwarded to HR for final review."
+    : "Candidate application status in the Master Directory is updated automatically and locked once saved.";
 
   const submitButtonLabel = isPendingHrFollowup
     ? "Finalize HR Follow-Up Decision"
@@ -331,7 +331,7 @@ export default function HrDecisionCard({
         <div className="mt-4 rounded-xl border border-brand-200 bg-brand-50/50 p-4 text-start space-y-2.5 dark:border-brand-500/30 dark:bg-brand-500/10">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-xs font-bold text-brand-800 dark:text-brand-300">
-              Rekomendasi Pewawancara ({initialDecision.decided_by}):
+              Interviewer Recommendation ({initialDecision.decided_by}):
             </span>
             {renderDecisionOutcomePill(initialDecision)}
           </div>
@@ -339,7 +339,7 @@ export default function HrDecisionCard({
             &ldquo;{initialDecision.notes}&rdquo;
           </p>
           <span className="block text-[10px] text-gray-500 dark:text-gray-400">
-            Dikirim pada {initialDecision.decided_at} &bull; Menunggu pengesahan final HR
+            Submitted at {initialDecision.decided_at} &bull; Awaiting final HR confirmation
           </span>
         </div>
       )}
@@ -369,7 +369,7 @@ export default function HrDecisionCard({
               />
             </div>
             <span className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-              Lolos ke ronde interview berikutnya, tes teknikal, atau offering.
+              Advance to next interview round, technical test, or job offering.
             </span>
           </label>
 
@@ -395,7 +395,7 @@ export default function HrDecisionCard({
               />
             </div>
             <span className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-              Tahan sementara (On Hold) untuk komparasi dengan kandidat lain.
+              Put on hold for comparison against other candidates.
             </span>
           </label>
 
@@ -421,7 +421,7 @@ export default function HrDecisionCard({
               />
             </div>
             <span className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-              Tidak direkomendasikan lanjut ke tahap seleksi berikutnya.
+              Not recommended to advance to the next selection stage.
             </span>
           </label>
         </div>
@@ -431,8 +431,8 @@ export default function HrDecisionCard({
           <div className="rounded-xl border border-brand-200 bg-brand-50/40 p-3.5 text-start dark:border-brand-500/30 dark:bg-brand-500/10">
             <span className="block text-xs font-bold text-gray-900 dark:text-white">
               {isInterviewerSubmission
-                ? "Rekomendasi Tahap Lanjutan untuk HR:"
-                : "Pilih Tahap Lanjutan (Otomatis Memperbarui Application Status):"}
+                ? "Recommended Next Stage for HR:"
+                : "Select Next Stage (Automatically Updates Application Status):"}
             </span>
             <div className="mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-3">
               <button
@@ -476,7 +476,7 @@ export default function HrDecisionCard({
               >
                 <span className="block font-bold">3. Final Offering</span>
                 <span className="mt-0.5 block text-[11px] font-normal text-gray-500 dark:text-gray-400">
-                  Lolos seluruh seleksi &rarr; Status: <strong>Offering</strong>
+                  Passed all selection stages &rarr; Status: <strong>Offering</strong>
                 </span>
               </button>
             </div>
@@ -487,22 +487,22 @@ export default function HrDecisionCard({
         <div className="text-start">
           <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
             {isInterviewerSubmission
-              ? `Catatan Evaluasi Teknis / User untuk ${candidateName}:`
-              : `Catatan Keputusan Final HR untuk ${candidateName}:`}
+              ? `Technical / User Evaluation Notes for ${candidateName}:`
+              : `HR Final Decision Notes for ${candidateName}:`}
           </label>
           <textarea
             rows={3}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             required
-            placeholder="Tuliskan alasan evaluasi berdasarkan bukti kutipan transkrip..."
+            placeholder="Write evaluation reasoning based on transcript evidence..."
             className="w-full rounded-xl border border-gray-300 bg-gray-50 p-3 text-xs text-gray-800 placeholder-gray-400 focus:border-brand-500 focus:bg-white focus:outline-hidden dark:border-gray-700 dark:bg-gray-800 dark:text-white"
           />
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
           <span className="text-[11px] text-gray-500 dark:text-gray-400">
-            Perhatian: Keputusan bersifat satu arah (immutable) dan tidak dapat diubah setelah dikirim.
+            Notice: Decision is one-way (immutable) and cannot be modified once submitted.
           </span>
           <Button
             variant="primary"

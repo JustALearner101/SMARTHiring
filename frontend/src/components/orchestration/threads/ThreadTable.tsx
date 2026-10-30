@@ -206,7 +206,7 @@ export default function ThreadTable({
                             className="inline-flex items-center gap-1 rounded-xl bg-brand-600 px-2.5 py-1.5 text-xs font-bold text-white shadow-theme-xs hover:bg-brand-700 transition-colors"
                           >
                             <BoltIcon className="h-3.5 w-3.5" />
-                            <span>Triage Jadwal</span>
+                            <span>Schedule Triage</span>
                           </Link>
                           <button
                             onClick={() => onSelectThread(thread)}

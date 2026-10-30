@@ -20,7 +20,7 @@ async def list_whatsapp_messages(
 ) -> ApiResponse[list[SimulatedWhatsAppMessageDTO]]:
     service = SimulatorWhatsAppService(db)
     messages = await service.list_whatsapp_messages(thread_id=thread_id)
-    return ApiResponse(data=messages, message="Berhasil mengambil pesan WhatsApp simulator")
+    return ApiResponse(data=messages, message="Simulated WhatsApp messages retrieved successfully")
 
 
 @router.post("/send", response_model=ApiResponse[SimulatedWhatsAppMessageDTO])
@@ -32,7 +32,7 @@ async def send_whatsapp_message(
 ) -> ApiResponse[SimulatedWhatsAppMessageDTO]:
     service = SimulatorWhatsAppService(db)
     sent = await service.send_whatsapp_message(thread_id=thread_id, text=text, sender=sender)
-    return ApiResponse(data=sent, message="Pesan simulator berhasil dikirim")
+    return ApiResponse(data=sent, message="Simulated message sent successfully")
 
 
 @router.get("/quickPresets", response_model=ApiResponse[list[QuickReplyPresetDTO]])
@@ -41,7 +41,7 @@ async def list_quick_presets(
 ) -> ApiResponse[list[QuickReplyPresetDTO]]:
     service = SimulatorWhatsAppService(db)
     presets = await service.list_quick_presets()
-    return ApiResponse(data=presets, message="Berhasil mengambil daftar preset balasan cepat")
+    return ApiResponse(data=presets, message="Quick reply presets retrieved successfully")
 
 
 @router.get("/notifications", response_model=ApiResponse[list[SimulatorNotificationDTO]])
@@ -50,4 +50,4 @@ async def list_notifications(
 ) -> ApiResponse[list[SimulatorNotificationDTO]]:
     service = SimulatorWhatsAppService(db)
     notifs = await service.list_notifications()
-    return ApiResponse(data=notifs, message="Berhasil mengambil notifikasi simulator")
+    return ApiResponse(data=notifs, message="Simulator notifications retrieved successfully")

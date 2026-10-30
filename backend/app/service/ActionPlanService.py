@@ -155,7 +155,7 @@ class ActionPlanService:
         p_id = int(plan_id) if plan_id.isdigit() else 1
         plan = await self.action_plan_repo.get_action_plan(p_id)
         if not plan:
-            raise NotFoundException(f"Plan ID {plan_id} tidak ditemukan.")
+            raise NotFoundException(f"Plan ID {plan_id} not found.")
 
         now = datetime.now(UTC)
         meta = plan.vagent_metadata or {}
@@ -180,7 +180,7 @@ class ActionPlanService:
             existing = await self.action_plan_repo.get_action_plan(p_id)
             status_desc = existing.vapproval_status if existing else "NOT_FOUND"
             raise ConflictException(
-                f"Plan #{plan_id} tidak dapat disetujui karena status saat ini: {status_desc}."
+                f"Plan #{plan_id} cannot be approved because current status is: {status_desc}."
             )
 
         cand_item = next(
@@ -210,7 +210,7 @@ class ActionPlanService:
                 actor=request.approved_by,
                 actor_type="HUMAN",
                 title="Action Plan Executed Immediately by HR",
-                description=f"Rencana aksi #{p_id} disetujui dan dieksekusi secara instan.",
+                description=f"Action plan #{p_id} approved and executed immediately.",
                 metadata={"plan_id": p_id},
             )
         else:
@@ -219,13 +219,13 @@ class ActionPlanService:
                 actor=request.approved_by,
                 actor_type="HUMAN",
                 title="Action Plan Approved by HR",
-                description=f"Rencana aksi #{p_id} disetujui HR. Memasuki jendela undo buffer 60 detik.",
+                description=f"Action plan #{p_id} approved by HR. Entering 60-second undo buffer window.",
                 metadata={"plan_id": p_id, "undo_window_seconds": 60},
             )
 
         updated = await self.action_plan_repo.get_action_plan(p_id)
         if not updated:
-            raise ValueError("Gagal memperbarui status plan.")
+            raise ValueError("Failed to update plan status.")
         dto = self._to_action_plan_dto(updated)
         if not request.send_immediately:
             dto.status = "UNDO_WINDOW"
@@ -236,14 +236,14 @@ class ActionPlanService:
         p_id = int(plan_id) if plan_id.isdigit() else 1
         plan = await self.action_plan_repo.get_action_plan(p_id)
         if not plan:
-            raise NotFoundException(f"Plan ID {plan_id} tidak ditemukan.")
+            raise NotFoundException(f"Plan ID {plan_id} not found.")
 
         undone_plan = await self.action_plan_repo.atomic_undo_plan(p_id)
         if not undone_plan:
             existing = await self.action_plan_repo.get_action_plan(p_id)
             status_desc = existing.vapproval_status if existing else "NOT_FOUND"
             raise ConflictException(
-                f"Plan #{plan_id} tidak dapat dibatalkan (Status saat ini: {status_desc})."
+                f"Plan #{plan_id} cannot be undone (Current status: {status_desc})."
             )
 
         await self.audit_service.log_event(
@@ -251,13 +251,13 @@ class ActionPlanService:
             actor="HR Admin",
             actor_type="HUMAN",
             title="Action Plan Undone Within 60s Window",
-            description=f"Eksekusi rencana aksi #{p_id} dibatalkan secara manual oleh HR: {request.reason}.",
+            description=f"Execution of action plan #{p_id} undone manually by HR: {request.reason}.",
             metadata={"plan_id": p_id, "reason": request.reason},
         )
 
         updated = await self.action_plan_repo.get_action_plan(p_id)
         if not updated:
-            raise ValueError("Gagal membatalkan plan.")
+            raise ValueError("Failed to undo plan.")
         dto = self._to_action_plan_dto(updated)
         dto.status = "UNDONE"
         dto.undo_expires_at = None

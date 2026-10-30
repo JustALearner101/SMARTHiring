@@ -43,10 +43,10 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
-        detail_msg = exc.detail if isinstance(exc.detail, str) else "Terjadi kesalahan pada request"
+        detail_msg = exc.detail if isinstance(exc.detail, str) else "An error occurred with the request"
         data_payload: Any = None
         if isinstance(exc.detail, dict):
-            detail_msg = exc.detail.get("message", "Terjadi kesalahan pada request")
+            detail_msg = exc.detail.get("message", "An error occurred with the request")
             data_payload = exc.detail.get("data")
 
         return JSONResponse(
@@ -67,14 +67,14 @@ def register_exception_handlers(app: FastAPI) -> None:
             formatted_errors.append(
                 {
                     "field": loc or "payload",
-                    "message": error.get("msg", "Format input tidak valid"),
+                    "message": error.get("msg", "Invalid input format"),
                 }
             )
 
         summary_msg = (
-            f"Validasi input gagal: field '{formatted_errors[0]['field']}' ({formatted_errors[0]['message']})"
+            f"Input validation failed: field '{formatted_errors[0]['field']}' ({formatted_errors[0]['message']})"
             if formatted_errors
-            else "Validasi input gagal"
+            else "Input validation failed"
         )
 
         return JSONResponse(
@@ -107,7 +107,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             headers=_cors_headers(request),
             content={
                 "success": False,
-                "message": "Terjadi kesalahan internal pada server. Silakan hubungi admin.",
+                "message": "Internal server error occurred. Please contact the administrator.",
                 "data": None,
             },
         )

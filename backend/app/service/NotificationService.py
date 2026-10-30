@@ -34,14 +34,14 @@ class NotificationService:
             pending_plans = (await self.session.execute(plan_stmt)).scalars().all()
             for plan in pending_plans:
                 meta: dict[str, Any] = plan.vagent_metadata or {}
-                cand_name = meta.get("candidate_name", "Kandidat")
-                position = meta.get("candidate_position", "Posisi Baru")
+                cand_name = meta.get("candidate_name", "Candidate")
+                position = meta.get("candidate_position", "New Position")
                 notifications.append(
                     NotificationDTO(
                         id=f"plan-{plan.nid}",
                         category="APPROVAL",
                         title="Action Plan Awaiting Approval",
-                        message=f"AI Orchestrator menyusun draf jadwal untuk {cand_name} ({position}). Perlu review lengkap Anda.",
+                        message=f"AI Orchestrator drafted a schedule for {cand_name} ({position}). Requires your full review.",
                         timestamp=plan.dcrea.isoformat(),
                         link="/orchestration/scheduling",
                         badge_variant="warning",
@@ -63,7 +63,7 @@ class NotificationService:
                             id=f"thread-{th.nid}",
                             category="TRIAGE",
                             title="Candidate Reschedule Deadlock",
-                            message=f"Negosiasi jadwal pada Thread #{th.nid} mencapai ronde ke-{th.ncurrent_round}. Butuh bantuan HR.",
+                            message=f"Schedule negotiation on Thread #{th.nid} reached round {th.ncurrent_round}. Requires HR assistance.",
                             timestamp=(th.dlast_activity_at or th.dcrea).isoformat(),
                             link="/simulator/whatsapp",
                             badge_variant="error",
@@ -101,16 +101,16 @@ class NotificationService:
             )
             pending_interviews = (await self.session.execute(followup_iv_stmt)).scalars().all()
             for iv in pending_interviews:
-                cand_name = iv.candidate.vname if iv.candidate else "Kandidat"
-                intv_name = iv.interviewer.vname if iv.interviewer else "Pewawancara"
+                cand_name = iv.candidate.vname if iv.candidate else "Candidate"
+                intv_name = iv.interviewer.vname if iv.interviewer else "Interviewer"
                 notifications.append(
                     NotificationDTO(
                         id=f"interview-followup-{iv.nid}",
                         category="APPROVAL",
                         title="Pending HR Follow-Up Decision",
                         message=(
-                            f"Pewawancara {intv_name} telah mengirim hasil evaluasi untuk {cand_name}. "
-                            "Menunggu tindak lanjut final HR."
+                            f"Interviewer {intv_name} submitted evaluation results for {cand_name}. "
+                            "Awaiting HR final followup."
                         ),
                         timestamp=(iv.dmodi or iv.dcrea).isoformat(),
                         link=f"/interviews/review?id={iv.nid}",
@@ -133,7 +133,7 @@ class NotificationService:
                         id=f"sec-{log.nid}",
                         category="SECURITY",
                         title="AI Guardrail & Security Alert",
-                        message=f"Percobaan anomali/akses diblokir terdeteksi: {log.vmasked_detail[:90]}...",
+                        message=f"Anomaly attempt/blocked access detected: {log.vmasked_detail[:90]}...",
                         timestamp=log.dcrea.isoformat(),
                         link="/audit/guardrail",
                         badge_variant="error",
@@ -146,8 +146,8 @@ class NotificationService:
                 NotificationDTO(
                     id=f"interviewer-slot-{current_user.nid}",
                     category="INTERVIEW",
-                    title="Jadwal & Evaluasi Sesi Wawancara Anda",
-                    message=f"Halo {user_name}, periksa jadwal kalender dan sesi evaluasi wawancara yang ditugaskan kepada Anda.",
+                    title="Your Interview Schedule & Evaluation",
+                    message=f"Hello {user_name}, check your calendar schedule and interview evaluation sessions assigned to you.",
                     timestamp=datetime.now(UTC).isoformat(),
                     link="/interviews/sessions",
                     badge_variant="info",

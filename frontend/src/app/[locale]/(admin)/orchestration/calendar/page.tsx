@@ -119,7 +119,7 @@ export default function CalendarMatrixPage() {
                 Slot Kalender Tersedia
               </h3>
               <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                Aksi Cepat Jadwal Wawancara (Cross-Page Orchestration)
+                Quick Interview Actions (Cross-Page Orchestration)
               </p>
             </div>
           </div>
@@ -138,14 +138,14 @@ export default function CalendarMatrixPage() {
               </span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-gray-500 dark:text-gray-400">Waktu ({selectedTimezone}):</span>
+              <span className="text-gray-500 dark:text-gray-400">Time ({selectedTimezone}):</span>
               <span className="font-mono font-bold text-brand-600 dark:text-brand-400">
-                {selectedSlot.date} pukul {selectedSlot.time} {selectedTimezone}
+                {selectedSlot.date} at {selectedSlot.time} {selectedTimezone}
               </span>
             </div>
             <div className="flex items-center gap-1.5 pt-1 text-[11px] text-success-700 dark:text-success-400">
               <CheckCircleIcon />
-              <span>Tidak ada konflik agenda / aturan operasional terdeteksi.</span>
+              <span>No schedule conflict or operational rule violation detected.</span>
             </div>
           </div>
 
@@ -157,7 +157,7 @@ export default function CalendarMatrixPage() {
               startIcon={<ShootingStarIcon className="text-white" />}
               className="w-full justify-center"
             >
-              Jadwalkan via Orchestrator
+              Schedule via Orchestrator
             </Button>
             <Button
               variant="outline"
@@ -168,7 +168,7 @@ export default function CalendarMatrixPage() {
               }}
               className="w-full justify-center"
             >
-              Uji Aturan Operasional (Conflict Checker)
+              Test Operational Rules (Conflict Checker)
             </Button>
           </div>
         </Modal>

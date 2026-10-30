@@ -39,7 +39,7 @@ class SlotConflictCheckerService:
             return SlotConflictCheckResultDTO(
                 is_available=False,
                 status="OUTSIDE_WORKING_HOURS",
-                message="Format tanggal atau waktu tidak valid.",
+                message="Invalid date or time format.",
             )
 
         tz_offset = TZ_OFFSETS.get(request.timezone, TZ_OFFSETS["WIB"])
@@ -56,7 +56,7 @@ class SlotConflictCheckerService:
             return SlotConflictCheckResultDTO(
                 is_available=False,
                 status="OUTSIDE_WORKING_HOURS",
-                message=f"Slot berada di luar jam operasional kerja ({w_start.strftime('%H:%M')} - {w_end.strftime('%H:%M')} {request.timezone}).",
+                message=f"Slot is outside operational working hours ({w_start.strftime('%H:%M')} - {w_end.strftime('%H:%M')} {request.timezone}).",
                 rule_code="[rule-working-hours]",
                 suggested_alternatives=[
                     f"{request.date} 10:00 {request.timezone}",
@@ -75,9 +75,9 @@ class SlotConflictCheckerService:
                     is_available=False,
                     status="BLOCKED_FRIDAY_PRAYER",
                     message=(
-                        f"Waktu bertabrakan dengan ibadah Sholat Jumat "
+                        f"Time slot overlaps with Friday prayer blackout "
                         f"({f_start.strftime('%H:%M')} - {f_end.strftime('%H:%M')} {request.timezone}) "
-                        f"sesuai kebijakan operasional perusahaan."
+                        f"according to company operational policy."
                     ),
                     rule_code="[rule-jumatan]",
                     suggested_alternatives=[
@@ -90,11 +90,11 @@ class SlotConflictCheckerService:
         # 3. Check National Holiday / Cuti Bersama
         holiday = await self.holiday_repo.is_holiday(req_date)
         if holiday:
-            h_type = "Cuti Bersama" if holiday.vtype == "COLLECTIVE_LEAVE" else "Hari Libur Nasional"
+            h_type = "Collective Leave" if holiday.vtype == "COLLECTIVE_LEAVE" else "National Holiday"
             return SlotConflictCheckResultDTO(
                 is_available=False,
                 status="OUTSIDE_WORKING_HOURS",
-                message=f"Tanggal {req_date} bertepatan dengan {h_type}: {holiday.vname}.",
+                message=f"Date {req_date} coincides with {h_type}: {holiday.vname}.",
                 rule_code="[rule-holiday]",
                 suggested_alternatives=[
                     (req_date + timedelta(days=1)).strftime("%Y-%m-%d") + f" 10:00 {request.timezone}",
@@ -113,7 +113,7 @@ class SlotConflictCheckerService:
             return SlotConflictCheckResultDTO(
                 is_available=False,
                 status="CONFLICT_EXISTING_EVENT",
-                message=f"Pewawancara telah memiliki jadwal '{conf_ev.vtitle}' pada rentang waktu ini.",
+                message=f"Interviewer already has an event scheduled ('{conf_ev.vtitle}') during this time slot.",
                 rule_code="[cal-interviewer-busy]",
                 conflicting_event=conf_ev.vtitle,
                 suggested_alternatives=[
@@ -133,7 +133,7 @@ class SlotConflictCheckerService:
             return SlotConflictCheckResultDTO(
                 is_available=False,
                 status="INSUFFICIENT_BUFFER",
-                message=f"Jeda waktu kurang dari batas aman buffer {policy.nbuffer_minutes} menit sebelum/setelah jadwal lain.",
+                message=f"Buffer time is less than the required safe buffer of {policy.nbuffer_minutes} minutes before/after another event.",
                 rule_code="[rule-buffer-window]",
                 suggested_alternatives=[
                     (local_end + buffer_delta).strftime("%H:%M") + f" {request.timezone}",
@@ -143,5 +143,5 @@ class SlotConflictCheckerService:
         return SlotConflictCheckResultDTO(
             is_available=True,
             status="VALID",
-            message=f"Slot jadwal tersedia dan memenuhi seluruh aturan operasional ({request.timezone}).",
+            message=f"Schedule slot is available and complies with all operational rules ({request.timezone}).",
         )

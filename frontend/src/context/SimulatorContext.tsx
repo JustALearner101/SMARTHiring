@@ -314,18 +314,18 @@ export function SimulatorProvider({ children }: { children: React.ReactNode }) {
         let nextRound = activeNegotiationRound;
         let newEmailsList = [...emails];
 
-        if (presetType === "friday_conflict" || text.toLowerCase().includes("jumat")) {
-          // Skenario 3: Secondary Validator Friday Prayer Block
+        if (presetType === "friday_conflict" || text.toLowerCase().includes("jumat") || text.toLowerCase().includes("friday")) {
+          // Scenario 3: Secondary Validator Friday Prayer Block
           botResponseText =
-            "Mohon maaf Kak Rina, berdasarkan aturan operasional kantor, hari Jumat pukul 11:30 - 13:00 WIB dialokasikan khusus untuk waktu ibadah Sholat Jumat dan istirahat kerja (PERMISSIONS).\n\nKami menyarankan alternatif hari yang sama pukul 14:00 - 15:00 WIB atau hari Kamis jam kerja. Apakah Kak Rina berkenan dengan slot jam 14:00 WIB?";
-        } else if (presetType === "reschedule" || text.toLowerCase().includes("jadwal ulang") || text.toLowerCase().includes("sidang")) {
-          // Skenario 2: Reschedule Triage Request (Putaran 2 dari 3)
+            "Apologies Rina, based on office operational policies, Friday from 11:30 to 13:00 WIB is reserved for Friday Prayer and break time (PERMISSIONS).\n\nWe suggest an alternative on the same day at 14:00 - 15:00 WIB or Thursday during working hours. Would the 14:00 WIB slot work for you?";
+        } else if (presetType === "reschedule" || text.toLowerCase().includes("jadwal ulang") || text.toLowerCase().includes("reschedule") || text.toLowerCase().includes("sidang")) {
+          // Scenario 2: Reschedule Triage Request (Round 2 of 3)
           nextRound = Math.min(3, activeNegotiationRound + 1);
           setActiveNegotiationRound(nextRound);
 
-          botResponseText = `Terima kasih atas konfirmasinya, Kak Rina! Permohonan reschedule ke hari Kamis pukul 14:00 WIB telah kami terima.\n\nSistem SmartHiring AI sedang menyelaraskan dengan kalender Pak Budi Santoso (Putaran Negosiasi ${nextRound}/3). Draf perubahan jadwal telah dikirimkan ke email Hiring Manager untuk verifikasi.`;
+          botResponseText = `Thank you for the confirmation, Rina! Your reschedule request to Thursday at 14:00 WIB has been received.\n\nThe SmartHiring AI system is coordinating with Mr. Budi Santoso's calendar (Negotiation Round ${nextRound}/3). A draft schedule update has been sent to the Hiring Manager's email for verification.`;
 
-          // Masukkan email reschedule ke inbox Interviewer
+          // Put reschedule email into Interviewer inbox
           const newRescheduleEmail: SimulatedEmail = {
             id: `mail-resched-${Date.now()}`,
             thread_id: "thread-orchestrate-001",
@@ -335,7 +335,7 @@ export function SimulatorProvider({ children }: { children: React.ReactNode }) {
             recipient_name: "Budi Santoso",
             recipient_email: "budi.santoso@company.internal",
             subject: `[Triage Round ${nextRound}/3] Reschedule Request: Rina Kusuma proposes Thursday 14:00 WIB`,
-            body_text: `Halo Pak Budi Santoso,\n\nKandidat Rina Kusuma memohon penyesuaian jadwal wawancara karena berhalangan (jadwal sidang skripsi pada slot Rabu 10:00 WIB).\n\nKandidat mengusulkan waktu alternatif:\n• Tanggal: Kamis, 30 Oktober 2026\n• Waktu: 14:00 - 15:00 WIB (15:00 - 16:00 WITA)\n• Status Kalender Anda: TERSEDIA (Slot kosong terdeteksi)\n• Format: Google Meet\n\nSistem AI Orchestrator menunggu konfirmasi Anda melalui tombol di bawah atau melalui dashboard /orchestration/scheduling.`,
+            body_text: `Hello Mr. Budi Santoso,\n\nCandidate Rina Kusuma has requested to reschedule her interview due to a conflict (thesis defense scheduled during the Wednesday 10:00 WIB slot).\n\nThe candidate proposes an alternative time:\n• Date: Thursday, 30 October 2026\n• Time: 14:00 - 15:00 WIB (15:00 - 16:00 WITA)\n• Your Calendar Status: AVAILABLE (Free slot detected)\n• Location: Google Meet\n\nThe AI Orchestrator awaits your confirmation via the reply form below or via /orchestration/scheduling.`,
             sent_at: "Just now",
             is_read: false,
             is_starred: true,
@@ -354,14 +354,14 @@ export function SimulatorProvider({ children }: { children: React.ReactNode }) {
           newEmailsList = [newRescheduleEmail, ...newEmailsList];
           setEmails(newEmailsList);
           setActiveEmailId(newRescheduleEmail.id);
-        } else if (presetType === "confirm" || text.toLowerCase().includes("konfirmasi") || text.toLowerCase().includes("siap")) {
-          // Skenario 1: Happy Path Confirmation
+        } else if (presetType === "confirm" || text.toLowerCase().includes("konfirmasi") || text.toLowerCase().includes("confirm") || text.toLowerCase().includes("siap")) {
+          // Scenario 1: Happy Path Confirmation
           botResponseText =
-            "Terima kasih atas konfirmasinya, Kak Rina! 🎉 Kehadiran Anda telah tercatat secara resmi di sistem kami. Undangan kalender dengan Google Meet telah disinkronkan.\n\nTips: Mohon siapkan koneksi internet stabil dan bergabung 5 menit sebelum sesi dimulai. Semoga sukses!";
+            "Thank you for confirming, Rina! 🎉 Your attendance has been officially recorded in our system. A calendar invite with the Google Meet link has been synchronized.\n\nTip: Please ensure a stable internet connection and join 5 minutes before the session starts. Best of luck!";
         } else {
           // Generic response
           botResponseText =
-            "Pesan Anda telah kami terima dan diteruskan ke sistem AI SmartHiring untuk diverifikasi bersama jadwal Hiring Manager.";
+            "We have received your message and forwarded it to the SmartHiring AI system to verify against the Hiring Manager's schedule.";
         }
 
         const botMsg: SimulatedWhatsAppMessage = {
@@ -419,7 +419,7 @@ export function SimulatorProvider({ children }: { children: React.ReactNode }) {
           thread_id: "thread-orchestrate-001",
           sender: "bot",
           sender_name: "SmartHiring Assistant",
-          text: "Kabar baik Kak Rina! Pak Budi Santoso telah menyetujui usulan jadwal Kamis pukul 14:00 - 15:00 WIB. Tautan Google Meet telah diperbarui di kalender Anda. Sampai jumpa!",
+          text: "Great news, Rina! Mr. Budi Santoso has agreed to the proposed schedule on Thursday at 14:00 - 15:00 WIB. The Google Meet link has been updated on your calendar. See you then!",
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
           status: "read",
         };

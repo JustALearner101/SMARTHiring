@@ -113,8 +113,8 @@ export default function RubricsPage() {
   const handleCreateProfile = async () => {
     if (!newProfileCode.trim() || !newProfileName.trim()) {
       showError(
-        "Validasi Gagal",
-        "Harap lengkapi kode profil rubrik dan nama tahap wawancara."
+        "Validation Failed",
+        "Please provide the rubric profile code and round name."
       );
       return;
     }
@@ -140,16 +140,16 @@ export default function RubricsPage() {
       void queryClient.invalidateQueries({ queryKey: ["rubrics"] });
       setIsAddProfileOpen(false);
       showSuccess(
-        "Profil Rubrik Dibuat",
-        `Profil rubrik "${created.round_name}" (${created.code}) berhasil disimpan ke database.`
+        "Rubric Profile Created",
+        `Rubric profile "${created.round_name}" (${created.code}) successfully saved to the database.`
       );
     } catch (error) {
       console.error("Failed to create rubric profile:", error);
       showError(
-        "Gagal Membuat Profil Rubrik",
+        "Failed to Create Rubric Profile",
         error instanceof Error
           ? error.message
-          : "Terjadi kesalahan saat menyimpan profil rubrik."
+          : "An error occurred while saving the rubric profile."
       );
     } finally {
       setIsMutating(false);
@@ -173,16 +173,16 @@ export default function RubricsPage() {
       void queryClient.invalidateQueries({ queryKey: ["rubrics"] });
       setDeleteTargetProfile(null);
       showSuccess(
-        "Profil Rubrik Dihapus",
-        `Profil rubrik "${targetName}" berhasil dihapus.`
+        "Rubric Profile Deleted",
+        `Rubric profile "${targetName}" successfully deleted.`
       );
     } catch (error) {
       console.error("Failed to delete rubric profile:", error);
       showError(
-        "Tidak Dapat Menghapus Profil",
+        "Cannot Delete Profile",
         error instanceof Error
           ? error.message
-          : "Profil rubrik sudah digunakan pada riwayat sesi wawancara."
+          : "Rubric profile is already in use by historical interview sessions."
       );
     } finally {
       setIsMutating(false);
@@ -216,8 +216,8 @@ export default function RubricsPage() {
     if (!activeProfile) return;
     if (!compCode.trim() || !compName.trim() || !compDesc.trim()) {
       showError(
-        "Validasi Gagal",
-        "Harap lengkapi kode, nama kompetensi, dan pertanyaan/panduan penilaian."
+        "Validation Failed",
+        "Please provide competency code, name, and evaluation guidelines/questions."
       );
       return;
     }
@@ -251,8 +251,8 @@ export default function RubricsPage() {
           )
         );
         showSuccess(
-          "Kompetensi Diperbarui",
-          `Indikator kompetensi "${updated.name}" berhasil diperbarui.`
+          "Competency Updated",
+          `Competency indicator "${updated.name}" successfully updated.`
         );
       } else {
         const created = await masterService.createCompetency(activeProfile.id, {
@@ -276,8 +276,8 @@ export default function RubricsPage() {
           )
         );
         showSuccess(
-          "Kompetensi Ditambahkan",
-          `Indikator kompetensi "${created.name}" berhasil disimpan ke database.`
+          "Competency Added",
+          `Competency indicator "${created.name}" successfully saved to the database.`
         );
       }
       void queryClient.invalidateQueries({ queryKey: ["rubrics"] });
@@ -286,10 +286,10 @@ export default function RubricsPage() {
     } catch (error) {
       console.error("Failed to save competency:", error);
       showError(
-        "Gagal Menyimpan Kompetensi",
+        "Failed to Save Competency",
         error instanceof Error
           ? error.message
-          : "Terjadi kesalahan saat menyimpan indikator kompetensi."
+          : "An error occurred while saving the competency indicator."
       );
     } finally {
       setIsMutating(false);
@@ -319,16 +319,16 @@ export default function RubricsPage() {
       void queryClient.invalidateQueries({ queryKey: ["rubrics"] });
       setDeleteTargetComp(null);
       showSuccess(
-        "Kompetensi Dihapus",
-        `Indikator kompetensi "${compName}" berhasil dihapus dari profil rubrik.`
+        "Competency Deleted",
+        `Competency indicator "${compName}" successfully removed from the rubric profile.`
       );
     } catch (error) {
       console.error("Failed to delete competency:", error);
       showError(
-        "Tidak Dapat Menghapus Kompetensi",
+        "Cannot Delete Competency",
         error instanceof Error
           ? error.message
-          : "Indikator kompetensi sudah tertaut pada sesi wawancara historis."
+          : "Competency indicator is already linked to historical interview sessions."
       );
     } finally {
       setIsMutating(false);
@@ -351,10 +351,10 @@ export default function RubricsPage() {
             </h3>
             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
               {role === "INTERVIEWER"
-                ? `Daftar profil rubrik dan pertanyaan penilaian khusus bidang Anda (${user?.department || "Technical / Division"}).`
+                ? `List of rubric profiles and evaluation questions for your department (${user?.department || "Technical / Division"}).`
                 : role === "HR"
-                ? "Kelola rubrik pertanyaan wawancara HR yang digunakan AI Copilot untuk mengekstrak bukti kutipan."
-                : "Tampilan penuh Administrator atas seluruh profil rubrik penilaian HR maupun setiap divisi Pewawancara."}
+                ? "Manage HR interview question rubrics used by AI Copilot to extract evidence citations."
+                : "Full Administrator view of all HR and departmental interviewer rubric profiles."}
             </p>
           </div>
           <Button
@@ -478,7 +478,7 @@ export default function RubricsPage() {
                     type="button"
                     onClick={() => setDeleteTargetProfile(activeProfile)}
                     className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-theme-xs hover:border-error-300 hover:bg-error-50 hover:text-error-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-error-500/30 dark:hover:bg-error-500/15 dark:hover:text-error-400 transition-all"
-                    title="Hapus Profil Rubrik Ini"
+                    title="Delete This Rubric Profile"
                   >
                     <TrashBinIcon />
                   </button>
@@ -565,7 +565,7 @@ export default function RubricsPage() {
                         colSpan={5}
                         className="py-8 text-center text-xs text-gray-400"
                       >
-                        Belum ada indikator pertanyaan pada profil rubrik ini. Klik &quot;Add Competency Indicator&quot; untuk menambahkan.
+                        No competency questions in this rubric profile yet. Click &quot;Add Competency Indicator&quot; to add one.
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -638,9 +638,6 @@ export default function RubricsPage() {
                 {activeProfile.competencies.length} active competencies for this
                 round
               </span>
-              <span className="font-mono">
-                Scoped Rubric Ownership: tblm_profile &amp; tblm_competency
-              </span>
             </div>
           </>
         )}
@@ -657,7 +654,7 @@ export default function RubricsPage() {
             Create New Rubric Profile
           </h3>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Buat paket rubrik pertanyaan baru sesuai posisi/tahap wawancara yang Anda tangani.
+            Create a new question rubric profile corresponding to the interview round you manage.
           </p>
 
           <div className="mt-5 space-y-3.5">
@@ -799,11 +796,11 @@ export default function RubricsPage() {
             <FormField
               label="Reference Question & Evidence Guidelines for AI"
               required
-              hint="AI Interview Copilot akan menelusuri bukti jawaban kandidat di transkrip berdasarkan pertanyaan & kriteria ini."
+              hint="AI Interview Copilot will search candidate response evidence in transcripts based on this question & criteria."
             >
               <TextArea
                 rows={3}
-                placeholder="Tuliskan pertanyaan acuan wawancara dan indikator bukti yang dicari dari jawaban kandidat..."
+                placeholder="Enter interview reference questions and evidence indicators sought from candidate responses..."
                 value={compDesc}
                 onChange={(e) => setCompDesc(e.target.value)}
               />
@@ -840,7 +837,7 @@ export default function RubricsPage() {
         onConfirm={handleConfirmDeleteProfile}
         isLoading={isMutating}
         title="Confirm Delete Rubric Profile"
-        description={`Hapus profil rubrik "${deleteTargetProfile?.round_name}" (${deleteTargetProfile?.code}) beserta seluruh indikator kompetensinya?`}
+        description={`Delete rubric profile "${deleteTargetProfile?.round_name}" (${deleteTargetProfile?.code}) and all its competency indicators?`}
         confirmText="Yes, Delete Profile"
         cancelText="Cancel"
         variant="danger"
@@ -853,7 +850,7 @@ export default function RubricsPage() {
         onConfirm={handleConfirmDeleteCompetency}
         isLoading={isMutating}
         title="Confirm Delete Competency"
-        description={`Apakah Anda yakin ingin menghapus indikator kompetensi "${deleteTargetComp?.name}" (${deleteTargetComp?.code}) dari ${activeProfile?.round_name}?`}
+        description={`Are you sure you want to remove competency indicator "${deleteTargetComp?.name}" (${deleteTargetComp?.code}) from ${activeProfile?.round_name}?`}
         confirmText="Yes, Delete"
         cancelText="Cancel"
         variant="danger"

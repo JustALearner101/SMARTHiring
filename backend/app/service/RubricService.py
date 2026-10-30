@@ -96,7 +96,7 @@ class RubricService:
         clean_code = dto.code.strip().upper()
         existing = await self.rubric_repo.get_profile_by_code(clean_code)
         if existing:
-            raise ConflictException(f"Profil rubrik dengan kode '{clean_code}' sudah terdaftar.")
+            raise ConflictException(f"Rubric profile with code '{clean_code}' is already registered.")
 
         if current_user.vrole == "INTERVIEWER":
             resolved_target_role = "INTERVIEWER"
@@ -126,7 +126,7 @@ class RubricService:
             actor=current_user.vname,
             actor_type="HUMAN",
             title=f"Rubric Profile Created: {clean_code}",
-            description=f"Profil rubrik '{profile.vname}' ({clean_code}) dibuat oleh {current_user.vname} ({current_user.vrole}).",
+            description=f"Rubric profile '{profile.vname}' ({clean_code}) created by {current_user.vname} ({current_user.vrole}).",
             metadata={"profile_id": profile.nid, "code": clean_code, "target_role": resolved_target_role},
         )
 
@@ -139,10 +139,10 @@ class RubricService:
         current_user: User,
     ) -> None:
         if not profile_id.isdigit():
-            raise NotFoundException("Profil rubrik tidak ditemukan.")
+            raise NotFoundException("Rubric profile not found.")
         profile = await self.rubric_repo.get_profile_with_competencies(int(profile_id))
         if not profile:
-            raise NotFoundException("Profil rubrik tidak ditemukan.")
+            raise NotFoundException("Rubric profile not found.")
 
         self._assert_can_mutate_profile(profile, current_user)
 
@@ -153,7 +153,7 @@ class RubricService:
         ).scalar_one()
         if linked_interviews > 0:
             raise ConflictException(
-                "Profil rubrik tidak dapat dihapus karena sudah tertaut dengan riwayat sesi wawancara."
+                "Rubric profile cannot be deleted because it is linked to interview session history."
             )
 
         code = profile.vcode
@@ -166,7 +166,7 @@ class RubricService:
             actor=current_user.vname,
             actor_type="HUMAN",
             title=f"Rubric Profile Deleted: {code}",
-            description=f"Profil rubrik '{name}' ({code}) dihapus oleh {current_user.vname}.",
+            description=f"Rubric profile '{name}' ({code}) deleted by {current_user.vname}.",
             metadata={"profile_code": code},
         )
 
@@ -177,16 +177,16 @@ class RubricService:
         current_user: User,
     ) -> CompetencyItemDTO:
         if not profile_id.isdigit():
-            raise NotFoundException("Profil rubrik tidak ditemukan.")
+            raise NotFoundException("Rubric profile not found.")
         profile = await self.rubric_repo.get_profile_with_competencies(int(profile_id))
         if not profile:
-            raise NotFoundException("Profil rubrik tidak ditemukan.")
+            raise NotFoundException("Rubric profile not found.")
 
         self._assert_can_mutate_profile(profile, current_user)
 
         clean_code = dto.code.strip().upper()
         if any(c.vcode.upper() == clean_code for c in profile.competencies):
-            raise ConflictException(f"Kode kompetensi '{clean_code}' sudah ada pada profil rubrik ini.")
+            raise ConflictException(f"Competency code '{clean_code}' already exists in this rubric profile.")
 
         now = datetime.now(UTC)
         comp = Competency(
@@ -213,21 +213,21 @@ class RubricService:
         current_user: User,
     ) -> CompetencyItemDTO:
         if not profile_id.isdigit() or not competency_id.isdigit():
-            raise NotFoundException("Indikator kompetensi tidak ditemukan.")
+            raise NotFoundException("Competency indicator not found.")
         profile = await self.rubric_repo.get_profile_with_competencies(int(profile_id))
         if not profile:
-            raise NotFoundException("Profil rubrik tidak ditemukan.")
+            raise NotFoundException("Rubric profile not found.")
 
         self._assert_can_mutate_profile(profile, current_user)
 
         comp = await self.rubric_repo.get_competency(profile.nid, int(competency_id))
         if not comp:
-            raise NotFoundException("Indikator kompetensi tidak ditemukan.")
+            raise NotFoundException("Competency indicator not found.")
 
         if dto.code is not None:
             clean_code = dto.code.strip().upper()
             if any(c.nid != comp.nid and c.vcode.upper() == clean_code for c in profile.competencies):
-                raise ConflictException(f"Kode kompetensi '{clean_code}' sudah digunakan pada profil ini.")
+                raise ConflictException(f"Competency code '{clean_code}' is already in use in this profile.")
             comp.vcode = clean_code
         if dto.name is not None:
             comp.vname = dto.name.strip()
@@ -251,16 +251,16 @@ class RubricService:
         current_user: User,
     ) -> None:
         if not profile_id.isdigit() or not competency_id.isdigit():
-            raise NotFoundException("Indikator kompetensi tidak ditemukan.")
+            raise NotFoundException("Competency indicator not found.")
         profile = await self.rubric_repo.get_profile_with_competencies(int(profile_id))
         if not profile:
-            raise NotFoundException("Profil rubrik tidak ditemukan.")
+            raise NotFoundException("Rubric profile not found.")
 
         self._assert_can_mutate_profile(profile, current_user)
 
         comp = await self.rubric_repo.get_competency(profile.nid, int(competency_id))
         if not comp:
-            raise NotFoundException("Indikator kompetensi tidak ditemukan.")
+            raise NotFoundException("Competency indicator not found.")
 
         used_count = (
             await self.session.execute(
@@ -269,7 +269,7 @@ class RubricService:
         ).scalar_one()
         if used_count > 0:
             raise ConflictException(
-                "Indikator kompetensi tidak dapat dihapus karena sudah memiliki bukti penilaian pada sesi wawancara historis."
+                "Competency indicator cannot be deleted because evaluation evidence exists in historical interview sessions."
             )
 
         profile.dmodi = datetime.now(UTC)

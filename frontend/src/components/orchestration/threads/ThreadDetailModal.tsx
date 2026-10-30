@@ -78,7 +78,7 @@ export default function ThreadDetailModal({
               </h4>
               <p className="mt-1 text-xs text-error-700 dark:text-error-400 leading-relaxed">
                 {thread.escalation_reason ||
-                  "Kandidat telah menolak 3 kali slot yang diajukan AI secara berturut-turut. Sesuai aturan akuntabilitas, sistem menghentikan negosiasi otomatis dan meminta intervensi manusia (HR Takeover)."}
+                  "The candidate has rejected 3 consecutive time slots proposed by the AI. In accordance with accountability rules, the system has paused automatic negotiation and requires human intervention (HR Takeover)."}
               </p>
               <div className="mt-3 flex items-center gap-2">
                 <Link
@@ -86,7 +86,7 @@ export default function ThreadDetailModal({
                   className="inline-flex items-center gap-1.5 rounded-xl bg-brand-600 px-3 py-1.5 text-xs font-bold text-white shadow-theme-xs hover:bg-brand-700 transition-colors"
                 >
                   <BoltIcon className="h-3.5 w-3.5" />
-                  <span>Triage Jadwal di Orchestrator</span>
+                  <span>Triage Schedule in Orchestrator</span>
                 </Link>
               </div>
             </div>
@@ -167,18 +167,18 @@ export default function ThreadDetailModal({
         <form onSubmit={handleSendTakeover} className="mt-4 border-t border-gray-100 pt-4 dark:border-gray-800">
           <label className="block text-xs font-bold text-gray-800 dark:text-white mb-1.5 flex items-center gap-1.5">
             <LockIcon />
-            <span>Human-in-the-Loop Override (Kirim Pesan Manual ke Kandidat):</span>
+            <span>Human-in-the-Loop Override (Send Manual Message to Candidate):</span>
           </label>
           <textarea
             rows={2}
             value={manualReply}
             onChange={(e) => setManualReply(e.target.value)}
-            placeholder="Tulis pesan penyelesaian dari HR (misal: memberikan slot khusus atau nomor kontak langsung)..."
+            placeholder="Type HR resolution message (e.g. offering custom slot or direct contact details)..."
             className="w-full rounded-xl border border-gray-300 bg-white p-3 text-xs text-gray-800 placeholder-gray-400 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-800 dark:text-white"
           />
           <div className="mt-3 flex items-center justify-end gap-2">
             <Button size="sm" variant="outline" onClick={onClose}>
-              Batal
+              Cancel
             </Button>
             <Button size="sm" type="submit" disabled={!manualReply.trim() || isSending}>
               Send HR Resolution via {thread.candidate_channel.toUpperCase()}
@@ -189,14 +189,14 @@ export default function ThreadDetailModal({
 
       {isSent && (
         <div className="mt-4 rounded-xl bg-success-50 p-3 text-center text-xs font-semibold text-success-800 dark:bg-success-500/10 dark:text-success-300">
-          ✓ Pesan intervensi HR berhasil dikirim! Status thread telah diselesaikan secara manual.
+          ✓ HR intervention message successfully sent! Thread status has been resolved manually.
         </div>
       )}
 
       {!isDeadlock && (
         <div className="mt-4 flex justify-end border-t border-gray-100 pt-4 dark:border-gray-800">
           <Button size="sm" variant="outline" onClick={onClose}>
-            Tutup
+            Close
           </Button>
         </div>
       )}

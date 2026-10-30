@@ -19,4 +19,4 @@ async def get_interview_transcripts(
 ) -> ApiResponse[list[TranscriptSegmentDTO]]:
     service = InterviewTranscriptService(db)
     transcripts = await service.get_transcripts(interview_id, current_user=current_user)
-    return ApiResponse(data=transcripts, message="Berhasil mengambil transkrip wawancara")
+    return ApiResponse(data=transcripts, message="Interview transcripts retrieved successfully")

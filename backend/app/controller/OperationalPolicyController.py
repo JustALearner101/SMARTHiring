@@ -17,7 +17,7 @@ async def get_operational_policy(
 ) -> ApiResponse[OperationalPolicyDTO]:
     service = OperationalPolicyService(db)
     policy = await service.get_operational_policy()
-    return ApiResponse(data=policy, message="Berhasil mengambil kebijakan operasional")
+    return ApiResponse(data=policy, message="Operational policy retrieved successfully")
 
 
 @router.put("", response_model=ApiResponse[OperationalPolicyDTO])
@@ -28,5 +28,5 @@ async def update_operational_policy(
 ) -> ApiResponse[OperationalPolicyDTO]:
     service = OperationalPolicyService(db)
     updated = await service.update_operational_policy(dto)
-    return ApiResponse(data=updated, message="Kebijakan operasional berhasil diperbarui")
+    return ApiResponse(data=updated, message="Operational policy updated successfully")
 
