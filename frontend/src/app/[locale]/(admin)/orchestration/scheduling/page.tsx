@@ -16,6 +16,7 @@ import {
   ChatIcon,
   CheckCircleIcon,
   CloseIcon,
+  CloseLineIcon,
   EnvelopeIcon,
 } from "@/icons";
 import { Link } from "@/i18n/navigation";
@@ -506,7 +507,7 @@ function SchedulingContent() {
         <div className="mb-4 rounded-xl border border-warning-200 bg-warning-50 p-3.5 dark:border-warning-800/60 dark:bg-warning-500/10">
           <div className="flex items-center gap-2.5">
             <div className="text-warning-600 dark:text-warning-400">
-              <BoltIcon className="h-4 w-4" />
+              <BoltIcon/>
             </div>
             <div className="text-xs text-start">
               <span className="font-bold text-warning-900 dark:text-warning-200">
@@ -524,7 +525,7 @@ function SchedulingContent() {
         <div className="mb-4 rounded-xl border border-brand-200 bg-brand-50 p-3.5 dark:border-brand-800/60 dark:bg-brand-500/10">
           <div className="flex items-center gap-2.5">
             <div className="text-brand-600 dark:text-brand-400">
-              <BoltIcon className="h-4 w-4" />
+              <BoltIcon/>
             </div>
             <div className="text-xs text-start">
               <span className="font-bold text-brand-900 dark:text-brand-200">
@@ -708,7 +709,7 @@ function SchedulingContent() {
             {status === "REJECTED" && (
               <div className="rounded-2xl border border-gray-200 bg-gray-50 p-6 dark:border-gray-800 dark:bg-gray-800/40 text-center">
                 <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-error-50 text-error-500 dark:bg-error-500/10 mb-2">
-                  <CloseIcon />
+                  <CloseLineIcon/>
                 </div>
                 <h3 className="mt-2 text-sm font-semibold text-gray-800 dark:text-white">
                   Action Plan Rejected by HR

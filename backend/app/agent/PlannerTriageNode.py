@@ -202,7 +202,7 @@ class PlannerTriageNode:
             },
             {
                 "id": "src-02",
-                "ref_code": "[rule-jumatan]",
+                "ref_code": "[Friday Prayer Rule]",
                 "source_type": "OPERATIONAL_RULE",
                 "title": "Rules for Friday Prayer & Work Hours",
                 "detail": "Compliance with the 09:00 - 17:00 operational boundary and the Friday Prayer worship window (11:30 - 13:00 WIB).",

@@ -42,20 +42,9 @@ export default function ConfirmationCard({
   const { role } = useAuth();
   const isHr = role === "HR";
 
-  // Channel selections with Corporate Default (Email) for both parties
-  const [candidateChannel, setCandidateChannel] = useState<"email" | "whatsapp">(() => {
-    const candItem = plan.items.find(
-      (i) => i.recipient_role.toLowerCase().includes("candidate") || i.channel === "whatsapp" || i.channel === "email"
-    );
-    return candItem?.channel === "whatsapp" ? "whatsapp" : "email";
-  });
-
-  const [interviewerChannel, setInterviewerChannel] = useState<"email" | "whatsapp">(() => {
-    const interItem = plan.items.find(
-      (i) => !i.recipient_role.toLowerCase().includes("candidate") && i.channel !== "calendar"
-    );
-    return interItem?.channel === "whatsapp" ? "whatsapp" : "email";
-  });
+  // Channel selections with Corporate Default (Email) for both parties (WhatsApp is in development)
+  const [candidateChannel, setCandidateChannel] = useState<"email" | "whatsapp">("email");
+  const [interviewerChannel, setInterviewerChannel] = useState<"email" | "whatsapp">("email");
 
   const [activeTab, setActiveTab] = useState<"candidate" | "interviewer" | "calendar">("candidate");
   const [isCopied, setIsCopied] = useState(false);
@@ -319,16 +308,15 @@ export default function ConfirmationCard({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setCandidateChannel("whatsapp")}
-                  className={`flex-1 flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-semibold transition-all ${
-                    candidateChannel === "whatsapp"
-                      ? "bg-white text-emerald-700 shadow-xs dark:bg-gray-800 dark:text-emerald-300"
-                      : "text-gray-500 hover:text-gray-900 dark:hover:text-gray-200"
-                  }`}
-                  title="WhatsApp Gateway (High-Impact External Send)"
+                  disabled
+                  className="flex-1 flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-semibold text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-60"
+                  title="WhatsApp Gateway API is currently under development / sandbox provisioning. Delivery defaults to official Email (Sumopod SMTP)."
                 >
-                  <ChatIcon className="shrink-0" />
+                  <ChatIcon className="shrink-0 text-gray-400 dark:text-gray-500" />
                   <span>WhatsApp</span>
+                  <span className="rounded bg-gray-200/80 px-1 py-0.2 text-[9px] font-mono font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                    Soon
+                  </span>
                 </button>
               </div>
 
@@ -396,16 +384,15 @@ export default function ConfirmationCard({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setInterviewerChannel("whatsapp")}
-                  className={`flex-1 flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-semibold transition-all ${
-                    interviewerChannel === "whatsapp"
-                      ? "bg-white text-emerald-700 shadow-xs dark:bg-gray-800 dark:text-emerald-300"
-                      : "text-gray-500 hover:text-gray-900 dark:hover:text-gray-200"
-                  }`}
-                  title="WhatsApp Gateway"
+                  disabled
+                  className="flex-1 flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-semibold text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-60"
+                  title="WhatsApp Gateway API is currently under development / sandbox provisioning. Delivery defaults to official Email (Sumopod SMTP)."
                 >
-                  <ChatIcon className="shrink-0" />
+                  <ChatIcon className="shrink-0 text-gray-400 dark:text-gray-500" />
                   <span>WhatsApp</span>
+                  <span className="rounded bg-gray-200/80 px-1 py-0.2 text-[9px] font-mono font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                    Soon
+                  </span>
                 </button>
               </div>
 

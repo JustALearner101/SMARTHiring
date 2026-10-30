@@ -188,7 +188,7 @@ export default function CalendarMatrixView({
             onClick={() => onChangeWeek(getMondayOfDate(new Date()))}
             className="ms-1 rounded-lg border border-brand-200 bg-brand-50/60 px-2.5 py-1 text-[11px] font-bold text-brand-700 transition-colors hover:bg-brand-100 dark:border-brand-800 dark:bg-brand-950/40 dark:text-brand-300"
           >
-            Hari Ini
+            Today
           </button>
         </div>
 
@@ -248,7 +248,7 @@ export default function CalendarMatrixView({
         <div className="flex flex-wrap items-center gap-3">
           <span className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
             <span className="h-2.5 w-2.5 rounded-full bg-brand-500" />
-            Interview Terjadwal
+            Scheduled Interview 
           </span>
           <span className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
             <span className="h-2.5 w-2.5 rounded-full bg-purple-500" />
@@ -256,7 +256,7 @@ export default function CalendarMatrixView({
           </span>
           <span className="flex items-center gap-1.5 font-bold text-warning-700 dark:text-warning-400">
             <span className="h-2.5 w-2.5 rounded-full bg-warning-500" />
-            Blok Salat Jumat (11:30 - 13:00)
+            Friday Prayer Block (11:30 - 13:00)
           </span>
         </div>
 
@@ -283,7 +283,7 @@ export default function CalendarMatrixView({
           {/* Header Row: Days */}
           <div className="grid grid-cols-6 border-b border-gray-200 pb-2 text-center text-xs font-bold text-gray-700 dark:border-gray-800 dark:text-gray-300">
             <div className="ps-2 text-start font-mono text-gray-400">
-              Jam ({selectedTimezone})
+              Time ({selectedTimezone})
             </div>
             {weekDays.map((d) => (
               <div
@@ -300,7 +300,7 @@ export default function CalendarMatrixView({
                   <span>{d.label}</span>
                   {d.isToday && (
                     <span className="rounded bg-brand-500 px-1 py-0.2 text-[8px] font-bold text-white uppercase">
-                      Hari ini
+                      Today
                     </span>
                   )}
                 </div>
@@ -390,7 +390,7 @@ export default function CalendarMatrixView({
                           cellEvents.length === 0 &&
                           currentInterviewer && (
                             <div className="hidden h-full items-center justify-center text-[10px] font-semibold text-brand-600 group-hover:flex dark:text-brand-400">
-                              + Pilih Slot
+                              + Choose a Slot
                             </div>
                           )}
 
