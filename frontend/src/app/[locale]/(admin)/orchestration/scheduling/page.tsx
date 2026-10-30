@@ -673,20 +673,7 @@ function SchedulingContent() {
                       >
                         <span>Triage Threads</span>
                       </Link>
-                      <Link
-                        href="/simulator/email"
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-brand-300 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-800 transition-colors hover:bg-brand-100 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300 shadow-2xs"
-                      >
-                        <EnvelopeIcon className="text-brand-600" />
-                        <span>Email Simulator</span>
-                      </Link>
-                      <Link
-                        href="/simulator/whatsapp"
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-success-300 bg-success-50 px-3 py-2 text-xs font-semibold text-success-800 transition-colors hover:bg-success-100 dark:border-success-500/30 dark:bg-success-500/10 dark:text-success-300 shadow-2xs"
-                      >
-                        <ChatIcon className="text-success-600" />
-                        <span>WhatsApp Simulator</span>
-                      </Link>
+                      {/* Simulator shortcuts hidden while the Simulator module is taken out (see next.config.ts) */}
                     </div>
                   </div>
                 </div>

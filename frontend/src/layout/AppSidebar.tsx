@@ -8,7 +8,6 @@ import { useAuth } from "../context/AuthContext";
 import { useSidebar } from "../context/SidebarContext";
 import {
   BoltIcon,
-  ChatIcon,
   ChevronDownIcon,
   DocsIcon,
   FolderIcon,
@@ -73,15 +72,17 @@ const navItems: NavItem[] = [
       { key: "operationalRules", path: "/master/operational-rules", roles: ["HR", "ADMIN"] },
     ],
   },
-  {
-    icon: <ChatIcon />,
-    key: "simulator",
-    roles: ["HR", "ADMIN", "INTERVIEWER"],
-    subItems: [
-      { key: "interviewerEmail", path: "/simulator/email", roles: ["HR", "ADMIN", "INTERVIEWER"] },
-      { key: "candidateWhatsapp", path: "/simulator/whatsapp", roles: ["HR", "ADMIN"] },
-    ],
-  },
+  // Simulator module is temporarily taken out (routes redirected in next.config.ts).
+  // Uncomment this block to re-enable the menu.
+  // {
+  //   icon: <ChatIcon />,
+  //   key: "simulator",
+  //   roles: ["HR", "ADMIN", "INTERVIEWER"],
+  //   subItems: [
+  //     { key: "interviewerEmail", path: "/simulator/email", roles: ["HR", "ADMIN", "INTERVIEWER"] },
+  //     { key: "candidateWhatsapp", path: "/simulator/whatsapp", roles: ["HR", "ADMIN"] },
+  //   ],
+  // },
   {
     icon: <DocsIcon />,
     key: "auditSecurity",
