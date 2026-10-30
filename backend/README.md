@@ -160,6 +160,9 @@ uv run python -m scripts.check_db
 # 7. Seed initial development data
 uv run python -m scripts.seed
 
+# 8. Unseed / purge development data (--keep-admin / --all / --dry-run)
+uv run python -m scripts.unseed
+
 # 8. Apply Alembic migrations
 uv run alembic upgrade head
 ```

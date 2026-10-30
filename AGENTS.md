@@ -35,6 +35,7 @@ uv run alembic revision --autogenerate -m "message"  # new migration
 uv run alembic upgrade head
 uv run python -m scripts.check_db                    # verify Postgres + pgvector
 uv run python -m scripts.seed                        # seed dev data (stub)
+uv run python -m scripts.unseed                      # unseed/purge dev data (--keep-admin / --all / --dry-run)
 ```
 
 ### Frontend (`frontend/`, Next.js 16, pnpm, Node >= 20.9)
@@ -88,7 +89,7 @@ Conventions that are easy to get wrong:
 - `BaseRepository` uses PEP 695 generics (`class BaseRepository[ModelType: Base]`) and commits inside `create`/`update`/`delete`, so services must not assume an open transaction after those calls.
 - API responses are wrapped in `ApiResponse[T]` (`success`, `message`, `data`) and `PaginatedResponse[T]` (`items`, `total`, `page`, `page_size`, `total_pages`).
 - `app/main.py` mounts all 16 modular routers under `/api/v1` with `TAGS_METADATA` registered for Swagger UI at `/docs`.
-- Alembic autogenerate sees all models via `app/model/__init__.py`. Migration revision is currently at `06784f3e4d33`.
+- Alembic autogenerate sees all models via `app/model/__init__.py`. Migration revision is currently at `00676c75559c`.
 - Database is PostgreSQL + `pgvector`; `LANGGRAPH_CHECKPOINT_DB_URI` (sync DSN) is separate from `DATABASE_URL` (asyncpg DSN) and is intended for the Postgres checkpointer.
 - LLM providers already in `pyproject.toml`: OpenAI, Google GenAI, Anthropic, Groq, Ollama. Do not add a provider package without checking first.
 
