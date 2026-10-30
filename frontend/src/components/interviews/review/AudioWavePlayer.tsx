@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { AudioIcon } from "@/icons";
+
 
 interface AudioWavePlayerProps {
   currentTimeMs: number;
@@ -115,13 +115,13 @@ export default function AudioWavePlayer({
         />
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3">
         {/* Play/Pause Button & Time */}
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={onTogglePlay}
-            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors shadow-2xs ${
+            className={`flex h-9.5 w-9.5 shrink-0 items-center justify-center rounded-xl transition-colors shadow-2xs ${
               isPlaying
                 ? "bg-warning-500 text-white hover:bg-warning-600"
                 : "bg-brand-500 text-white hover:bg-brand-600"
@@ -134,14 +134,14 @@ export default function AudioWavePlayer({
                 <rect x="14" y="4" width="4" height="16" rx="1" />
               </svg>
             ) : (
-              <svg className="h-4 w-4 fill-current ml-0.5" viewBox="0 0 24 24">
+              <svg className="h-4 w-4 fill-current ms-0.5" viewBox="0 0 24 24">
                 <polygon points="5,3 19,12 5,21" />
               </svg>
             )}
           </button>
 
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <span className="font-mono text-sm font-bold text-gray-900 dark:text-white">
                 {formatMs(currentTimeMs)}
               </span>
@@ -150,29 +150,25 @@ export default function AudioWavePlayer({
                 {formatMs(durationMs)}
               </span>
             </div>
-            <span className="text-[11px] text-gray-400 flex items-center gap-1">
-              <AudioIcon className="text-brand-500" />
-              <span>Synced ASR Audio Channel</span>
-              {audioError && (
-                <span className="text-[10px] text-warning-500 ml-1">
-                  (Simulasi: {audioError})
-                </span>
-              )}
-            </span>
+            {audioError && (
+              <span className="text-[11px] text-warning-600 dark:text-warning-400 block">
+                Audio playback unavailable
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Speed Controls */}
-        <div className="flex items-center gap-1.5">
+        {/* Speed Controls - Segmented */}
+        <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 dark:border-gray-700 dark:bg-gray-800">
           {[1.0, 1.25, 1.5].map((speed) => (
             <button
               key={speed}
               type="button"
               onClick={() => setPlaybackSpeed(speed)}
-              className={`rounded-lg px-2 py-1 text-xs font-semibold transition-colors ${
+              className={`rounded-md px-2 py-1 text-[11px] font-semibold transition-colors ${
                 playbackSpeed === speed
-                  ? "bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300 border border-brand-200 dark:border-brand-500/30"
-                  : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+                  ? "bg-white text-brand-600 shadow-2xs dark:bg-gray-700 dark:text-white"
+                  : "text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
               }`}
             >
               {speed}x
@@ -199,7 +195,6 @@ export default function AudioWavePlayer({
         />
         <div className="mt-1 flex justify-between text-[10px] text-gray-400 font-mono">
           <span>00:00</span>
-          <span>Timeline synchronized with verbatim quotes</span>
           <span>{formatMs(durationMs)}</span>
         </div>
       </div>

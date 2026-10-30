@@ -8,6 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { ApiError } from "@/lib/api";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
+import Button from "@/components/ui/button/Button";
 import ReviewHeader from "@/components/interviews/review/ReviewHeader";
 import AudioWavePlayer from "@/components/interviews/review/AudioWavePlayer";
 import TranscriptStream from "@/components/interviews/review/TranscriptStream";
@@ -30,7 +31,7 @@ import {
   swapSessionSpeakers,
   reEvaluateSession,
 } from "@/services/interviewService";
-import { AudioIcon, CheckCircleIcon, LockIcon, ShootingStarIcon } from "@/icons";
+import { AudioIcon, LockIcon, ShootingStarIcon } from "@/icons";
 
 function ReviewContent() {
   const searchParams = useSearchParams();
@@ -409,37 +410,32 @@ function ReviewContent() {
         {/* Right Pane: AI Copilot Rubric Assessment & HR Decision Gate (7 Cols) */}
         <div className="lg:col-span-7 space-y-4">
           <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900 shadow-theme-xs">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5 text-start">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-2.5 text-start min-w-0">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
                   <ShootingStarIcon />
                 </div>
-                <div>
-                  <h3 className="text-sm font-bold text-gray-900 dark:text-white">
-                    AI Copilot Competency Assessment
+                <div className="min-w-0">
+                  <h3 className="text-sm font-bold text-gray-900 dark:text-white truncate">
+                    AI Competency Assessment
                   </h3>
                   <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                    Objective summary generated per approved rubric. 100% backed by cited candidate quotes.
+                    {verifiedCount} of {competencyPoints.length} competencies verified with candidate quotes
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
+              <div className="shrink-0">
+                <Button
+                  size="sm"
+                  variant="outline"
                   onClick={handleReEvaluate}
-                  disabled={isReEvaluating}
-                  className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 transition-colors"
+                  isLoading={isReEvaluating}
+                  className="whitespace-nowrap"
                   title="Evaluasi ulang transkrip menggunakan AI Agent"
                 >
-                  {isReEvaluating ? "Mengevaluasi..." : "Re-evaluate AI"}
-                </button>
-                <span className="inline-flex items-center gap-1 rounded-md bg-success-50 px-2.5 py-1 text-xs font-semibold text-success-700 dark:bg-success-500/15 dark:text-success-300">
-                  <CheckCircleIcon />
-                  <span>
-                    Audited {verifiedCount}/{competencyPoints.length} Points
-                  </span>
-                </span>
+                  Re-evaluate AI
+                </Button>
               </div>
             </div>
           </div>

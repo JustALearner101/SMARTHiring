@@ -61,7 +61,7 @@ export default function AdminLayout({
         <AppSidebar />
         <Backdrop />
         <div
-          className={`flex-1 transition-all duration-300 ease-in-out ${mainContentMargin}`}
+          className={`flex-1 min-w-0 transition-all duration-300 ease-in-out ${mainContentMargin}`}
         >
           <AppHeader />
           <div className="mx-auto max-w-(--breakpoint-2xl) p-4 md:p-6">
