@@ -30,6 +30,7 @@ import {
   TrashBinIcon,
 } from "@/icons";
 import { masterService } from "@/services";
+import TablePagination from "@/components/common/TablePagination";
 import {
   ApplicationStatus,
   Candidate,
@@ -48,6 +49,8 @@ export default function CandidatesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [timezoneFilter, setTimezoneFilter] = useState<string>("ALL");
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
 
   // Modals
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -103,6 +106,12 @@ export default function CandidatesPage() {
       return matchesSearch && matchesStatus && matchesTimezone;
     });
   }, [candidates, searchQuery, statusFilter, timezoneFilter]);
+
+  const totalPages = Math.ceil(filteredCandidates.length / pageSize) || 1;
+  const paginatedCandidates = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredCandidates.slice(start, start + pageSize);
+  }, [filteredCandidates, currentPage, pageSize]);
 
   // Detect prior application history by email while filling "Add New Candidate"
   const matchingPriorApplications = useMemo(() => {
@@ -578,7 +587,10 @@ export default function CandidatesPage() {
             <InputField
               placeholder="Search name, code, email, or position..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
             />
           </div>
 
@@ -596,7 +608,10 @@ export default function CandidatesPage() {
                 { value: "REJECTED", label: "Rejected" },
               ]}
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setCurrentPage(1);
+              }}
             />
           </div>
 
@@ -609,14 +624,18 @@ export default function CandidatesPage() {
                 { value: "WIT", label: "WIT (UTC+9)" },
               ]}
               value={timezoneFilter}
-              onChange={(e) => setTimezoneFilter(e.target.value)}
+              onChange={(e) => {
+                setTimezoneFilter(e.target.value);
+                setCurrentPage(1);
+              }}
             />
           </div>
         </div>
 
         {/* Candidates Table */}
-        <div className="mt-5 overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
-          <Table>
+        <div className="mt-5 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xs dark:border-gray-800 dark:bg-gray-900">
+          <div className="max-w-full overflow-x-auto">
+            <Table>
             <TableHeader className="bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-800">
               <TableRow>
                 <TableCell isHeader className="ps-4 pe-3 py-3 text-start text-xs font-semibold text-gray-600 dark:text-gray-300">
@@ -656,7 +675,7 @@ export default function CandidatesPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredCandidates.map((cand) => (
+                paginatedCandidates.map((cand) => (
                   <TableRow key={cand.id} className="hover:bg-gray-50/70 dark:hover:bg-white/[0.02] transition-colors">
                     {/* Candidate Info */}
                     <TableCell className="ps-4 pe-3 py-3.5">
@@ -788,11 +807,20 @@ export default function CandidatesPage() {
           </Table>
         </div>
 
-        {/* Footer Summary */}
-        <div className="mt-4 flex items-center justify-between text-xs text-gray-400">
-          <span>
-            Display {filteredCandidates.length} from {candidates.length} Total candidate application cycle
-          </span>
+        {/* Table Pagination */}
+        <TablePagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={filteredCandidates.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(newSize) => {
+            setPageSize(newSize);
+            setCurrentPage(1);
+          }}
+          pageSizeOptions={[10, 20, 50, 100]}
+          isLoading={isLoading}
+        />
         </div>
       </div>
 

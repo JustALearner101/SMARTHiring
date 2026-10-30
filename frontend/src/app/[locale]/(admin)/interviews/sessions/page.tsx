@@ -55,6 +55,9 @@ function InterviewSessionsContent() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [rubrics, setRubrics] = useState<RubricProfile[]>([]);
   const [interviewers, setInterviewers] = useState<InterviewerContact[]>([]);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [totalSessions, setTotalSessions] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
@@ -65,7 +68,8 @@ function InterviewSessionsContent() {
       try {
         const [sessionsPage, candidatesPage, rubricList, contactList] = await Promise.all([
           listInterviewSessions({
-            page_size: 50,
+            page: currentPage,
+            page_size: pageSize,
             scope: effectiveScope,
             candidate_code: candidateCodeParam || undefined,
           }),
@@ -81,6 +85,7 @@ function InterviewSessionsContent() {
         ]);
         if (!cancelled) {
           setSessions(Array.isArray(sessionsPage?.items) ? sessionsPage.items : []);
+          setTotalSessions(sessionsPage?.total ?? 0);
           setCandidates(Array.isArray(candidatesPage?.items) ? candidatesPage.items : []);
           setRubrics(Array.isArray(rubricList) ? rubricList : []);
           setInterviewers(Array.isArray(contactList) ? contactList : []);
@@ -99,7 +104,7 @@ function InterviewSessionsContent() {
     return () => {
       cancelled = true;
     };
-  }, [effectiveScope, candidateCodeParam, user?.id, role]);
+  }, [effectiveScope, candidateCodeParam, user?.id, role, currentPage, pageSize]);
 
   // Auto-polling when there are active background jobs in progress
   useEffect(() => {
@@ -116,12 +121,14 @@ function InterviewSessionsContent() {
     const interval = setInterval(async () => {
       try {
         const page = await listInterviewSessions({
-          page_size: 50,
+          page: currentPage,
+          page_size: pageSize,
           scope: effectiveScope,
           candidate_code: candidateCodeParam || undefined,
         });
         if (Array.isArray(page?.items)) {
           setSessions(page.items);
+          setTotalSessions(page?.total ?? 0);
         }
       } catch (error) {
         console.error("Failed polling interview sessions:", error);
@@ -129,7 +136,7 @@ function InterviewSessionsContent() {
     }, 2500);
 
     return () => clearInterval(interval);
-  }, [sessions, effectiveScope, candidateCodeParam]);
+  }, [sessions, effectiveScope, candidateCodeParam, currentPage, pageSize]);
 
   const handleUploadSession = useCallback(
     async (
@@ -230,7 +237,10 @@ function InterviewSessionsContent() {
           <div className="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
-              onClick={() => setSelectedScope("all")}
+              onClick={() => {
+                setSelectedScope("all");
+                setCurrentPage(1);
+              }}
               className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
                 effectiveScope === "all"
                   ? "bg-brand-500 text-white shadow-theme-xs"
@@ -241,7 +251,10 @@ function InterviewSessionsContent() {
             </button>
             <button
               type="button"
-              onClick={() => setSelectedScope("awaiting_hr")}
+              onClick={() => {
+                setSelectedScope("awaiting_hr");
+                setCurrentPage(1);
+              }}
               className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
                 effectiveScope === "awaiting_hr"
                   ? "bg-warning-500 text-white shadow-theme-xs"
@@ -253,7 +266,10 @@ function InterviewSessionsContent() {
             {role === "HR" && (
               <button
                 type="button"
-                onClick={() => setSelectedScope("mine")}
+                onClick={() => {
+                  setSelectedScope("mine");
+                  setCurrentPage(1);
+                }}
                 className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
                   effectiveScope === "mine"
                     ? "bg-brand-500 text-white shadow-theme-xs"
@@ -288,6 +304,14 @@ function InterviewSessionsContent() {
         currentUserId={user?.id ?? null}
         currentUserName={user?.name ?? null}
         currentRole={role}
+        currentPage={currentPage}
+        pageSize={pageSize}
+        totalItems={totalSessions}
+        onPageChange={setCurrentPage}
+        onPageSizeChange={(newSize) => {
+          setPageSize(newSize);
+          setCurrentPage(1);
+        }}
       />
     </div>
   );

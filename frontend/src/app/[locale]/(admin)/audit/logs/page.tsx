@@ -1,10 +1,11 @@
 "use client";
 
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
+import TablePagination from "@/components/common/TablePagination";
 import Badge from "@/components/ui/badge/Badge";
 import { listAuditLogs } from "@/services/auditService";
 import type { AuditEvent } from "@/types/orchestration";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 const badgeColor = (
   status: AuditEvent["status_badge"]
@@ -31,30 +32,31 @@ const formatTimestamp = (value: string): string => {
 
 export default function AuditLogsPage() {
   const [logs, setLogs] = useState<AuditEvent[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(20);
+  const [totalItems, setTotalItems] = useState<number>(0);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  const loadLogs = useCallback(async (page: number, size: number) => {
+    setIsLoading(true);
+    try {
+      const res = await listAuditLogs({ page, page_size: size });
+      if (Array.isArray(res?.items)) {
+        setLogs(res.items);
+        setTotalItems(res.total ?? 0);
+      }
+    } catch (error) {
+      console.error("Failed to fetch audit logs:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let isActive = true;
+    void loadLogs(currentPage, pageSize);
+  }, [loadLogs, currentPage, pageSize]);
 
-    const loadLogs = async () => {
-      try {
-        const page = await listAuditLogs({ page_size: 50 });
-        if (isActive && Array.isArray(page?.items)) {
-          setLogs(page.items);
-        }
-      } catch (error) {
-        console.error("Failed to fetch audit logs:", error);
-      } finally {
-        if (isActive) setIsLoading(false);
-      }
-    };
-
-    void loadLogs();
-
-    return () => {
-      isActive = false;
-    };
-  }, []);
+  const totalPages = Math.ceil(totalItems / pageSize) || 1;
 
   return (
     <div>
@@ -78,7 +80,7 @@ export default function AuditLogsPage() {
               </h4>
             </div>
             <span className="shrink-0 rounded-md bg-gray-100 px-2 py-0.5 font-mono text-[10px] text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-              {isLoading ? "Syncing..." : `${logs.length} Events`}
+              {isLoading ? "Syncing..." : `${totalItems} Events`}
             </span>
           </div>
 
@@ -124,6 +126,22 @@ export default function AuditLogsPage() {
               ))}
             </ul>
           )}
+
+          {/* Table Pagination */}
+          <TablePagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(newSize) => {
+              setPageSize(newSize);
+              setCurrentPage(1);
+            }}
+            pageSizeOptions={[10, 20, 50]}
+            isLoading={isLoading}
+            className="mt-4"
+          />
         </div>
       </div>
     </div>

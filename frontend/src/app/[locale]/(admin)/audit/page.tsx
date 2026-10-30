@@ -22,6 +22,7 @@ import {
   type SystemLog,
 } from "@/services/auditService";
 import type { AuditEvent } from "@/types/orchestration";
+import TablePagination from "@/components/common/TablePagination";
 
 type TabType = "ledger" | "systemLogs";
 
@@ -474,30 +475,13 @@ export default function AuditSecurityPage() {
           </div>
 
           {/* Pagination */}
-          <div className="flex items-center justify-between pt-3 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-500">
-            <span>
-              Displaying {filteredAuditEvents.length} of {auditTotal} records
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => handleAuditPageChange(Math.max(auditPage - 1, 1))}
-                disabled={auditPage <= 1}
-                className="rounded-lg border border-gray-200 px-3 py-1 font-medium hover:bg-gray-50 disabled:opacity-40 dark:border-gray-700 dark:hover:bg-gray-800"
-              >
-                Previous
-              </button>
-              <span className="font-semibold text-gray-700 dark:text-gray-300">
-                Page {auditPage}
-              </span>
-              <button
-                onClick={() => handleAuditPageChange(auditPage + 1)}
-                disabled={auditPage * 20 >= auditTotal}
-                className="rounded-lg border border-gray-200 px-3 py-1 font-medium hover:bg-gray-50 disabled:opacity-40 dark:border-gray-700 dark:hover:bg-gray-800"
-              >
-                Next
-              </button>
-            </div>
-          </div>
+          <TablePagination
+            currentPage={auditPage}
+            totalPages={Math.ceil(auditTotal / 20) || 1}
+            totalItems={auditTotal}
+            pageSize={20}
+            onPageChange={handleAuditPageChange}
+          />
         </div>
       )}
 
@@ -598,30 +582,13 @@ export default function AuditSecurityPage() {
           </div>
 
           {/* Pagination */}
-          <div className="flex items-center justify-between pt-3 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-500">
-            <span>
-              Displaying {systemLogs.length} of {sysTotal} system logs
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => handleSysPageChange(Math.max(sysPage - 1, 1))}
-                disabled={sysPage <= 1}
-                className="rounded-lg border border-gray-200 px-3 py-1 font-medium hover:bg-gray-50 disabled:opacity-40 dark:border-gray-700 dark:hover:bg-gray-800"
-              >
-                Previous
-              </button>
-              <span className="font-semibold text-gray-700 dark:text-gray-300">
-                Page {sysPage}
-              </span>
-              <button
-                onClick={() => handleSysPageChange(sysPage + 1)}
-                disabled={sysPage * 20 >= sysTotal}
-                className="rounded-lg border border-gray-200 px-3 py-1 font-medium hover:bg-gray-50 disabled:opacity-40 dark:border-gray-700 dark:hover:bg-gray-800"
-              >
-                Next
-              </button>
-            </div>
-          </div>
+          <TablePagination
+            currentPage={sysPage}
+            totalPages={Math.ceil(sysTotal / 20) || 1}
+            totalItems={sysTotal}
+            pageSize={20}
+            onPageChange={handleSysPageChange}
+          />
         </div>
       )}
     </div>

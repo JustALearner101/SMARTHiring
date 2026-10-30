@@ -27,6 +27,34 @@ import {
   TimeIcon,
   TrashBinIcon,
 } from "@/icons";
+import TablePagination from "@/components/common/TablePagination";
+
+function formatSessionDate(isoStr?: string | null): string {
+  if (!isoStr) return "-";
+  try {
+    let s = isoStr.trim();
+    if (!s.endsWith("Z") && !/[+-]\d{2}:?\d{2}$/.test(s)) {
+      s += "Z";
+    }
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return isoStr;
+    const datePart = d.toLocaleDateString("id-ID", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      timeZone: "Asia/Jakarta",
+    });
+    const timePart = d.toLocaleTimeString("id-ID", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone: "Asia/Jakarta",
+    });
+    return `${datePart} • ${timePart} WIB`;
+  } catch {
+    return isoStr;
+  }
+}
 
 interface SessionTableProps {
   sessions: InterviewSession[];
@@ -44,6 +72,11 @@ interface SessionTableProps {
   currentUserId?: string | null;
   currentUserName?: string | null;
   currentRole?: UserRole | null;
+  currentPage?: number;
+  pageSize?: number;
+  totalItems?: number;
+  onPageChange?: (page: number) => void;
+  onPageSizeChange?: (pageSize: number) => void;
 }
 
 export default function SessionTable({
@@ -59,6 +92,11 @@ export default function SessionTable({
   currentUserId,
   currentUserName,
   currentRole,
+  currentPage,
+  pageSize,
+  totalItems,
+  onPageChange,
+  onPageSizeChange,
 }: SessionTableProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [consentFilter, setConsentFilter] = useState<string>("ALL");
@@ -107,14 +145,15 @@ export default function SessionTable({
 
     if (session.job_status === "COMPLETED") {
       return (
-        <div className="space-y-0.5">
+        <div className="flex items-center gap-2 text-start">
           <span className="inline-flex items-center gap-1 rounded-md bg-success-50 px-2 py-0.5 text-[11px] font-semibold text-success-700 dark:bg-success-500/15 dark:text-success-400">
             <CheckCircleIcon />
             COMPLETED
           </span>
-          {session.asr_engine && (
-            <span className="block text-[9px] font-medium text-theme-purple-500 font-mono">
-              {session.asr_engine}
+          {session.audio_duration && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-mono text-gray-600 dark:text-gray-400">
+              <AudioIcon className="text-brand-500 text-xs shrink-0" />
+              <span>{session.audio_duration}</span>
             </span>
           )}
         </div>
@@ -123,13 +162,13 @@ export default function SessionTable({
 
     const pct = session.progress_percentage ?? 25;
     return (
-      <div className="space-y-1 min-w-[130px] max-w-[170px]">
+      <div className="space-y-1 min-w-[140px] max-w-[170px] text-start">
         <div className="flex items-center justify-between text-[10px] font-semibold">
           <span className="text-brand-600 dark:text-brand-400 flex items-center gap-1">
-            <TimeIcon className="animate-spin text-xs" />
-            {session.job_status}
+            <TimeIcon className="animate-spin text-xs shrink-0" />
+            <span className="truncate">{session.job_status}</span>
           </span>
-          <span className="text-gray-500 dark:text-gray-400 font-mono">{pct}%</span>
+          <span className="text-gray-500 dark:text-gray-400 font-mono ms-1">{pct}%</span>
         </div>
         <div className="w-full h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
           <div
@@ -137,12 +176,20 @@ export default function SessionTable({
             style={{ width: `${Math.max(10, pct)}%` }}
           />
         </div>
-        <span
-          className="block text-[9px] text-gray-400 dark:text-gray-500 truncate"
-          title={session.current_step || "Processing..."}
-        >
-          {session.current_step || "Processing..."}
-        </span>
+        <div className="flex items-center justify-between text-[9px] text-gray-400 dark:text-gray-500">
+          <span
+            className="truncate max-w-[95px]"
+            title={session.current_step || "Processing..."}
+          >
+            {session.current_step || "Processing..."}
+          </span>
+          {session.audio_duration && (
+            <span className="inline-flex items-center gap-1 font-mono shrink-0">
+              <AudioIcon className="text-brand-500 text-[10px]" />
+              {session.audio_duration}
+            </span>
+          )}
+        </div>
       </div>
     );
   };
@@ -308,28 +355,25 @@ export default function SessionTable({
           <Table>
             <TableHeader className="border-b border-gray-100 bg-gray-50/50 dark:border-gray-800 dark:bg-gray-800/40">
               <TableRow>
-                <TableCell isHeader className="py-3.5 ps-5 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400">
-                  CANDIDATE
+                <TableCell isHeader className="py-3.5 ps-5 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400 min-w-[240px]">
+                  CANDIDATE &amp; SCHEDULE
                 </TableCell>
-                <TableCell isHeader className="py-3.5 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+                <TableCell isHeader className="py-3.5 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400 min-w-[200px] max-w-[240px]">
                   TARGET POSITION &amp; ROUND
                 </TableCell>
-                <TableCell isHeader className="py-3.5 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+                <TableCell isHeader className="py-3.5 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400 min-w-[170px]">
                   INTERVIEWER
                 </TableCell>
-                <TableCell isHeader className="py-3.5 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+                <TableCell isHeader className="py-3.5 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400 min-w-[110px]">
                   CONSENT
                 </TableCell>
-                <TableCell isHeader className="py-3.5 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400">
-                  DURATION
+                <TableCell isHeader className="py-3.5 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400 min-w-[170px]">
+                  AI COPILOT &amp; AUDIO
                 </TableCell>
-                <TableCell isHeader className="py-3.5 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400">
-                  AI COPILOT JOB
-                </TableCell>
-                <TableCell isHeader className="py-3.5 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+                <TableCell isHeader className="py-3.5 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400 min-w-[160px]">
                   DECISION STATUS
                 </TableCell>
-                <TableCell isHeader className="py-3.5 pe-5 text-end text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+                <TableCell isHeader className="py-3.5 pe-5 text-end text-[11px] font-semibold text-gray-500 dark:text-gray-400 min-w-[150px]">
                   ACTION
                 </TableCell>
               </TableRow>
@@ -338,13 +382,13 @@ export default function SessionTable({
             <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-12 text-center text-xs text-gray-400">
+                  <TableCell colSpan={7} className="py-12 text-center text-xs text-gray-400">
                     Loading interview sessions from database...
                   </TableCell>
                 </TableRow>
               ) : filteredSessions.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-12 text-center text-xs text-gray-400">
+                  <TableCell colSpan={7} className="py-12 text-center text-xs text-gray-400">
                     No interview sessions found matching current filter
                   </TableCell>
                 </TableRow>
@@ -364,7 +408,7 @@ export default function SessionTable({
                       className="hover:bg-gray-50/60 dark:hover:bg-gray-800/40 transition-colors"
                     >
                       <TableCell className="py-4 ps-5">
-                        <div className="flex items-center gap-2.5">
+                        <div className="flex items-center gap-3 min-w-[220px]">
                           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-50 font-bold text-xs text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
                             {session.candidate_name
                               .split(" ")
@@ -373,59 +417,65 @@ export default function SessionTable({
                               .join("")}
                           </div>
                           <div className="text-start">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-semibold text-xs text-gray-900 dark:text-white">
                                 {session.candidate_name}
                               </span>
-                              <span className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[10px] text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                                {session.candidate_code}
-                              </span>
                             </div>
-                            <span className="text-[11px] text-gray-500 dark:text-gray-400">
-                              {session.scheduled_at}
+                            <span className="block text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                              {formatSessionDate(session.scheduled_at)}
                             </span>
                           </div>
                         </div>
                       </TableCell>
 
                       <TableCell className="py-4 text-start">
-                        <div>
-                          <span className="font-medium text-xs text-gray-800 dark:text-gray-200">
+                        <div className="min-w-[190px] max-w-[240px]">
+                          <span
+                            className="font-medium text-xs text-gray-800 dark:text-gray-200 block truncate"
+                            title={session.position}
+                          >
                             {session.position}
                           </span>
-                          <span className="block text-[11px] text-gray-500 dark:text-gray-400">
+                          <span
+                            className="block text-[11px] text-gray-500 dark:text-gray-400 truncate mt-0.5"
+                            title={session.round_name}
+                          >
                             {session.round_name}
                           </span>
                         </div>
                       </TableCell>
 
                       <TableCell className="py-4 text-start">
-                        <div>
-                          <span className="font-medium text-xs text-gray-800 dark:text-gray-200">
+                        <div className="min-w-[150px] max-w-[190px]">
+                          <span
+                            className="font-medium text-xs text-gray-800 dark:text-gray-200 block truncate"
+                            title={session.interviewer_name}
+                          >
                             {session.interviewer_name}
                           </span>
-                          <span className="block text-[11px] text-gray-500 dark:text-gray-400">
-                            {session.interviewer_role}
+                          <span
+                            className="block text-[11px] text-gray-500 dark:text-gray-400 truncate mt-0.5"
+                            title={session.interviewer_role}
+                          >
+                            {session.interviewer_role || "-"}
                           </span>
                         </div>
                       </TableCell>
 
-                      <TableCell className="py-4">
+                      <TableCell className="py-4 min-w-[110px]">
                         <ConsentBadge status={session.consent_status} />
                       </TableCell>
 
-                      <TableCell className="py-4">
-                        <div className="inline-flex items-center gap-1.5 text-xs font-mono text-gray-700 dark:text-gray-300">
-                          <AudioIcon className="text-brand-500" />
-                          <span>{session.audio_duration || "00:00"}</span>
-                        </div>
+                      <TableCell className="py-4 min-w-[170px]">
+                        {renderJobStatus(session)}
                       </TableCell>
 
-                      <TableCell className="py-4">{renderJobStatus(session)}</TableCell>
+                      <TableCell className="py-4 min-w-[160px]">
+                        {renderHrDecisionBadge(session)}
+                      </TableCell>
 
-                      <TableCell className="py-4">{renderHrDecisionBadge(session)}</TableCell>
-
-                      <TableCell className="py-4 pe-5 text-end">
+                      <TableCell className="py-4 pe-5 text-end min-w-[150px]">
                         <div className="flex items-center justify-end gap-2">
                           {session.consent_status === "GRANTED" ? (
                             session.job_status === "COMPLETED" ? (
@@ -481,6 +531,20 @@ export default function SessionTable({
             </TableBody>
           </Table>
         </div>
+
+        {/* Table Pagination */}
+        {totalItems !== undefined && onPageChange && totalItems > 0 && (
+          <TablePagination
+            currentPage={currentPage ?? 1}
+            totalPages={Math.ceil(totalItems / (pageSize ?? 10)) || 1}
+            totalItems={totalItems}
+            pageSize={pageSize ?? 10}
+            onPageChange={onPageChange}
+            onPageSizeChange={onPageSizeChange}
+            pageSizeOptions={[10, 20, 50]}
+            isLoading={isLoading}
+          />
+        )}
       </div>
 
       {/* Audio Upload Modal connected to Real Candidates & Rubrics */}

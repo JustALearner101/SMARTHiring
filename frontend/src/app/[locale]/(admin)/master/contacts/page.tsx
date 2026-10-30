@@ -18,6 +18,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { EyeCloseIcon, EyeIcon, PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
 import { masterService } from "@/services";
+import TablePagination from "@/components/common/TablePagination";
 import type { UserRole } from "@/types/auth";
 import { Department, InterviewerContact, Timezone } from "@/types/master";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -32,6 +33,8 @@ export default function ContactsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDept, setSelectedDept] = useState<string>("ALL");
   const [selectedTimezone, setSelectedTimezone] = useState<string>("ALL");
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
 
   // Modals
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -83,6 +86,12 @@ export default function ContactsPage() {
       return matchesSearch && matchesDept && matchesTimezone;
     });
   }, [contacts, searchQuery, selectedDept, selectedTimezone]);
+
+  const totalPages = Math.ceil(filteredContacts.length / pageSize) || 1;
+  const paginatedContacts = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredContacts.slice(start, start + pageSize);
+  }, [filteredContacts, currentPage, pageSize]);
 
   // Open Add Modal
   const handleOpenAdd = () => {
@@ -338,7 +347,10 @@ export default function ContactsPage() {
             <InputField
               placeholder="Search name, username, employee ID, email, or position..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
             />
           </div>
 
@@ -355,7 +367,10 @@ export default function ContactsPage() {
                 { value: "Operations", label: "Operations" },
               ]}
               value={selectedDept}
-              onChange={(e) => setSelectedDept(e.target.value)}
+              onChange={(e) => {
+                setSelectedDept(e.target.value);
+                setCurrentPage(1);
+              }}
             />
           </div>
 
@@ -368,14 +383,18 @@ export default function ContactsPage() {
                 { value: "WIT", label: "WIT (UTC+9)" },
               ]}
               value={selectedTimezone}
-              onChange={(e) => setSelectedTimezone(e.target.value)}
+              onChange={(e) => {
+                setSelectedTimezone(e.target.value);
+                setCurrentPage(1);
+              }}
             />
           </div>
         </div>
 
         {/* Contacts Table */}
-        <div className="mt-5 overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
-          <Table>
+        <div className="mt-5 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xs dark:border-gray-800 dark:bg-gray-900">
+          <div className="max-w-full overflow-x-auto">
+            <Table>
             <TableHeader className="bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-800">
               <TableRow>
                 <TableCell
@@ -430,7 +449,7 @@ export default function ContactsPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredContacts.map((item) => (
+                paginatedContacts.map((item) => (
                   <TableRow
                     key={item.id}
                     className="hover:bg-gray-50/70 dark:hover:bg-white/[0.02] transition-colors"
@@ -530,11 +549,20 @@ export default function ContactsPage() {
           </Table>
         </div>
 
-        {/* Footer Summary */}
-        <div className="mt-4 flex items-center justify-between text-xs text-gray-400">
-          <span>
-            Showing {filteredContacts.length} of {contacts.length} active system users
-          </span>
+        {/* Table Pagination */}
+        <TablePagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={filteredContacts.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(newSize) => {
+            setPageSize(newSize);
+            setCurrentPage(1);
+          }}
+          pageSizeOptions={[10, 20, 50]}
+          isLoading={isLoading}
+        />
         </div>
       </div>
 
