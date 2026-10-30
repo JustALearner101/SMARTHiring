@@ -166,13 +166,6 @@ export default function CalendarMatrixPage() {
   return (
     <div className="space-y-6">
       <PageBreadcrumb pageTitle="Calendar Matrix" />
-
-      {/* Operational Policy Banner */}
-      <OperationalPolicyBanner
-        onOpenTester={() => setIsTesterOpen(true)}
-        policy={policy}
-      />
-
       {/* Dynamic & Real-time Weekly Matrix View */}
       <CalendarMatrixView
         events={events}
