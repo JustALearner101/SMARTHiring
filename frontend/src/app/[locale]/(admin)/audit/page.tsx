@@ -168,7 +168,7 @@ export default function AuditSecurityPage() {
         <PageBreadcrumb pageTitle="Audit & Security" />
         <div className="rounded-2xl border border-warning-200 bg-warning-50/50 p-8 text-center shadow-theme-xs dark:border-warning-800 dark:bg-warning-950/20">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-warning-100 text-warning-600 dark:bg-warning-500/20 dark:text-warning-400">
-            <LockIcon className="size-7" />
+            <LockIcon/>
           </div>
           <h2 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">
             Restricted Access — Administrator Only
@@ -203,7 +203,7 @@ export default function AuditSecurityPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 self-start sm:self-auto">
-          <Badge color="success" size="md" startIcon={<CheckCircleIcon className="size-3.5" />}>
+          <Badge color="success" size="md" startIcon={<CheckCircleIcon/>}>
             RBAC: ADMIN ACCESS
           </Badge>
           <button
@@ -220,7 +220,7 @@ export default function AuditSecurityPage() {
         {/* Card 1: Total Audit Events */}
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
-            <DocsIcon className="size-6" />
+            <DocsIcon/>
           </div>
           <div className="mt-4">
             <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -235,7 +235,7 @@ export default function AuditSecurityPage() {
         {/* Card 2: Hash Chain Integrity */}
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-success-50 text-success-600 dark:bg-success-500/10 dark:text-success-400">
-            <CheckCircleIcon className="size-6" />
+            <CheckCircleIcon/>
           </div>
           <div className="mt-4">
             <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -252,7 +252,7 @@ export default function AuditSecurityPage() {
         {/* Card 3: Total System Logs */}
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
-            <ListIcon className="size-6" />
+            <ListIcon/>
           </div>
           <div className="mt-4">
             <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -267,7 +267,7 @@ export default function AuditSecurityPage() {
         {/* Card 4: Technical System Errors */}
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-error-50 text-error-600 dark:bg-error-500/10 dark:text-error-400">
-            <ListIcon className="size-6" />
+            <ListIcon/>
           </div>
           <div className="mt-4">
             <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -408,7 +408,7 @@ export default function AuditSecurityPage() {
                 className="inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400"
               >
                 Full Page
-                <ArrowRightIcon className="size-3" />
+                <ArrowRightIcon/>
               </Link>
             </div>
           </div>
