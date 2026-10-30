@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import jwt
-from fastapi import Depends, Header
+from fastapi import Depends, Header, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pwdlib import PasswordHash
 from sqlalchemy import select
@@ -52,14 +52,16 @@ def decode_access_token(token: str) -> dict[str, Any]:
 
 async def get_optional_current_user(
     auth: HTTPAuthorizationCredentials | None = Depends(http_bearer_scheme),
+    token: str | None = Query(None, description="Optional JWT token in query string (useful for HTML5 audio tags)"),
     demo_role: str | None = Header(None, alias="X-Demo-Role"),
     db: AsyncSession = Depends(get_db),
 ) -> User | None:
     """Extract authenticated user if credentials exist; otherwise returns None without error."""
     # 1. Bearer JWT Token
-    if auth and auth.credentials:
+    raw_token = auth.credentials if (auth and auth.credentials) else token
+    if raw_token:
         try:
-            payload = decode_access_token(auth.credentials)
+            payload = decode_access_token(raw_token)
             user_id = payload.get("sub")
             if user_id:
                 stmt = select(User).where(User.nid == int(user_id), User.vstatus == "ACTIVE")

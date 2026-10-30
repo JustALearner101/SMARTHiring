@@ -1,27 +1,84 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { AudioIcon } from "@/icons";
 
 interface AudioWavePlayerProps {
   currentTimeMs: number;
   durationMs: number;
   isPlaying: boolean;
+  audioStreamUrl?: string | null;
   onTogglePlay: () => void;
   onSeek: (ms: number) => void;
+  onDurationChange?: (durationMs: number) => void;
+  onTimeUpdate?: (currentMs: number) => void;
+  onEnded?: () => void;
 }
 
 export default function AudioWavePlayer({
   currentTimeMs,
   durationMs,
   isPlaying,
+  audioStreamUrl,
   onTogglePlay,
   onSeek,
+  onDurationChange,
+  onTimeUpdate,
+  onEnded,
 }: AudioWavePlayerProps) {
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.0);
+  const [audioError, setAudioError] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+
+  // Compute resolved stream URL with token query param if needed
+  const resolvedAudioSrc = React.useMemo(() => {
+    if (!audioStreamUrl) return "";
+    let src = audioStreamUrl;
+    if (src.startsWith("/")) {
+      const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1").replace(/\/api\/v1\/?$/, "");
+      src = `${apiBase}${src}`;
+    }
+    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    if (token && !src.includes("token=")) {
+      const sep = src.includes("?") ? "&" : "?";
+      src = `${src}${sep}token=${encodeURIComponent(token)}`;
+    }
+    return src;
+  }, [audioStreamUrl]);
+
+  // Sync play / pause state
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !resolvedAudioSrc) return;
+
+    if (isPlaying) {
+      audio.play().catch((err) => {
+        console.warn("Audio autoplay / play interrupted:", err);
+      });
+    } else {
+      audio.pause();
+    }
+  }, [isPlaying, resolvedAudioSrc]);
+
+  // Sync playback speed
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.playbackRate = playbackSpeed;
+    }
+  }, [playbackSpeed]);
+
+  // Sync seek if drifted more than 1.5 seconds
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const audioMs = Math.floor(audio.currentTime * 1000);
+    if (Math.abs(audioMs - currentTimeMs) > 1500) {
+      audio.currentTime = currentTimeMs / 1000;
+    }
+  }, [currentTimeMs]);
 
   const formatMs = (ms: number) => {
-    const totalSeconds = Math.floor(ms / 1000);
+    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
@@ -29,6 +86,35 @@ export default function AudioWavePlayer({
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
+      {/* Hidden Native Audio Element */}
+      {resolvedAudioSrc && (
+        <audio
+          ref={audioRef}
+          src={resolvedAudioSrc}
+          preload="metadata"
+          onLoadedMetadata={(e) => {
+            setAudioError(null);
+            const dur = Math.floor(e.currentTarget.duration * 1000);
+            if (dur && !isNaN(dur) && dur > 0 && onDurationChange) {
+              onDurationChange(dur);
+            }
+          }}
+          onTimeUpdate={(e) => {
+            const currentMs = Math.floor(e.currentTarget.currentTime * 1000);
+            if (onTimeUpdate) {
+              onTimeUpdate(currentMs);
+            }
+          }}
+          onEnded={() => {
+            if (onEnded) onEnded();
+            else onTogglePlay();
+          }}
+          onError={() => {
+            setAudioError("Streaming audio dari server offline atau format tidak didukung.");
+          }}
+        />
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Play/Pause Button & Time */}
         <div className="flex items-center gap-3">
@@ -67,6 +153,11 @@ export default function AudioWavePlayer({
             <span className="text-[11px] text-gray-400 flex items-center gap-1">
               <AudioIcon className="text-brand-500" />
               <span>Synced ASR Audio Channel</span>
+              {audioError && (
+                <span className="text-[10px] text-warning-500 ml-1">
+                  (Simulasi: {audioError})
+                </span>
+              )}
             </span>
           </div>
         </div>
@@ -95,9 +186,15 @@ export default function AudioWavePlayer({
         <input
           type="range"
           min={0}
-          max={durationMs}
+          max={Math.max(durationMs, 1000)}
           value={currentTimeMs}
-          onChange={(e) => onSeek(Number(e.target.value))}
+          onChange={(e) => {
+            const targetMs = Number(e.target.value);
+            onSeek(targetMs);
+            if (audioRef.current) {
+              audioRef.current.currentTime = targetMs / 1000;
+            }
+          }}
           className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-200 accent-brand-500 dark:bg-gray-800"
         />
         <div className="mt-1 flex justify-between text-[10px] text-gray-400 font-mono">

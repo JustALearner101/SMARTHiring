@@ -35,6 +35,7 @@ from app.repository.CandidateRepository import CandidateRepository
 from app.repository.InterviewSessionRepository import InterviewSessionRepository
 from app.repository.RubricRepository import RubricRepository
 from app.service.AuditLogService import AuditLogService
+from app.service.ObjectStorageService import ObjectStorageService
 from app.service.SpeechToTextService import SpeechToTextService
 from app.util.FileValidator import validate_audio_video_upload
 
@@ -48,91 +49,56 @@ class InterviewSessionService:
         self.candidate_repo = CandidateRepository(session)
         self.rubric_repo = RubricRepository(session)
         self.audit_service = AuditLogService(session)
+        self.storage_service = ObjectStorageService()
 
     @staticmethod
     def _format_time_ms(ms: int) -> str:
-        seconds = ms // 1000
-        mins = seconds // 60
-        secs = seconds % 60
-        return f"{mins:02d}:{secs:02d}"
+        total_seconds = ms // 1000
+        minutes = total_seconds // 60
+        seconds = total_seconds % 60
+        return f"{minutes:02d}:{seconds:02d}"
 
     def _to_session_dto(self, interview: Interview) -> InterviewSessionDTO:
-        candidate_name = interview.candidate.vname if interview.candidate else "Kandidat"
-        candidate_code = interview.candidate.vcandidate_code if interview.candidate else "CAND-000"
-        position = interview.candidate.vjob_position if interview.candidate else "General Role"
-        round_name = interview.profile.vname if interview.profile else "Interview Session"
+        candidate_name = interview.candidate.vname if interview.candidate else f"Candidate #{interview.nid_candidate}"
+        candidate_code = interview.candidate.vcandidate_code if interview.candidate else f"CAND-{interview.nid_candidate}"
+        position = interview.candidate.vjob_position if interview.candidate else "General Candidate"
+        round_name = interview.profile.vname if interview.profile else "Technical Assessment Round"
 
-        assigned_user = getattr(interview, "interviewer", None) or (
-            getattr(interview.profile, "owner", None) if getattr(interview, "profile", None) else None
-        )
-        interviewer_id_str = (
-            str(interview.nid_interviewer)
-            if interview.nid_interviewer
-            else (str(assigned_user.nid) if assigned_user else None)
-        )
-        interviewer_name = assigned_user.vname if assigned_user else "HR / Hiring Team"
-        interviewer_role = (assigned_user.vposition or assigned_user.vrole) if assigned_user else "Interviewer"
+        interviewer_name = interview.interviewer.vname if getattr(interview, "interviewer", None) else "Pewawancara Utama"
+        interviewer_role = interview.interviewer.vrole if getattr(interview, "interviewer", None) else "INTERVIEWER"
+        interviewer_id_str = str(interview.nid_interviewer) if interview.nid_interviewer else None
 
         job_status = "RECEIVED"
-        progress_percentage = 15
-        current_step = "File rekaman diunggah, menunggu antrean pemrosesan..."
-        audio_url = None
-        audio_duration = None
-        competency_points_dto = []
-        hr_decision_dto = None
-        asr_engine = None
+        progress_percentage = 100
+        current_step = "Selesai"
+        audio_url: str | None = None
+        audio_duration: str | None = None
+        asr_engine: str | None = None
+        competency_points_dto: list[CompetencySummaryPointDTO] = []
+        hr_decision_dto: HrDecisionDTO | None = None
 
-        if interview.vconsent_status != "GRANTED":
-            job_status = "REJECTED_NO_CONSENT"
-            progress_percentage = 0
-            current_step = "Ditolak: Kandidat tidak memberikan persetujuan perekaman (Consent Rejected)."
+        if getattr(interview, "source_files", None) and interview.source_files:
+            sf = interview.source_files[0]
+            audio_url = sf.vurl
+            audio_duration = sf.vduration
 
-        if interview.source_files:
-            sorted_sfs = sorted(interview.source_files, key=lambda sf: sf.nid)
-            latest_sf = sorted_sfs[-1]
-            audio_url = latest_sf.vurl
-            audio_duration = latest_sf.vduration
-
-            if latest_sf.jobs:
-                sorted_jobs = sorted(latest_sf.jobs, key=lambda jb: jb.nid)
-                latest_job = sorted_jobs[-1]
+            if getattr(sf, "jobs", None) and sf.jobs:
+                latest_job = sf.jobs[-1]
                 asr_engine = latest_job.vasr_engine
 
-                if interview.vconsent_status == "GRANTED":
-                    status_code = latest_job.nstatus
-                    if status_code == 1:
-                        job_status = "RECEIVED"
-                        progress_percentage = 15
-                        current_step = "File rekaman diunggah, antrean pemrosesan aktif..."
-                    elif status_code == 2:
-                        job_status = "ACCESS_CHECKED"
-                        progress_percentage = 30
-                        current_step = "Validasi persetujuan kandidat & izin akses rekaman..."
-                    elif status_code == 3:
-                        job_status = "TRANSCRIBED"
-                        progress_percentage = 60
-                        engine_label = latest_job.vasr_engine or "ElevenLabs Scribe"
-                        current_step = f"Transkripsi audio & speaker diarization ({engine_label}) selesai..."
-                    elif status_code == 4:
-                        job_status = "SUMMARIZED"
-                        progress_percentage = 85
-                        current_step = "Ekstraksi rubrik kompetensi & penelusuran bukti kutipan..."
-                    elif status_code == 5:
-                        job_status = "AUDITED"
-                        progress_percentage = 95
-                        current_step = "Audit verifikasi bukti kutipan & pendeteksian flag..."
-                    elif status_code in (6, 10):
-                        job_status = "COMPLETED" if status_code == 10 else "IN_REVIEW"
-                        progress_percentage = 100
-                        current_step = "Pemrosesan selesai. Siap ditinjau untuk evaluasi."
-                    elif status_code == 90:
-                        job_status = "REJECTED_NO_CONSENT"
-                        progress_percentage = 0
-                        current_step = "Ditolak: Kandidat tidak memberikan persetujuan perekaman."
-                    else:
-                        job_status = "IN_REVIEW"
-                        progress_percentage = 100
-                        current_step = "Selesai"
+                status_map = {
+                    1: ("RECEIVED", 15, "Menunggu antrean pemrosesan"),
+                    2: ("ACCESS_CHECKED", 35, "Memproses ASR dan transkripsi audio"),
+                    3: ("TRANSCRIBED", 60, "Memindai instruksi dan audit guardrail"),
+                    4: ("SUMMARIZED", 85, "Mengekstrak bukti kompetensi rubrik"),
+                    10: ("COMPLETED", 100, "Pemrosesan selesai"),
+                    90: ("REJECTED_NO_CONSENT", 100, "Ditolak: Kandidat tidak memberikan persetujuan consent"),
+                }
+                meta = status_map.get(
+                    latest_job.nstatus,
+                    ("IN_REVIEW", 90, "Menunggu tinjauan evaluasi"),
+                )
+                job_status, progress_percentage, current_step = meta
 
                 for sp in getattr(latest_job, "summary_points", []):
                     evidences_dto = [
@@ -206,6 +172,7 @@ class InterviewSessionService:
             consent_at=interview.dconsent_at.isoformat() if interview.dconsent_at else None,
             consent_notice_version=interview.vconsent_notice_version,
             audio_url=audio_url,
+            audio_stream_url=self.storage_service.resolve_audio_stream_url(audio_url, session_id=interview.nid),
             audio_duration=audio_duration,
             job_status=job_status,  # type: ignore[arg-type]
             progress_percentage=progress_percentage,
@@ -217,7 +184,7 @@ class InterviewSessionService:
 
     async def _resolve_interviewer_nid(
         self,
-        profile_id_int: int,
+        profile_id_int: int | None,
         requested_interviewer_id: str | None,
         current_user: User | None,
     ) -> int | None:
@@ -225,9 +192,10 @@ class InterviewSessionService:
             return current_user.nid
         if requested_interviewer_id and requested_interviewer_id.isdigit():
             return int(requested_interviewer_id)
-        profile = await self.rubric_repo.get_by_id(profile_id_int)
-        if profile and profile.nid_owner_user:
-            return profile.nid_owner_user
+        if profile_id_int:
+            profile = await self.rubric_repo.get_by_id(profile_id_int)
+            if profile and profile.nid_owner_user:
+                return profile.nid_owner_user
         if current_user:
             return current_user.nid
         return None
@@ -385,12 +353,21 @@ class InterviewSessionService:
         pre_transcribed_segments: list[dict[str, Any]] | None = None,
     ) -> InterviewSessionDTO:
         cand_id = int(dto.candidate_id) if dto.candidate_id.isdigit() else 1
-        prof_id = int(dto.profile_id) if dto.profile_id.isdigit() else 1
+        prof_id = int(dto.profile_id) if dto.profile_id and dto.profile_id.isdigit() else None
         resolved_interviewer_nid = await self._resolve_interviewer_nid(
             profile_id_int=prof_id,
             requested_interviewer_id=dto.interviewer_id,
             current_user=current_user,
         )
+
+        existing_profile = await self.rubric_repo.get_by_id(prof_id) if prof_id else None
+        if not existing_profile:
+            profile = await self.rubric_repo.get_or_create_candidate_profile(
+                candidate_id=cand_id,
+                owner_user_id=resolved_interviewer_nid,
+                target_role="INTERVIEWER" if current_user and current_user.vrole == "INTERVIEWER" else "HR",
+            )
+            prof_id = profile.nid
 
         interview = Interview(
             nid_candidate=cand_id,
@@ -459,7 +436,7 @@ class InterviewSessionService:
         filename: str,
         content: bytes,
         candidate_id: str,
-        profile_id: str,
+        profile_id: str | None = None,
         interviewer_id: str | None = None,
         consent_status: ConsentStatus = "GRANTED",
         notes: str | None = None,
@@ -475,13 +452,31 @@ class InterviewSessionService:
         file_path = storage_dir / safe_filename
         file_path.write_bytes(content)
 
+        ext = filename.split(".")[-1].lower() if "." in filename else "mp3"
+        mime_type = "audio/mpeg" if ext in ("mp3", "mp4") else f"audio/{ext}"
+        storage_url, mode = await self.storage_service.upload_audio_file(
+            content=content,
+            filename=filename,
+            content_type=mime_type,
+        )
+        saved_vurl = storage_url if mode == "SUPABASE" else str(file_path.as_posix())
+
         cand_id_int = int(candidate_id) if candidate_id.isdigit() else 1
-        prof_id_int = int(profile_id) if profile_id.isdigit() else 1
+        prof_id_int = int(profile_id) if profile_id and profile_id.isdigit() else None
         resolved_interviewer_nid = await self._resolve_interviewer_nid(
             profile_id_int=prof_id_int,
             requested_interviewer_id=interviewer_id,
             current_user=current_user,
         )
+
+        existing_profile = await self.rubric_repo.get_by_id(prof_id_int) if prof_id_int else None
+        if not existing_profile:
+            profile = await self.rubric_repo.get_or_create_candidate_profile(
+                candidate_id=cand_id_int,
+                owner_user_id=resolved_interviewer_nid,
+                target_role="INTERVIEWER" if current_user and current_user.vrole == "INTERVIEWER" else "HR",
+            )
+            prof_id_int = profile.nid
 
         interview = Interview(
             nid_candidate=cand_id_int,
@@ -497,8 +492,8 @@ class InterviewSessionService:
         sf = SourceFile(
             nid_interview=interview.nid,
             vtype="AUDIO",
-            vurl=str(file_path.as_posix()),
-            vduration="45:20",
+            vurl=saved_vurl,
+            vduration="00:00",
         )
         self.session.add(sf)
         await self.session.flush()
@@ -543,6 +538,51 @@ class InterviewSessionService:
         )
         detail = await self.interview_repo.get_interview_detail(interview.nid)
         return self._to_session_dto(detail or interview)
+
+    async def get_audio_response(
+        self,
+        interview_id: str,
+        current_user: User | None = None,
+    ) -> Any:
+        """Returns audio file stream with HTTP 206 Partial Content or redirect to Supabase Presigned URL."""
+        if not interview_id.isdigit():
+            raise NotFoundException("Sesi wawancara tidak ditemukan")
+        int_id = int(interview_id)
+        interview = await self.interview_repo.get_interview_detail(int_id)
+        if not interview or not interview.source_files:
+            raise NotFoundException("File rekaman audio tidak ditemukan untuk sesi ini")
+
+        sf = interview.source_files[0]
+        vurl = sf.vurl or ""
+        if vurl.startswith(("http://", "https://")):
+            from starlette.responses import RedirectResponse
+            return RedirectResponse(url=vurl, status_code=307)
+
+        file_path = Path(vurl)
+        if not file_path.exists():
+            rec_path = Path("storage/recordings") / file_path.name
+            if rec_path.exists():
+                file_path = rec_path
+            else:
+                raise NotFoundException("File audio fisik tidak ditemukan di server")
+
+        ext = file_path.suffix.lower().lstrip(".")
+        media_type = "audio/mpeg"
+        if ext in ("wav", "wave"):
+            media_type = "audio/wav"
+        elif ext in ("m4a", "mp4"):
+            media_type = "audio/mp4"
+        elif ext in ("ogg", "oga"):
+            media_type = "audio/ogg"
+        elif ext == "webm":
+            media_type = "audio/webm"
+
+        from starlette.responses import FileResponse
+        return FileResponse(
+            path=file_path,
+            media_type=media_type,
+            filename=file_path.name,
+        )
 
     @staticmethod
     async def _process_job_with_session(
@@ -597,6 +637,18 @@ class InterviewSessionService:
                 session.add(seg_obj)
             await session.commit()
 
+        max_end_ms = max([seg.get("end_ms", 0) for seg in segments], default=0)
+        if max_end_ms > 0:
+            total_sec = max_end_ms // 1000
+            actual_duration = f"{total_sec // 60:02d}:{total_sec % 60:02d}"
+        else:
+            actual_duration = "00:00"
+
+        sf_row = (await session.execute(select(SourceFile).where(SourceFile.nid_interview == interview_id))).scalars().first()
+        if sf_row:
+            sf_row.vduration = actual_duration
+            await session.flush()
+
         await run_interview_analyzer_pipeline(
             session=session,
             interview_id=interview_id,
@@ -604,8 +656,8 @@ class InterviewSessionService:
             profile_id=profile_id,
             consent_status="GRANTED",
             notes=notes,
-            audio_url=str(file_path.as_posix()),
-            audio_duration="45:20",
+            audio_url=sf_row.vurl if sf_row else str(file_path.as_posix()),
+            audio_duration=actual_duration,
             job_id=job_id,
         )
 

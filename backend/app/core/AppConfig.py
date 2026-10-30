@@ -42,10 +42,21 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
-    # Database (Supabase / External PostgreSQL)
+    # Database & Storage (Supabase / External PostgreSQL / S3)
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/postgres"
     LANGGRAPH_CHECKPOINT_DB_URI: str = "postgresql://postgres:postgres@localhost:5432/postgres"
+    SUPABASE_URL: str = ""
+    NEXT_PUBLIC_SUPABASE_URL: str = ""
     SUPABASE_SERVICE_ROLE_KEY: str = ""
+    SUPABASE_STORAGE_BUCKET: str = "interview-recordings"
+    SUPABASE_S3_ENDPOINT: str = ""
+    SUPABASE_S3_REGION: str = "ap-southeast-1"
+    SUPABASE_S3_ACCESS_KEY_ID: str = ""
+    SUPABASE_S3_SECRET_ACCESS_KEY: str = ""
+
+    @property
+    def effective_supabase_url(self) -> str:
+        return (self.SUPABASE_URL or self.NEXT_PUBLIC_SUPABASE_URL or "").rstrip("/")
 
     # LLM / AI Providers
     OPENAI_API_KEY: str = ""
