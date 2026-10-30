@@ -138,7 +138,13 @@ Jika terjadi error pada request, sistem mengembalikan response HTTP sesuai statu
 
 | Method | Endpoint | Request Body | Response Data Model | Deskripsi |
 | :--- | :--- | :--- | :--- | :--- |
-| `GET` | `/api/v1/rubrics` | None | `list[RubricProfileDTO]` | Mengambil profil evaluasi dan matriks bobot kompetensi. |
+| `GET` | `/api/v1/rubrics` | None (Query: `for_interviewer_id`, `candidate_id`) | `list[RubricProfileDTO]` | Mengambil profil evaluasi rubrik berbasis per kandidat atau interviewer. |
+| `POST` | `/api/v1/rubrics` | `RubricProfileCreateDTO` | `RubricProfileDTO` | Membuat profil rubrik penilaian kandidat baru. |
+| `DELETE` | `/api/v1/rubrics/{profile_id}` | None | `dict[str, str]` | Menghapus profil rubrik penilaian. |
+| `POST` | `/api/v1/rubrics/{profile_id}/re-evaluate` | None | `RubricProfileDTO` | Memicu AI LangGraph untuk mengevaluasi ulang penilaian kandidat langsung dari transkrip wawancara. |
+| `POST` | `/api/v1/rubrics/{profile_id}/competencies` | `CompetencyCreateDTO` | `CompetencyItemDTO` | Menambahkan indikator kompetensi pada profil rubrik. |
+| `PATCH` | `/api/v1/rubrics/{profile_id}/competencies/{competency_id}` | `CompetencyUpdateDTO` | `CompetencyItemDTO` | Memperbarui nama/bobot indikator kompetensi. |
+| `DELETE` | `/api/v1/rubrics/{profile_id}/competencies/{competency_id}` | None | `dict[str, str]` | Menghapus indikator kompetensi. |
 
 ---
 

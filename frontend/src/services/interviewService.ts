@@ -122,3 +122,22 @@ export async function saveHrDecision(
     })
   );
 }
+
+
+export async function swapSessionSpeakers(
+  interviewId: string
+): Promise<InterviewSession> {
+  return request<InterviewSession>(
+    `${API_ENDPOINTS.INTERVIEW_TRANSCRIPTS}/${encodeURIComponent(interviewId)}/swap-speakers`,
+    jsonPost({})
+  );
+}
+
+export async function reEvaluateSession(
+  interviewId: string
+): Promise<InterviewSession> {
+  return request<InterviewSession>(
+    `${API_ENDPOINTS.INTERVIEW_TRANSCRIPTS}/${encodeURIComponent(interviewId)}/re-evaluate`,
+    jsonPost({})
+  );
+}

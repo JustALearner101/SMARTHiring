@@ -119,14 +119,15 @@ class SpeechToTextService:
         mime_type = "audio/mpeg" if ext in ("mp3", "mp4") else f"audio/{ext}"
 
         files = {"file": (filename, content, mime_type)}
-        lang_code = "ind" if language in ("id", "ind") else language
         data = {
             "model_id": self.elevenlabs_model,
-            "language_code": lang_code,
             "tag_audio_events": "true",
             "diarize": "true",
             "timestamps_granularity": "word",
         }
+        if language and language not in ("auto", "none", "detect"):
+            lang_code = "ind" if language in ("id", "ind") else language
+            data["language_code"] = lang_code
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await client.post(url, headers=headers, files=files, data=data)
@@ -151,6 +152,62 @@ class SpeechToTextService:
             }]
         return []
 
+    def _resolve_speaker_roles(
+        self,
+        raw_segments: list[dict[str, Any]],
+        candidate_name: str,
+    ) -> dict[str, str]:
+        """Resolves raw speaker IDs (e.g. 'speaker_0', 'speaker_1') to 'INTERVIEWER' or 'CANDIDATE'.
+
+        Applies contextual heuristics:
+        1. Checks introduction phrases (e.g. 'resource manager', 'applying for', 'my name is').
+        2. Compares ratio of inquiry sentences (?) between speakers.
+        Guarantees that speaker assignment is consistent across the entire interview.
+        """
+        all_speakers = {s["raw_speaker_id"] for s in raw_segments}
+        if len(all_speakers) <= 1:
+            return {spk: "CANDIDATE" for spk in all_speakers}
+
+        speaker_scores: dict[str, int] = {spk: 0 for spk in all_speakers}
+        cand_signals = ["applying for", "melamar", "posisi", "i'm mary", "nama saya", "pengalaman saya"]
+        intv_signals = [
+            "resource manager",
+            "hiring manager",
+            "hr lead",
+            "interviewer",
+            "selamat datang",
+            "welcome",
+            "glad to meet you",
+            "have a seat",
+            "tell me about yourself",
+        ]
+
+        # Scan introductory segments
+        for seg in raw_segments[:10]:
+            spk = seg["raw_speaker_id"]
+            text_lower = seg["text"].lower()
+
+            if any(sig in text_lower for sig in cand_signals):
+                speaker_scores[spk] -= 5
+            if any(sig in text_lower for sig in intv_signals):
+                speaker_scores[spk] += 5
+            if "?" in text_lower:
+                speaker_scores[spk] += 1
+
+        # The speaker with the highest score is the interviewer
+        interviewer_spk = max(speaker_scores, key=lambda k: speaker_scores[k])
+
+        roles: dict[str, str] = {}
+        for spk in all_speakers:
+            roles[spk] = "INTERVIEWER" if spk == interviewer_spk else "CANDIDATE"
+
+        logger.info(
+            "Resolved speaker diarization roles: %s (scores: %s)",
+            roles,
+            speaker_scores,
+        )
+        return roles
+
     def _cluster_elevenlabs_words(
         self,
         words: list[dict[str, Any]],
@@ -160,7 +217,7 @@ class SpeechToTextService:
         if not words:
             return []
 
-        segments: list[dict[str, Any]] = []
+        raw_segments: list[dict[str, Any]] = []
         current_words: list[str] = []
         current_speaker_id: str | None = None
         seg_start = 0.0
@@ -172,7 +229,7 @@ class SpeechToTextService:
                 continue
             w_start = float(w.get("start", seg_end))
             w_end = float(w.get("end", w_start + 0.3))
-            w_speaker = w.get("speaker_id") or "speaker_0"
+            w_speaker = (w.get("speaker_id") or "speaker_0").lower()
 
             should_flush = False
             if current_speaker_id is not None and w_speaker != current_speaker_id or current_words and (w_start - seg_end) > 1.2:
@@ -180,16 +237,10 @@ class SpeechToTextService:
 
             if should_flush and current_words:
                 text = " ".join(current_words).strip()
-                speaker_type = "INTERVIEWER" if current_speaker_id == "speaker_0" else "CANDIDATE"
-                if "?" in text or any(k in text.lower() for k in ("selamat datang", "bisa ceritakan", "bagaimana", "apakah")):
-                    speaker_type = "INTERVIEWER"
-
-                segments.append({
-                    "segment_no": len(segments) + 1,
+                raw_segments.append({
                     "start_ms": int(seg_start * 1000),
                     "end_ms": int(seg_end * 1000),
-                    "speaker": speaker_type,
-                    "speaker_label": (current_speaker_id or "speaker_0").upper(),
+                    "raw_speaker_id": current_speaker_id or "speaker_0",
                     "text": text,
                     "confidence": 0.96,
                 })
@@ -205,21 +256,31 @@ class SpeechToTextService:
 
         if current_words:
             text = " ".join(current_words).strip()
-            speaker_type = "INTERVIEWER" if current_speaker_id == "speaker_0" else "CANDIDATE"
-            if "?" in text or any(k in text.lower() for k in ("selamat datang", "bisa ceritakan", "bagaimana", "apakah")):
-                speaker_type = "INTERVIEWER"
-
-            segments.append({
-                "segment_no": len(segments) + 1,
+            raw_segments.append({
                 "start_ms": int(seg_start * 1000),
                 "end_ms": int(seg_end * 1000),
-                "speaker": speaker_type,
-                "speaker_label": (current_speaker_id or "speaker_0").upper(),
+                "raw_speaker_id": current_speaker_id or "speaker_0",
                 "text": text,
                 "confidence": 0.96,
             })
 
-        return segments
+        speaker_role_map = self._resolve_speaker_roles(raw_segments, candidate_name)
+
+        final_segments = []
+        for idx, seg in enumerate(raw_segments, start=1):
+            role = speaker_role_map.get(seg["raw_speaker_id"], "CANDIDATE")
+            final_segments.append({
+                "segment_no": idx,
+                "start_ms": seg["start_ms"],
+                "end_ms": seg["end_ms"],
+                "speaker": role,
+                "speaker_type": role,
+                "speaker_label": seg["raw_speaker_id"].upper(),
+                "text": seg["text"],
+                "confidence": seg["confidence"],
+            })
+
+        return final_segments
 
     async def _transcribe_groq(
         self,

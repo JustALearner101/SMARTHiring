@@ -54,7 +54,11 @@ export default function CompetencyCard({
 
           <span className="inline-flex items-center gap-1 rounded-md bg-brand-50 px-2 py-0.5 text-[10px] font-semibold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
             <CheckCircleIcon/>
-            <span>Audited & Verified</span>
+            <span>
+              {point.verification_status === "VERIFIED" && point.coverage_status !== "NOT_DISCUSSED"
+                ? "Audited & Verified"
+                : "Unverified"}
+            </span>
           </span>
         </div>
       </div>

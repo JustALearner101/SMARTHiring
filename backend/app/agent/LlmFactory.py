@@ -138,7 +138,7 @@ class LlmFactory:
                         SystemMessage(content=json_prompt),
                         HumanMessage(content=user_content),
                     ]),
-                    timeout=12.0,
+                    timeout=25.0,
                 )
                 raw_text = raw_res.content if hasattr(raw_res, "content") else str(raw_res)
                 if isinstance(raw_text, list):

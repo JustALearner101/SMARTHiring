@@ -8,12 +8,16 @@ interface TranscriptStreamProps {
   segments: TranscriptSegment[];
   activeSegmentId: string | null;
   onSelectSegment: (segment: TranscriptSegment) => void;
+  onSwapSpeakers?: () => void;
+  isSwapping?: boolean;
 }
 
 export default function TranscriptStream({
   segments,
   activeSegmentId,
   onSelectSegment,
+  onSwapSpeakers,
+  isSwapping = false,
 }: TranscriptStreamProps) {
   const [search, setSearch] = useState("");
   const activeRef = useRef<HTMLDivElement>(null);
@@ -44,10 +48,23 @@ export default function TranscriptStream({
             </span>
           </div>
 
-          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-success-600 dark:text-success-400">
-            <CheckCircleIcon/>
-            ASR Sync Active
-          </span>
+          <div className="flex items-center gap-2">
+            {onSwapSpeakers && (
+              <button
+                type="button"
+                onClick={onSwapSpeakers}
+                disabled={isSwapping}
+                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 transition-colors"
+                title="Tukar Peran Pembicara (Kandidat <-> Pewawancara) jika ASR keliru mendeteksi"
+              >
+                {isSwapping ? "Menukar..." : "Tukar Pembicara"}
+              </button>
+            )}
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-success-600 dark:text-success-400">
+              <CheckCircleIcon/>
+              ASR Sync Active
+            </span>
+          </div>
         </div>
 
         <div className="relative">

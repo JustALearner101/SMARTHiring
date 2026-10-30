@@ -27,6 +27,8 @@ import {
   getInterviewTranscripts,
   listInterviewSessions,
   saveHrDecision,
+  swapSessionSpeakers,
+  reEvaluateSession,
 } from "@/services/interviewService";
 import { AudioIcon, CheckCircleIcon, LockIcon, ShootingStarIcon } from "@/icons";
 
@@ -38,7 +40,10 @@ function ReviewContent() {
   const { showSuccess, showError } = useToast();
 
   // Audio Player State
-  const [currentTimeMs, setCurrentTimeMs] = useState<number>(80000);
+  const [currentTimeMs, setCurrentTimeMs] = useState<number>(0);
+  const [streamDurationMs, setStreamDurationMs] = useState<number | null>(null);
+  const [isSwapping, setIsSwapping] = useState<boolean>(false);
+  const [isReEvaluating, setIsReEvaluating] = useState<boolean>(false);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [activeSegmentId, setActiveSegmentId] = useState<string | null>(null);
 
@@ -48,7 +53,17 @@ function ReviewContent() {
   const [accessDeniedMessage, setAccessDeniedMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const durationMs = 45 * 60 * 1000 + 20 * 1000;
+  const audioDurationStr = sessionData?.audio_duration;
+  let parsedDurationMs = 60000;
+  if (audioDurationStr) {
+    const parts = audioDurationStr.split(":");
+    if (parts.length === 2) {
+      const ms = (parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10)) * 1000;
+      if (!isNaN(ms) && ms > 0) parsedDurationMs = ms;
+    }
+  }
+
+  const durationMs = streamDurationMs ?? parsedDurationMs;
 
   // Hydrate all sessions (for Session Switcher) + active session metadata + verbatim transcript
   useEffect(() => {
@@ -144,11 +159,47 @@ function ReviewContent() {
   }, [sessionIdParam, user?.id, role]);
 
   const competencyPoints = sessionData?.competency_points ?? [];
+  const verifiedCount = competencyPoints.filter(
+    (p) => p.verification_status === "VERIFIED" && p.coverage_status !== "NOT_DISCUSSED"
+  ).length;
 
-  // Audio play simulation timer
+  const handleSwapSpeakers = async () => {
+    if (!sessionData) return;
+    setIsSwapping(true);
+    try {
+      const updated = await swapSessionSpeakers(sessionData.id);
+      setSessionData(updated);
+      const freshSegments = await getInterviewTranscripts(sessionData.id);
+      setTranscriptSegments(freshSegments);
+      showSuccess("Pembicara Berhasil Ditukar", "Peran pembicara dan evaluasi AI telah diperbarui.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Gagal menghubungi server.";
+      showError("Gagal Menukar Pembicara", msg);
+    } finally {
+      setIsSwapping(false);
+    }
+  };
+
+  const handleReEvaluate = async () => {
+    if (!sessionData) return;
+    setIsReEvaluating(true);
+    try {
+      const updated = await reEvaluateSession(sessionData.id);
+      setSessionData(updated);
+      showSuccess("Evaluasi Ulang Berhasil", "Rubrik kompetensi telah dievaluasi ulang dari transkrip.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Gagal menghubungi server.";
+      showError("Gagal Evaluasi Ulang", msg);
+    } finally {
+      setIsReEvaluating(false);
+    }
+  };
+
+  // Audio play simulation timer (fallback when no native audio stream)
   useEffect(() => {
+    const hasAudio = !!(sessionData?.audio_stream_url || sessionData?.audio_url);
     let interval: NodeJS.Timeout;
-    if (isPlaying) {
+    if (isPlaying && !hasAudio) {
       interval = setInterval(() => {
         setCurrentTimeMs((prev) => {
           if (prev >= durationMs) {
@@ -169,7 +220,7 @@ function ReviewContent() {
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [isPlaying, durationMs, activeSegmentId, transcriptSegments]);
+  }, [isPlaying, durationMs, activeSegmentId, transcriptSegments, sessionData?.audio_stream_url, sessionData?.audio_url]);
 
   const handleJumpToEvidence = (evidence: SummaryEvidence) => {
     setCurrentTimeMs(evidence.start_ms);
@@ -328,14 +379,28 @@ function ReviewContent() {
             currentTimeMs={currentTimeMs}
             durationMs={durationMs}
             isPlaying={isPlaying}
+            audioStreamUrl={sessionData.audio_stream_url || sessionData.audio_url}
             onTogglePlay={() => setIsPlaying(!isPlaying)}
             onSeek={(ms) => setCurrentTimeMs(ms)}
+            onDurationChange={(dur) => setStreamDurationMs(dur)}
+            onTimeUpdate={(ms) => {
+              setCurrentTimeMs(ms);
+              const matchingSeg = transcriptSegments.find(
+                (s) => ms >= s.start_ms && ms <= s.end_ms
+              );
+              if (matchingSeg && matchingSeg.id !== activeSegmentId) {
+                setActiveSegmentId(matchingSeg.id);
+              }
+            }}
+            onEnded={() => setIsPlaying(false)}
           />
 
           <TranscriptStream
             segments={transcriptSegments}
             activeSegmentId={activeSegmentId}
             onSelectSegment={handleSelectSegment}
+            onSwapSpeakers={handleSwapSpeakers}
+            isSwapping={isSwapping}
           />
 
           <CandidateSnapshotCard session={sessionData} />
@@ -359,12 +424,23 @@ function ReviewContent() {
                 </div>
               </div>
 
-              <span className="inline-flex items-center gap-1 rounded-md bg-success-50 px-2.5 py-1 text-xs font-semibold text-success-700 dark:bg-success-500/15 dark:text-success-300">
-                <CheckCircleIcon />
-                <span>
-                  Audited {competencyPoints.length}/{competencyPoints.length} Points
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleReEvaluate}
+                  disabled={isReEvaluating}
+                  className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 transition-colors"
+                  title="Evaluasi ulang transkrip menggunakan AI Agent"
+                >
+                  {isReEvaluating ? "Mengevaluasi..." : "Re-evaluate AI"}
+                </button>
+                <span className="inline-flex items-center gap-1 rounded-md bg-success-50 px-2.5 py-1 text-xs font-semibold text-success-700 dark:bg-success-500/15 dark:text-success-300">
+                  <CheckCircleIcon />
+                  <span>
+                    Audited {verifiedCount}/{competencyPoints.length} Points
+                  </span>
                 </span>
-              </span>
+              </div>
             </div>
           </div>
 

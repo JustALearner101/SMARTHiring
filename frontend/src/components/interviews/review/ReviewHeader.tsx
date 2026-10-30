@@ -17,6 +17,9 @@ export default function ReviewHeader({
 }: ReviewHeaderProps) {
   const router = useRouter();
 
+  const pts = session.competency_points || [];
+  const citedPts = pts.filter((p) => p.evidences && p.evidences.length > 0).length;
+  const citationPct = pts.length ? Math.round((citedPts / pts.length) * 100) : 0;
   const switchableSessions = allSessions.filter(
     (s) => s.consent_status === "GRANTED"
   );
@@ -92,12 +95,12 @@ export default function ReviewHeader({
 
           <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300 border border-brand-200 dark:border-brand-500/30">
             <CheckCircleIcon className="text-brand-600" />
-            <span>SOURCES: 100% Cited</span>
+            <span>SOURCES: {citationPct}% Cited</span>
           </span>
 
           <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 font-mono text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-300">
             <TimeIcon />
-            <span>Duration: {session.audio_duration || "45:20"}</span>
+            <span>Duration: {session.audio_duration || "00:00"}</span>
           </span>
         </div>
       </div>
