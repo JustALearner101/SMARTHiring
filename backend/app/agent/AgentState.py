@@ -97,13 +97,26 @@ class TriageEvaluationSchema(BaseModel):
     triage_reason: str = Field(description="Brief reason explaining the triage classification")
 
 
+class GeneratedCompetencyItem(BaseModel):
+    code: str = Field(description="Short code e.g. C1, C2, C3, C4")
+    name: str = Field(description="Competency title derived from dialogue topics")
+    reference_question: str = Field(description="Evaluation question reflecting what candidate discussed")
+
+
+class TranscriptCompetencyGenerationSchema(BaseModel):
+    competencies: list[GeneratedCompetencyItem] = Field(default_factory=list)
+
+
 class CompetencyEvaluationItem(BaseModel):
     competency_code: str = Field(description="Rubric competency code e.g. C1, C2, H1")
     coverage_status: Literal["COVERED", "PARTIAL", "NOT_DISCUSSED"] = Field(default="COVERED")
     verification_status: Literal["VERIFIED", "UNVERIFIED"] = Field(default="VERIFIED")
     content: str = Field(description="Neutral objective summary of candidate's demonstrated skill")
-    verbatim_quote: str = Field(description="Direct transcript quote supporting this evaluation")
+    verbatim_quote: str | None = Field(default=None, description="Direct transcript quote supporting this evaluation")
+    segment_no: int | None = Field(default=None, description="Segment number where quote occurred")
 
 
 class InterviewEvaluationReportSchema(BaseModel):
     evaluations: list[CompetencyEvaluationItem] = Field(default_factory=list)
+    topic_mismatch_detected: bool = Field(default=False)
+    mismatch_description: str | None = Field(default=None)

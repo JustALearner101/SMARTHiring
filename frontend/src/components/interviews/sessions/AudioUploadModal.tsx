@@ -11,7 +11,6 @@ import { ConsentStatus, InterviewSession } from "@/types/interview";
 import { UserRole } from "@/types/auth";
 import { Candidate, InterviewerContact, RubricProfile } from "@/types/master";
 import { getInterviewSessionStatus } from "@/services/interviewService";
-import { listRubrics } from "@/services/masterService";
 import {
   AlertIcon,
   AudioIcon,
@@ -31,7 +30,7 @@ interface AudioUploadModalProps {
     file?: File | null
   ) => Promise<InterviewSession | null>;
   candidates: Candidate[];
-  rubrics: RubricProfile[];
+  rubrics?: RubricProfile[];
   interviewers: InterviewerContact[];
   preselectedCandidateId?: string | null;
   currentUserId?: string | null;
@@ -44,7 +43,6 @@ export default function AudioUploadModal({
   onClose,
   onSubmit,
   candidates,
-  rubrics,
   interviewers,
   preselectedCandidateId,
   currentUserId,
@@ -59,9 +57,7 @@ export default function AudioUploadModal({
     candidates[0];
 
   const [chosenCandidateId, setChosenCandidateId] = useState<string>("");
-  const [chosenProfileId, setChosenProfileId] = useState<string>("");
   const [chosenInterviewerId, setChosenInterviewerId] = useState<string>("");
-  const [scopedRubrics, setScopedRubrics] = useState<RubricProfile[] | null>(null);
   const [consentGranted, setConsentGranted] = useState(true);
   const [audioDuration, setAudioDuration] = useState("45:20");
   const [customFileName, setCustomFileName] = useState<string>("");
@@ -74,7 +70,7 @@ export default function AudioUploadModal({
   const [progress, setProgress] = useState(15);
   const [statusMessage, setStatusMessage] = useState("Uploading recording file...");
 
-  // Derived selection state (React 19 pure derivation — zero cascading useEffect renders)
+  // Derived selection state
   const selectedCandidateId = chosenCandidateId || defaultCandidate?.id || "1";
   const matchedCandidate = candidates.find((c) => c.id === selectedCandidateId) ?? defaultCandidate;
   const candidateName = matchedCandidate?.name ?? "Rina Kusuma";
@@ -99,39 +95,6 @@ export default function AudioUploadModal({
     matchedInterviewer?.role ??
     (currentRole === "INTERVIEWER" ? "Technical Interviewer" : "Talent Acquisition Lead");
 
-  // Dynamically load rubrics scoped to the chosen interviewer when HR/Admin selects an interviewer
-  useEffect(() => {
-    if (!isOpen || currentRole === "INTERVIEWER" || !selectedInterviewerId) {
-      return;
-    }
-    let cancelled = false;
-    listRubrics(selectedInterviewerId)
-      .then((res) => {
-        if (!cancelled && Array.isArray(res) && res.length > 0) {
-          setScopedRubrics(res);
-        }
-      })
-      .catch(() => {
-        // Fallback to initial rubrics prop on error
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isOpen, currentRole, selectedInterviewerId]);
-
-  const activeRubrics =
-    currentRole !== "INTERVIEWER" && scopedRubrics && scopedRubrics.length > 0
-      ? scopedRubrics
-      : rubrics;
-
-  const selectedProfileId =
-    (chosenProfileId && activeRubrics.some((r) => r.id === chosenProfileId)
-      ? chosenProfileId
-      : activeRubrics[0]?.id) || "1";
-  const matchedRubric =
-    activeRubrics.find((r) => r.id === selectedProfileId) ?? activeRubrics[0];
-  const roundName = matchedRubric?.round_name ?? "HR Screening & Culture Fit (Round 1)";
-
   const defaultSlug = candidateName.toLowerCase().replace(/[^a-z0-9]+/g, "_");
   const fileName = customFileName || `interview_${defaultSlug}.mp3`;
 
@@ -143,7 +106,7 @@ export default function AudioUploadModal({
     onClose();
   };
 
-  // Polling effect while modal is in processing view (external API subscription)
+  // Polling effect while modal is in processing view
   useEffect(() => {
     if (!isProcessing || !activeSession?.id) return;
     if (
@@ -201,12 +164,12 @@ export default function AudioUploadModal({
     const newSession: InterviewSession = {
       id: `int-${Date.now()}`,
       candidate_id: selectedCandidateId,
-      profile_id: selectedProfileId,
+      profile_id: undefined,
       interviewer_id: selectedInterviewerId || undefined,
       candidate_name: candidateName,
       candidate_code: candidateCode,
       position,
-      round_name: roundName,
+      round_name: `Interview Evaluation - ${candidateName}`,
       interviewer_name: interviewerName,
       interviewer_role: interviewerRole,
       scheduled_at: "Today — 10:00 - 11:00 WIB",
@@ -252,17 +215,6 @@ export default function AudioUploadModal({
         }))
       : [{ value: "1", label: `${candidateName} (${candidateCode})` }];
 
-  const rubricOptions =
-    activeRubrics.length > 0
-      ? activeRubrics.map((r) => ({
-          value: r.id,
-          label: `${r.round_name} (${r.code})`,
-        }))
-      : [
-          { value: "1", label: "HR Screening & Culture Fit (PROFILE-HR-R1)" },
-          { value: "2", label: "User Technical Interview (PROFILE-TECH-R1)" },
-        ];
-
   const interviewerOptions =
     interviewers.length > 0
       ? interviewers.map((i) => ({
@@ -295,7 +247,7 @@ export default function AudioUploadModal({
           <p className="text-xs text-gray-500 dark:text-gray-400">
             {isProcessing
               ? "Asynchronous speech-to-text diarization & Copilot rubric analysis pipeline in progress."
-              : "Select scheduled candidate & interview round rubric to trigger AI Copilot evidence evaluation."}
+              : "Upload interview audio recording. AI will transcribe speech and automatically generate candidate-specific competency rubrics."}
           </p>
         </div>
       </div>
@@ -349,7 +301,7 @@ export default function AudioUploadModal({
                 <span className="font-semibold">1. Validasi Persetujuan &amp; Integritas Berkas</span>
               </div>
               <span className="text-[10px] font-mono font-bold">
-                {progress >= 20 ? "DONE" : "QUEUED"}
+                {progress >= 20 ? "DONE" : "WAITING"}
               </span>
             </div>
 
@@ -357,7 +309,7 @@ export default function AudioUploadModal({
               className={`flex items-center justify-between p-3 rounded-xl border text-xs transition-colors ${
                 progress >= 60
                   ? "border-success-200 bg-success-50/50 text-success-800 dark:border-success-500/20 dark:bg-success-500/10 dark:text-success-300"
-                  : progress >= 25
+                  : progress >= 20
                   ? "border-brand-200 bg-brand-50/60 text-brand-800 dark:border-brand-500/20 dark:bg-brand-500/10 dark:text-brand-300 animate-pulse"
                   : "border-gray-200 bg-white text-gray-500 dark:border-gray-800 dark:bg-gray-900"
               }`}
@@ -369,14 +321,14 @@ export default function AudioUploadModal({
                   }
                 />
                 <div>
-                  <span className="font-semibold block">2. ElevenLabs Scribe ASR &amp; Diarization</span>
+                  <span className="font-semibold block">2. ASR Transkripsi &amp; Diarisasi Pembicara</span>
                   <span className="text-[10px] text-gray-500 dark:text-gray-400">
-                    Transkripsi Bahasa Indonesia &amp; deteksi pembicara (Candidate vs Interviewer)
+                    ElevenLabs Scribe &bull; Segmentasi timestamp ms akurat
                   </span>
                 </div>
               </div>
               <span className="text-[10px] font-mono font-bold">
-                {progress >= 60 ? "DONE" : progress >= 25 ? "IN PROGRESS" : "WAITING"}
+                {progress >= 60 ? "DONE" : progress >= 20 ? "IN PROGRESS" : "WAITING"}
               </span>
             </div>
 
@@ -396,9 +348,9 @@ export default function AudioUploadModal({
                   }
                 />
                 <div>
-                  <span className="font-semibold block">3. Evaluasi Rubrik Kompetensi Copilot</span>
+                  <span className="font-semibold block">3. Auto-Generate Rubrik &amp; Evaluasi Kompetensi</span>
                   <span className="text-[10px] text-gray-500 dark:text-gray-400">
-                    Pemetaan jawaban deskriptif netral &amp; penelusuran bukti kutipan
+                    Ekstraksi kompetensi sesuai bahasa transkrip &amp; penelusuran bukti kutipan
                   </span>
                 </div>
               </div>
@@ -451,8 +403,8 @@ export default function AudioUploadModal({
       ) : (
         /* --- FORM VIEW --- */
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-          {/* Candidate Selector (Database Connected) */}
-          <FormField label="Select Candidate Application" required>
+          {/* Candidate Selector */}
+          <FormField label="Pilih Kandidat Wawancara" required>
             <Select
               options={candidateOptions}
               value={selectedCandidateId}
@@ -465,19 +417,27 @@ export default function AudioUploadModal({
             />
           </FormField>
 
-          {/* Auto-Synced Position & Rubric Stage */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FormField label="Target Position">
+          {/* Target Position & Auto-Generated Rubric Info Badge */}
+          <div className="space-y-3">
+            <FormField label="Posisi Lamaran">
               <InputField type="text" value={position} disabled />
             </FormField>
 
-            <FormField label="Interview Stage & Rubric" required>
-              <Select
-                options={rubricOptions}
-                value={selectedProfileId}
-                onChange={(e) => setChosenProfileId(e.target.value)}
-              />
-            </FormField>
+            <div className="rounded-xl border border-brand-200 bg-brand-50/70 p-3.5 dark:border-brand-500/20 dark:bg-brand-500/10">
+              <div className="flex items-start gap-2.5 text-start">
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-brand-500 text-white mt-0.5">
+                  <BoltIcon />
+                </div>
+                <div>
+                  <h5 className="text-xs font-bold text-brand-900 dark:text-brand-200">
+                    Auto-Generated Rubrics &amp; Competencies
+                  </h5>
+                  <p className="mt-0.5 text-[11px] text-brand-700 dark:text-brand-300 leading-relaxed">
+                    Rubrik dan indikator kompetensi akan di-generate otomatis oleh AI mengikuti bahasa (ID/EN) dan isi transkrip wawancara khusus untuk kandidat ini. Anda juga bisa mengedit atau menambah indikator manual di menu Rubrics.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Interviewer & Duration */}
@@ -493,10 +453,7 @@ export default function AudioUploadModal({
                 <Select
                   options={interviewerOptions}
                   value={selectedInterviewerId}
-                  onChange={(e) => {
-                    setChosenInterviewerId(e.target.value);
-                    setChosenProfileId("");
-                  }}
+                  onChange={(e) => setChosenInterviewerId(e.target.value)}
                 />
               )}
             </FormField>

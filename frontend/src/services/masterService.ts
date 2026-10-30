@@ -6,6 +6,7 @@ import {
   jsonPost,
   jsonPut,
   request,
+  type QueryValue,
 } from "./base";
 import type {
   Candidate,
@@ -143,8 +144,22 @@ export async function deleteHoliday(holidayId: string): Promise<{ id: string }> 
   );
 }
 
-export async function listRubrics(forInterviewerId?: string): Promise<RubricProfile[]> {
-  const qs = buildQuery({ for_interviewer_id: forInterviewerId });
+export interface RubricListFilter {
+  forInterviewerId?: string;
+  candidateId?: string;
+}
+
+export async function listRubrics(
+  params?: string | RubricListFilter
+): Promise<RubricProfile[]> {
+  const queryObj: Record<string, QueryValue> = {};
+  if (typeof params === "string") {
+    queryObj.for_interviewer_id = params;
+  } else if (params) {
+    if (params.forInterviewerId) queryObj.for_interviewer_id = params.forInterviewerId;
+    if (params.candidateId) queryObj.candidate_id = params.candidateId;
+  }
+  const qs = buildQuery(queryObj);
   return request<RubricProfile[]>(`${API_ENDPOINTS.RUBRICS}${qs}`);
 }
 
@@ -158,6 +173,13 @@ export async function deleteRubricProfile(profileId: string): Promise<{ id: stri
   return request<{ id: string }>(
     `${API_ENDPOINTS.RUBRICS}/${encodeURIComponent(profileId)}`,
     jsonDelete()
+  );
+}
+
+export async function reEvaluateRubric(profileId: string): Promise<RubricProfile> {
+  return request<RubricProfile>(
+    `${API_ENDPOINTS.RUBRICS}/${encodeURIComponent(profileId)}/re-evaluate`,
+    jsonPost({})
   );
 }
 

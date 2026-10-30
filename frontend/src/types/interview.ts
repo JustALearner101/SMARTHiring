@@ -72,10 +72,11 @@ export interface HrDecision {
 
 export interface InterviewUploadRequest {
   candidate_id: string;
-  profile_id: string;
+  profile_id?: string | null;
   interviewer_id?: string | null;
   consent_status?: ConsentStatus;
   audio_url?: string;
+  audio_stream_url?: string;
   audio_duration?: string;
   notes?: string;
 }
@@ -96,6 +97,7 @@ export interface InterviewSession {
   consent_at?: string;
   consent_notice_version?: string;
   audio_url?: string;
+  audio_stream_url?: string;
   audio_duration?: string;
   job_status: JobStatus;
   progress_percentage?: number;

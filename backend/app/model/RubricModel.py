@@ -17,11 +17,12 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.model.BaseModel import TableBaseModel
 
 if TYPE_CHECKING:
+    from app.model.CandidateModel import Candidate
     from app.model.UserModel import User
 
 
 class Profile(TableBaseModel):
-    """Interview round profile with user/division ownership and rubric versioning (tblm_profile)."""
+    """Interview round profile with user/division ownership, candidate relation, and rubric versioning (tblm_profile)."""
 
     __tablename__ = "tblm_profile"
     __table_args__ = (
@@ -43,9 +44,16 @@ class Profile(TableBaseModel):
         nullable=True,
         index=True,
     )
+    nid_candidate: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("tblm_candidate.nid", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     vsummary_format: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
     owner: Mapped[User | None] = relationship("User")
+    candidate: Mapped[Candidate | None] = relationship("Candidate")
     competencies: Mapped[list[Competency]] = relationship(
         "Competency",
         back_populates="profile",

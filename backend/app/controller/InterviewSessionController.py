@@ -10,7 +10,7 @@ from fastapi import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.AppSecurity import require_roles
+from app.core.AppSecurity import get_optional_current_user, require_roles
 from app.db.DatabaseSession import get_db
 from app.dto.BaseDTO import ApiResponse, PaginatedResponse, PaginationParams
 from app.dto.InterviewSessionDTO import (
@@ -73,6 +73,17 @@ async def get_interview_session_status(
     return ApiResponse(data=session, message="Interview processing status retrieved successfully")
 
 
+@router.get("/{interview_id}/audio")
+async def get_interview_audio(
+    interview_id: str,
+    current_user: User | None = Depends(get_optional_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Streams audio for native HTML5 audio playback with HTTP 206 Partial Content support."""
+    service = InterviewSessionService(db)
+    return await service.get_audio_response(interview_id=interview_id, current_user=current_user)
+
+
 @router.post("/upload", response_model=ApiResponse[InterviewSessionDTO], status_code=status.HTTP_201_CREATED)
 async def upload_interview(
     dto: InterviewUploadRequestDTO,
@@ -89,7 +100,7 @@ async def upload_interview_file(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="Binary audio/video file (MP3, WAV, M4A, MP4, etc.)"),
     candidate_id: str = Form("1"),
-    profile_id: str = Form("1"),
+    profile_id: str | None = Form(None),
     interviewer_id: str | None = Form(None),
     consent_status: ConsentStatus = Form("GRANTED"),
     notes: str | None = Form(None),

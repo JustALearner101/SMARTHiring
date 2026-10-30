@@ -143,7 +143,7 @@ function InterviewSessionsContent() {
       localSession: InterviewSession,
       file?: File | null
     ): Promise<InterviewSession | null> => {
-      const profileId = localSession.profile_id || rubrics[0]?.id || "1";
+      const profileId = localSession.profile_id || undefined;
       const candidateId = localSession.candidate_id || "1";
       const interviewerId =
         role === "INTERVIEWER"
@@ -156,7 +156,9 @@ function InterviewSessionsContent() {
           const formData = new FormData();
           formData.append("file", file);
           formData.append("candidate_id", candidateId);
-          formData.append("profile_id", profileId);
+          if (profileId) {
+            formData.append("profile_id", profileId);
+          }
           if (interviewerId) {
             formData.append("interviewer_id", interviewerId);
           }
@@ -184,7 +186,7 @@ function InterviewSessionsContent() {
         throw error;
       }
     },
-    [role, rubrics, user?.id]
+    [role, user?.id]
   );
 
   const handleDeleteSession = useCallback(

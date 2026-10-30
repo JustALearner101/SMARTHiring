@@ -36,6 +36,7 @@ class InterviewSessionDTO(BaseDTO):
     consent_at: str | None = None
     consent_notice_version: str | None = None
     audio_url: str | None = None
+    audio_stream_url: str | None = None
     audio_duration: str | None = None
     job_status: JobStatus
     progress_percentage: int = 100
@@ -47,9 +48,10 @@ class InterviewSessionDTO(BaseDTO):
 
 class InterviewUploadRequestDTO(BaseDTO):
     candidate_id: str
-    profile_id: str
+    profile_id: str | None = None
     interviewer_id: str | None = None
     consent_status: ConsentStatus = "GRANTED"
     audio_url: str | None = None
+    audio_stream_url: str | None = None
     audio_duration: str | None = None
     notes: str | None = None

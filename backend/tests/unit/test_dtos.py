@@ -27,6 +27,7 @@ def test_interviewer_contact_dto_serialization():
         id="1",
         employee_id="EMP-ENG-001",
         name="Budi Santoso",
+        username="budi.santoso",
         email="budi.santoso@company.com",
         phone="+6281211112222",
         department="Engineering",

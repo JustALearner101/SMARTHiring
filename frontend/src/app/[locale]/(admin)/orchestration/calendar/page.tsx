@@ -97,7 +97,9 @@ export default function CalendarMatrixPage() {
       }
     };
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadMasterData();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadCalendar(false);
 
     return () => {
