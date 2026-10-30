@@ -41,7 +41,7 @@ export default function AudioWavePlayer({
     const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
     if (token && !src.includes("token=")) {
       const sep = src.includes("?") ? "&" : "?";
-      src = `${src}${sep}token=${encodeURIComponent(token)}`;
+      if (new URL(src, window.location.origin).origin === new URL(process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1").origin) src = `${src}${sep}token=${encodeURIComponent(token)}`;
     }
     return src;
   }, [audioStreamUrl]);
