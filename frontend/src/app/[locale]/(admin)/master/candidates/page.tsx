@@ -482,7 +482,7 @@ export default function CandidatesPage() {
         <Link
           href={`/interviews/sessions?scope=awaiting_hr&candidateCode=${encodeURIComponent(cand.candidate_code)}`}
           className="inline-flex items-center gap-1.5 rounded-lg bg-warning-500 px-3 py-1.5 text-xs font-semibold text-white shadow-theme-xs hover:bg-warning-600 transition-all duration-150"
-          title="Tinjau hasil evaluasi Pewawancara dan berikan tindak lanjut final HR"
+          title="Review the interviewer's evaluation results and provide final HR follow-up"
         >
           <CheckCircleIcon className="text-white" />
           <span>HR Follow-Up</span>
@@ -496,7 +496,7 @@ export default function CandidatesPage() {
           <Link
             href={`/orchestration/scheduling?candidateId=${cand.id}`}
             className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 shadow-theme-xs hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-            title="Jadwalkan interview lanjutan"
+            title="Schedule a follow-up interview"
           >
             <BoltIcon />
             <span>Schedule</span>
@@ -506,7 +506,7 @@ export default function CandidatesPage() {
               type="button"
               onClick={() => setOfferTarget(cand)}
               className="inline-flex items-center gap-1 rounded-lg bg-success-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-theme-xs hover:bg-success-700 transition-all"
-              title="Luluskan kandidat ke tahap Offering"
+              title="Advance the candidate to the Offering stage"
             >
               <CheckCircleIcon />
               <span>Offer</span>

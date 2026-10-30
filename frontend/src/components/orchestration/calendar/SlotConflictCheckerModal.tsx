@@ -91,7 +91,7 @@ export default function SlotConflictCheckerModal({
   onClose,
 }: SlotConflictCheckerModalProps) {
   const [contacts, setContacts] = useState<InterviewerContact[]>([]);
-  const [interviewerId, setInterviewerId] = useState("int-001");
+  const [interviewerId, setInterviewerId] = useState("");
   const [date, setDate] = useState("2026-10-30"); // Default Friday to test rule-jumatan
   const [time, setTime] = useState("12:00");
   const [duration, setDuration] = useState(60);
