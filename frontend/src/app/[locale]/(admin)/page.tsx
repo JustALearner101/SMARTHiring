@@ -9,7 +9,6 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title:
     "SmartHiring | AI Orchestrator",
-  // description: "This is Next.js Home for TailAdmin Dashboard Template",
 };
 
 export default function Ecommerce() {

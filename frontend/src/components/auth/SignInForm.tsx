@@ -48,11 +48,8 @@ export default function SignInForm() {
         <div>
           <div className="mb-6 sm:mb-8">
             <h1 className="mb-2 text-title-sm font-bold text-gray-900 sm:text-title-md dark:text-white/90">
-              Sign In to Your Workspace
+              Sign In
             </h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Sign in as an HR Lead, System Admin, or Interviewer to manage interview scheduling and evaluations.
-            </p>
           </div>
 
           {/* Error Banner */}
@@ -107,7 +104,7 @@ export default function SignInForm() {
               <div className="flex items-center gap-2">
                 <Checkbox checked={isChecked} onChange={setIsChecked} />
                 <span className="text-xs text-gray-600 dark:text-gray-400">
-                  Ingat sesi saya
+                  Remember me
                 </span>
               </div>
             </div>

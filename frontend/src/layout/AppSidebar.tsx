@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { Link, usePathname } from "@/i18n/navigation";
 import { cn } from "@/utils";
 import { useTranslations } from "next-intl";
@@ -343,21 +344,28 @@ const AppSidebar: React.FC = () => {
       onMouseLeave={() => setIsHovered(false)}
     >
       <div
-        className={`flex py-8 ${
+        className={`flex py-6 ${
           !isExpanded && !isHovered ? "xl:justify-center" : "justify-start"
         }`}
       >
         <Link href="/" className="flex items-center gap-3">
-          {/* <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-500 text-white font-bold text-lg shadow-theme-xs">
-            <BoltIcon className="w-6.5 h-6.5 text-white" />
-          </div> */}
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center">
+            <Image
+              src="/images/logo/logo-icon.png"
+              alt="SmartHiring Logo"
+              width={38}
+              height={38}
+              priority
+              className="h-9.5 w-9.5 object-contain"
+            />
+          </div>
           {(isExpanded || isHovered || isMobileOpen) && (
             <div className="flex flex-col">
               <span className="text-base font-bold text-gray-900 dark:text-white leading-tight">
                 SmartHiring
               </span>
               <span className="text-[10px] font-medium text-brand-500 uppercase tracking-wider">
-                AI Orchestrator
+                Hire Faster, Choose Smarter
               </span>
             </div>
           )}
