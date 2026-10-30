@@ -4,6 +4,7 @@ from app.controller.AuthController import router as auth_router
 from app.controller.CalendarMatrixController import router as calendar_matrix_router
 from app.controller.CandidateController import router as candidate_router
 from app.controller.ContactController import router as contact_router
+from app.controller.DashboardController import router as dashboard_router
 from app.controller.HolidayController import router as holiday_router
 from app.controller.InterviewDecisionController import (
     router as interview_decision_router,
@@ -41,6 +42,7 @@ __all__ = [
     "calendar_matrix_router",
     "candidate_router",
     "contact_router",
+    "dashboard_router",
     "holiday_router",
     "interview_decision_router",
     "interview_session_router",

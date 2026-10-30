@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/table";
 import Button from "@/components/ui/button/Button";
 import { ConfirmationModal } from "@/components/ui/modal";
+import TablePagination from "@/components/common/TablePagination";
 import AudioUploadModal from "./AudioUploadModal";
 import { UserRole } from "@/types/auth";
 import { InterviewSession } from "@/types/interview";
@@ -44,6 +45,11 @@ interface SessionTableProps {
  currentUserId?: string | null;
  currentUserName?: string | null;
  currentRole?: UserRole | null;
+ currentPage?: number;
+ pageSize?: number;
+ totalItems?: number;
+ onPageChange?: (page: number) => void;
+ onPageSizeChange?: (pageSize: number) => void;
 }
 
 export default function SessionTable({
@@ -59,6 +65,11 @@ export default function SessionTable({
  currentUserId,
  currentUserName,
  currentRole,
+ currentPage,
+ pageSize,
+ totalItems,
+ onPageChange,
+ onPageSizeChange,
 }: SessionTableProps) {
  const [searchQuery, setSearchQuery] = useState("");
  const [consentFilter, setConsentFilter] = useState<string>("ALL");
@@ -446,6 +457,19 @@ export default function SessionTable({
  </TableBody>
  </Table>
  </div>
+
+ {totalItems !== undefined && onPageChange && (
+ <TablePagination
+ currentPage={currentPage ?? 1}
+ totalPages={Math.max(1, Math.ceil((totalItems || 0) / (pageSize || 10)))}
+ totalItems={totalItems}
+ pageSize={pageSize || 10}
+ onPageChange={onPageChange}
+ onPageSizeChange={onPageSizeChange}
+ pageSizeOptions={[10, 20, 50]}
+ isLoading={isLoading}
+ />
+ )}
  </div>
 
  {/* Audio Upload Modal */}

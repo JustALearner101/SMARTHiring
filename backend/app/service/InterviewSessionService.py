@@ -69,13 +69,18 @@ class InterviewSessionService:
         interviewer_id_str = str(interview.nid_interviewer) if interview.nid_interviewer else None
 
         job_status = "RECEIVED"
-        progress_percentage = 100
-        current_step = "Selesai"
+        progress_percentage = 15
+        current_step = "Recording uploaded, waiting in processing queue..."
         audio_url: str | None = None
         audio_duration: str | None = None
         asr_engine: str | None = None
         competency_points_dto: list[CompetencySummaryPointDTO] = []
         hr_decision_dto: HrDecisionDTO | None = None
+
+        if interview.vconsent_status != "GRANTED":
+            job_status = "REJECTED_NO_CONSENT"
+            progress_percentage = 0
+            current_step = "Rejected: Candidate did not grant recording consent."
 
         if getattr(interview, "source_files", None) and interview.source_files:
             sf = interview.source_files[0]
@@ -86,19 +91,41 @@ class InterviewSessionService:
                 latest_job = sf.jobs[-1]
                 asr_engine = latest_job.vasr_engine
 
-                status_map = {
-                    1: ("RECEIVED", 15, "Menunggu antrean pemrosesan"),
-                    2: ("ACCESS_CHECKED", 35, "Memproses ASR dan transkripsi audio"),
-                    3: ("TRANSCRIBED", 60, "Memindai instruksi dan audit guardrail"),
-                    4: ("SUMMARIZED", 85, "Mengekstrak bukti kompetensi rubrik"),
-                    10: ("COMPLETED", 100, "Pemrosesan selesai"),
-                    90: ("REJECTED_NO_CONSENT", 100, "Ditolak: Kandidat tidak memberikan persetujuan consent"),
-                }
-                meta = status_map.get(
-                    latest_job.nstatus,
-                    ("IN_REVIEW", 90, "Menunggu tinjauan evaluasi"),
-                )
-                job_status, progress_percentage, current_step = meta
+                if interview.vconsent_status == "GRANTED":
+                    status_code = latest_job.nstatus
+                    if status_code == 1:
+                        job_status = "RECEIVED"
+                        progress_percentage = 15
+                        current_step = "Recording uploaded, processing queue active..."
+                    elif status_code == 2:
+                        job_status = "ACCESS_CHECKED"
+                        progress_percentage = 30
+                        current_step = "Validating candidate consent & recording access permissions..."
+                    elif status_code == 3:
+                        job_status = "TRANSCRIBED"
+                        progress_percentage = 60
+                        engine_label = latest_job.vasr_engine or "ElevenLabs Scribe"
+                        current_step = f"Audio transcription & speaker diarization ({engine_label}) completed..."
+                    elif status_code == 4:
+                        job_status = "SUMMARIZED"
+                        progress_percentage = 85
+                        current_step = "Extracting competency rubrics & tracing quote evidence..."
+                    elif status_code == 5:
+                        job_status = "AUDITED"
+                        progress_percentage = 95
+                        current_step = "Auditing quote verification & flag detection..."
+                    elif status_code in (6, 10):
+                        job_status = "COMPLETED" if status_code == 10 else "IN_REVIEW"
+                        progress_percentage = 100
+                        current_step = "Processing completed. Ready for review and evaluation."
+                    elif status_code == 90:
+                        job_status = "REJECTED_NO_CONSENT"
+                        progress_percentage = 0
+                        current_step = "Rejected: Candidate did not grant recording consent."
+                    else:
+                        job_status = "IN_REVIEW"
+                        progress_percentage = 100
+                        current_step = "Completed"
 
                 for sp in getattr(latest_job, "summary_points", []):
                     evidences_dto = [
@@ -252,8 +279,8 @@ class InterviewSessionService:
                 actor_type="HUMAN",
                 title="Unauthorized Cross-Interviewer Access Blocked",
                 description=(
-                    f"Pewawancara '{current_user.vname}' (ID #{current_user.nid}) mencoba mengakses detail sesi "
-                    f"wawancara #{int_id} milik pewawancara ID #{interview.nid_interviewer}."
+                    f"Interviewer '{current_user.vname}' (ID #{current_user.nid}) attempted to access interview session "
+                    f"#{int_id} owned by interviewer ID #{interview.nid_interviewer}."
                 ),
                 metadata={
                     "interview_id": int_id,
@@ -262,7 +289,7 @@ class InterviewSessionService:
                 },
             )
             raise ForbiddenException(
-                "Akses ditolak: Anda hanya berwenang mengakses sesi wawancara yang ditugaskan kepada Anda."
+                "Access denied: You are only authorized to access interview sessions assigned to you."
             )
 
         return self._to_session_dto(interview)
@@ -273,11 +300,11 @@ class InterviewSessionService:
         current_user: User,
     ) -> None:
         if not interview_id.isdigit():
-            raise NotFoundException("Sesi wawancara tidak ditemukan.")
+            raise NotFoundException("Interview session not found.")
         int_id = int(interview_id)
         interview = await self.interview_repo.get_interview_detail(int_id)
         if not interview:
-            raise NotFoundException("Sesi wawancara tidak ditemukan.")
+            raise NotFoundException("Interview session not found.")
 
         if current_user.vrole == "INTERVIEWER" and interview.nid_interviewer != current_user.nid:
             await self.audit_service.log_event(
@@ -286,11 +313,11 @@ class InterviewSessionService:
                 actor_type="HUMAN",
                 title="Unauthorized Interview Deletion Blocked",
                 description=(
-                    f"Pewawancara '{current_user.vname}' mencoba menghapus sesi wawancara #{int_id} milik pengguna lain."
+                    f"Interviewer '{current_user.vname}' attempted to delete interview session #{int_id} owned by another user."
                 ),
                 metadata={"interview_id": int_id, "attempted_by_user_id": current_user.nid},
             )
-            raise ForbiddenException("Akses ditolak: Anda tidak berwenang menghapus sesi wawancara milik pengguna lain.")
+            raise ForbiddenException("Access denied: You are not authorized to delete another user's interview session.")
 
         has_decisions = any(
             bool(getattr(j, "hr_decisions", []))
@@ -299,7 +326,7 @@ class InterviewSessionService:
         )
         if has_decisions:
             raise ConflictException(
-                "Sesi wawancara yang sudah memiliki keputusan evaluasi tidak dapat dihapus demi menjaga integritas jejak audit."
+                "Interview sessions with existing evaluation decisions cannot be deleted to maintain audit trail integrity."
             )
 
         sf_ids = [sf.nid for sf in (interview.source_files or [])]
@@ -342,7 +369,7 @@ class InterviewSessionService:
             actor=current_user.vname,
             actor_type="HUMAN",
             title=f"Undecided Interview Session Deleted (#{int_id})",
-            description=f"Sesi wawancara #{int_id} ({cand_name}) yang belum memiliki keputusan dihapus oleh {current_user.vname}.",
+            description=f"Interview session #{int_id} ({cand_name}) without evaluation decision deleted by {current_user.vname}.",
             metadata={"interview_id": int_id},
         )
 

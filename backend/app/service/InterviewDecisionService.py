@@ -58,15 +58,15 @@ class InterviewDecisionService:
         current_user: User,
     ) -> HrDecisionDTO:
         if not interview_id.isdigit():
-            raise NotFoundException(f"Sesi wawancara {interview_id} tidak ditemukan.")
+            raise NotFoundException(f"Interview session {interview_id} not found.")
         int_id = int(interview_id)
         interview = await self.interview_repo.get_interview_detail(int_id)
         if not interview or not interview.source_files:
-            raise NotFoundException(f"Job wawancara {interview_id} belum selesai diproses.")
+            raise NotFoundException(f"Interview job {interview_id} has not completed processing.")
 
         sorted_sfs = sorted(interview.source_files, key=lambda sf: sf.nid)
         if not sorted_sfs[-1].jobs:
-            raise NotFoundException(f"Job wawancara {interview_id} belum selesai diproses.")
+            raise NotFoundException(f"Interview job {interview_id} has not completed processing.")
 
         sorted_jobs = sorted(sorted_sfs[-1].jobs, key=lambda jb: jb.nid)
         job = sorted_jobs[-1]
@@ -84,8 +84,8 @@ class InterviewDecisionService:
                 actor_type="HUMAN",
                 title="Cross-Interviewer Decision Tampering Blocked",
                 description=(
-                    f"Pewawancara '{current_user.vname}' (ID #{current_user.nid}) diblokir saat mencoba mengirim "
-                    f"keputusan pada sesi #{int_id} milik pewawancara ID #{interview.nid_interviewer}."
+                    f"Interviewer '{current_user.vname}' (ID #{current_user.nid}) blocked while attempting to submit "
+                    f"decision for session #{int_id} owned by interviewer ID #{interview.nid_interviewer}."
                 ),
                 metadata={
                     "interview_id": int_id,
@@ -95,19 +95,19 @@ class InterviewDecisionService:
                 job_id=job.nid,
             )
             raise ForbiddenException(
-                "Akses ditolak: Anda tidak berwenang memberikan keputusan pada sesi wawancara milik pengguna lain."
+                "Access denied: You are not authorized to submit decisions for another user's interview session."
             )
 
         # Guard 2: Immutable Finalized Lock — Once FINALIZED, nobody can overwrite
         if latest_decision and latest_decision.vworkflow_status == "FINALIZED":
             raise ForbiddenException(
-                "Keputusan wawancara ini sudah difinalisasi secara permanen dan tidak dapat diubah kembali."
+                "This interview decision has been permanently finalized and cannot be modified."
             )
 
         # Guard 3: Interviewer One-Way Lock — Once Interviewer submits recommendation, it is locked for Interviewer
         if current_user.vrole == "INTERVIEWER" and latest_decision is not None:
             raise ForbiddenException(
-                "Rekomendasi evaluasi Anda sudah dikirimkan ke HR untuk tindak lanjut dan terkunci secara permanen."
+                "Your evaluation recommendation has already been submitted to HR for followup and is permanently locked."
             )
 
         # Guard 4: Wait for Assigned Technical/User Interviewer before HR Finalizes
@@ -120,8 +120,8 @@ class InterviewDecisionService:
             and assigned_interviewer.vrole == "INTERVIEWER"
         ):
             raise ForbiddenException(
-                f"Sesi ini ditugaskan kepada pewawancara '{assigned_interviewer.vname}'. "
-                "Menunggu rekomendasi hasil evaluasi dari pewawancara terlebih dahulu."
+                f"This session is assigned to interviewer '{assigned_interviewer.vname}'. "
+                "Awaiting evaluation recommendation from assigned interviewer first."
             )
 
         now = datetime.now(UTC)
@@ -145,9 +145,9 @@ class InterviewDecisionService:
             stage_suffix = f" ({resolved_stage})" if resolved_stage else ""
             audit_title = f"Interviewer Recommendation: {dto.decision}{stage_suffix}"
             audit_desc = (
-                f"Pewawancara '{current_user.vname}' mengirimkan rekomendasi evaluasi untuk kandidat "
-                f"#{interview.nid_candidate} pada sesi #{int_id}: {dto.decision}{stage_suffix} -> "
-                f"Diteruskan ke antrean tindak lanjut HR ({resulting_candidate_status}). Catatan: {dto.notes}"
+                f"Interviewer '{current_user.vname}' submitted evaluation recommendation for candidate "
+                f"#{interview.nid_candidate} on session #{int_id}: {dto.decision}{stage_suffix} -> "
+                f"Forwarded to HR followup queue ({resulting_candidate_status}). Notes: {dto.notes}"
             )
         else:
             actor_role = "HR"
@@ -157,9 +157,9 @@ class InterviewDecisionService:
             stage_suffix = f" ({resolved_stage})" if resolved_stage else ""
             audit_title = f"HR Final Decision: {dto.decision}{stage_suffix}"
             audit_desc = (
-                f"Keputusan akhir HR oleh '{current_user.vname}' untuk kandidat #{interview.nid_candidate} "
-                f"pada sesi #{int_id}: {dto.decision}{stage_suffix} -> Status kandidat resmi menjadi "
-                f"{resulting_candidate_status}. Catatan: {dto.notes}"
+                f"HR final decision by '{current_user.vname}' for candidate #{interview.nid_candidate} "
+                f"on session #{int_id}: {dto.decision}{stage_suffix} -> Candidate status officially set to "
+                f"{resulting_candidate_status}. Notes: {dto.notes}"
             )
 
         dec = HrDecision(

@@ -42,20 +42,9 @@ export default function ConfirmationCard({
   const { role } = useAuth();
   const isHr = role === "HR";
 
-  // Channel selections with Corporate Default (Email) for both parties
-  const [candidateChannel, setCandidateChannel] = useState<"email" | "whatsapp">(() => {
-    const candItem = plan.items.find(
-      (i) => i.recipient_role.toLowerCase().includes("candidate") || i.channel === "whatsapp" || i.channel === "email"
-    );
-    return candItem?.channel === "whatsapp" ? "whatsapp" : "email";
-  });
-
-  const [interviewerChannel, setInterviewerChannel] = useState<"email" | "whatsapp">(() => {
-    const interItem = plan.items.find(
-      (i) => !i.recipient_role.toLowerCase().includes("candidate") && i.channel !== "calendar"
-    );
-    return interItem?.channel === "whatsapp" ? "whatsapp" : "email";
-  });
+  // Channel selections with Corporate Default (Email) for both parties (WhatsApp is in development)
+  const [candidateChannel, setCandidateChannel] = useState<"email" | "whatsapp">("email");
+  const [interviewerChannel, setInterviewerChannel] = useState<"email" | "whatsapp">("email");
 
   const [activeTab, setActiveTab] = useState<"candidate" | "interviewer" | "calendar">("candidate");
   const [isCopied, setIsCopied] = useState(false);
@@ -92,12 +81,12 @@ export default function ConfirmationCard({
       channel: candidateChannel,
       subject:
         candidateChannel === "email"
-          ? existingCand?.subject || `[Undangan] User Technical Interview: ${plan.candidate_name}`
+          ? existingCand?.subject || `[Invitation] Technical Interview: ${plan.candidate_name}`
           : undefined,
       content_preview:
         candidateChannel === "email"
-          ? `Halo ${plan.candidate_name},\n\nKami mengundang Anda untuk mengikuti sesi interview teknis (${plan.proposed_slot.title}) pada:\n- Waktu: ${plan.proposed_slot.formatted_wib} (${plan.proposed_slot.formatted_wita})\n- Durasi: ${plan.proposed_slot.duration_minutes} Menit\n- Platform: ${plan.proposed_slot.location_type}\n- Link: ${plan.proposed_slot.meeting_link}\n\nSilakan konfirmasi kehadiran Anda dengan membalas email ini.`
-          : `Halo Kak ${plan.candidate_name}, perkenalkan kami dari tim Talent Acquisition. Kami ingin mengundang Anda ke sesi interview teknis pada ${plan.proposed_slot.formatted_wib} via ${plan.proposed_slot.location_type} (${plan.proposed_slot.meeting_link}). Mohon konfirmasi ketersediaan Kakak.`,
+          ? `Hello ${plan.candidate_name},\n\nYou are invited to attend the technical interview session (${plan.proposed_slot.title}) on:\n- Time: ${plan.proposed_slot.formatted_wib} (${plan.proposed_slot.formatted_wita})\n- Duration: ${plan.proposed_slot.duration_minutes} Minutes\n- Platform: ${plan.proposed_slot.location_type}\n- Link: ${plan.proposed_slot.meeting_link}\n\nPlease confirm your attendance by replying to this email.`
+          : `Hello ${plan.candidate_name}, this is the Talent Acquisition team. We would like to invite you to a technical interview on ${plan.proposed_slot.formatted_wib} via ${plan.proposed_slot.location_type} (${plan.proposed_slot.meeting_link}). Please let us know if this time works for you.`,
       is_external: candidateChannel === "whatsapp" || candidateChannel === "email",
     };
 
@@ -111,12 +100,12 @@ export default function ConfirmationCard({
       channel: interviewerChannel,
       subject:
         interviewerChannel === "email"
-          ? existingInter?.subject || `[Jadwal Interview] ${plan.candidate_name} - ${plan.proposed_slot.title}`
+          ? existingInter?.subject || `[Interview Schedule] ${plan.candidate_name} - ${plan.proposed_slot.title}`
           : undefined,
       content_preview:
         interviewerChannel === "email"
-          ? `Halo ${plan.interviewer_name},\n\nJadwal technical interview dengan kandidat ${plan.candidate_name} telah diajukan:\n- Posisi: ${plan.candidate_position}\n- Waktu: ${plan.proposed_slot.formatted_wib}\n- Link: ${plan.proposed_slot.meeting_link}\n\nKalender Anda telah dipersiapkan untuk slot ini.`
-          : `Halo Pak/Bu ${plan.interviewer_name}, reminder jadwal interview teknis untuk kandidat ${plan.candidate_name} telah disiapkan pada ${plan.proposed_slot.formatted_wib} via ${plan.proposed_slot.location_type}. Link: ${plan.proposed_slot.meeting_link}`,
+          ? `Hello ${plan.interviewer_name},\n\nA technical interview schedule with candidate ${plan.candidate_name} has been proposed:\n- Position: ${plan.candidate_position}\n- Time: ${plan.proposed_slot.formatted_wib}\n- Link: ${plan.proposed_slot.meeting_link}\n\nYour calendar has been reserved for this slot.`
+          : `Hello ${plan.interviewer_name}, reminder: technical interview for candidate ${plan.candidate_name} is scheduled on ${plan.proposed_slot.formatted_wib} via ${plan.proposed_slot.location_type}. Link: ${plan.proposed_slot.meeting_link}`,
       is_external: false,
     };
 
@@ -199,7 +188,7 @@ export default function ConfirmationCard({
         <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 dark:border-gray-800 dark:bg-gray-800/40">
           <div className="flex items-center justify-between text-[10px] font-bold text-gray-400 uppercase tracking-wider">
             <span>WHAT · Session Agenda</span>
-            <Badge color="primary" size="sm">Putaran {plan.negotiation_round} / {plan.max_rounds}</Badge>
+            <Badge color="primary" size="sm">Round {plan.negotiation_round} / {plan.max_rounds}</Badge>
           </div>
           <div className="mt-2 space-y-1">
             <div className="text-xs font-semibold text-gray-900 dark:text-white line-clamp-1">
@@ -319,16 +308,15 @@ export default function ConfirmationCard({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setCandidateChannel("whatsapp")}
-                  className={`flex-1 flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-semibold transition-all ${
-                    candidateChannel === "whatsapp"
-                      ? "bg-white text-emerald-700 shadow-xs dark:bg-gray-800 dark:text-emerald-300"
-                      : "text-gray-500 hover:text-gray-900 dark:hover:text-gray-200"
-                  }`}
-                  title="WhatsApp Gateway (High-Impact External Send)"
+                  disabled
+                  className="flex-1 flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-semibold text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-60"
+                  title="WhatsApp Gateway API is currently under development / sandbox provisioning. Delivery defaults to official Email (Sumopod SMTP)."
                 >
-                  <ChatIcon className="shrink-0" />
+                  <ChatIcon className="shrink-0 text-gray-400 dark:text-gray-500" />
                   <span>WhatsApp</span>
+                  <span className="rounded bg-gray-200/80 px-1 py-0.2 text-[9px] font-mono font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                    Soon
+                  </span>
                 </button>
               </div>
 
@@ -396,16 +384,15 @@ export default function ConfirmationCard({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setInterviewerChannel("whatsapp")}
-                  className={`flex-1 flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-semibold transition-all ${
-                    interviewerChannel === "whatsapp"
-                      ? "bg-white text-emerald-700 shadow-xs dark:bg-gray-800 dark:text-emerald-300"
-                      : "text-gray-500 hover:text-gray-900 dark:hover:text-gray-200"
-                  }`}
-                  title="WhatsApp Gateway"
+                  disabled
+                  className="flex-1 flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-semibold text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-60"
+                  title="WhatsApp Gateway API is currently under development / sandbox provisioning. Delivery defaults to official Email (Sumopod SMTP)."
                 >
-                  <ChatIcon className="shrink-0" />
+                  <ChatIcon className="shrink-0 text-gray-400 dark:text-gray-500" />
                   <span>WhatsApp</span>
+                  <span className="rounded bg-gray-200/80 px-1 py-0.2 text-[9px] font-mono font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                    Soon
+                  </span>
                 </button>
               </div>
 
@@ -655,7 +642,7 @@ export default function ConfirmationCard({
               onClick={handleApproveClick}
               startIcon={<BoltIcon className="text-white" />}
             >
-              {isHr ? "Approve & Dispatch (+60s Undo)" : "HR Approval Required"}
+              {isHr ? "Approve (+60s Undo)" : "HR Approval Required"}
             </Button>
           </div>
         </div>

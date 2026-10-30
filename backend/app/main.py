@@ -11,6 +11,7 @@ from app.controller import (
     calendar_matrix_router,
     candidate_router,
     contact_router,
+    dashboard_router,
     holiday_router,
     interview_decision_router,
     interview_session_router,
@@ -58,6 +59,7 @@ TAGS_METADATA = [
     {"name": "AuditLogs", "description": "Immutable SHA-256 hash-chained system audit logs and chain-of-custody tracking."},
     {"name": "SystemLogs", "description": "Technical system access, error stacktraces, and mutation logs."},
     {"name": "Notifications", "description": "Aggregated user-scoped notifications and task alerts."},
+    {"name": "Dashboard", "description": "Aggregated dashboard metrics, upcoming interviews, and activity feeds."},
 ]
 
 app = FastAPI(
@@ -94,6 +96,7 @@ async def health_check() -> dict[str, str]:
 
 # Mount all 19 modular API v1 domain routers
 app.include_router(auth_router, prefix=settings.API_V1_STR)
+app.include_router(dashboard_router, prefix=settings.API_V1_STR)
 app.include_router(candidate_router, prefix=settings.API_V1_STR)
 app.include_router(contact_router, prefix=settings.API_V1_STR)
 app.include_router(holiday_router, prefix=settings.API_V1_STR)

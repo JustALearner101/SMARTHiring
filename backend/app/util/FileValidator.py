@@ -71,14 +71,14 @@ def validate_audio_video_upload(
     if len(content) > max_size:
         max_mb = max_size // (1024 * 1024)
         raise PayloadTooLargeException(
-            f"Ukuran file ({len(content) / (1024 * 1024):.1f} MB) melebihi batas maksimum {max_mb} MB."
+            f"File size ({len(content) / (1024 * 1024):.1f} MB) exceeds maximum limit of {max_mb} MB."
         )
 
     mime_type = detect_audio_video_mime(content)
     if not mime_type:
         ext = filename.split(".")[-1].lower() if "." in filename else "unknown"
         raise UnsupportedMediaTypeException(
-            f"File '{filename}' ({ext}) bukan format rekaman audio/video yang valid. Format yang didukung: MP3, WAV, OGG, M4A, MP4, WebM, FLAC."
+            f"File '{filename}' ({ext}) is not a valid audio/video recording format. Supported formats: MP3, WAV, OGG, M4A, MP4, WebM, FLAC."
         )
 
     return mime_type

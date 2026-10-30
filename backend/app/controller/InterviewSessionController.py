@@ -44,7 +44,7 @@ async def list_interview_sessions(
         params=params,
         current_user=current_user,
     )
-    return ApiResponse(data=result, message="Berhasil mengambil daftar sesi wawancara")
+    return ApiResponse(data=result, message="Interview sessions retrieved successfully")
 
 
 @router.get("/{interview_id}", response_model=ApiResponse[InterviewSessionDTO])
@@ -56,8 +56,8 @@ async def get_interview_session(
     service = InterviewSessionService(db)
     session = await service.get_session_detail(interview_id, current_user=current_user)
     if not session:
-        raise NotFoundException("Sesi wawancara tidak ditemukan")
-    return ApiResponse(data=session, message="Berhasil mengambil detail sesi wawancara")
+        raise NotFoundException("Interview session not found")
+    return ApiResponse(data=session, message="Interview session details retrieved successfully")
 
 
 @router.get("/{interview_id}/status", response_model=ApiResponse[InterviewSessionDTO])
@@ -69,8 +69,8 @@ async def get_interview_session_status(
     service = InterviewSessionService(db)
     session = await service.get_session_detail(interview_id, current_user=current_user)
     if not session:
-        raise NotFoundException("Sesi wawancara tidak ditemukan")
-    return ApiResponse(data=session, message="Berhasil mengambil status progres pemrosesan wawancara")
+        raise NotFoundException("Interview session not found")
+    return ApiResponse(data=session, message="Interview processing status retrieved successfully")
 
 
 @router.get("/{interview_id}/audio")
@@ -92,7 +92,7 @@ async def upload_interview(
 ) -> ApiResponse[InterviewSessionDTO]:
     service = InterviewSessionService(db)
     created = await service.upload_interview(dto=dto, current_user=current_user)
-    return ApiResponse(data=created, message="File rekaman wawancara berhasil diunggah")
+    return ApiResponse(data=created, message="Interview recording uploaded successfully")
 
 
 @router.post("/upload-file", response_model=ApiResponse[InterviewSessionDTO], status_code=status.HTTP_201_CREATED)
@@ -120,7 +120,7 @@ async def upload_interview_file(
         background_tasks=background_tasks,
         current_user=current_user,
     )
-    return ApiResponse(data=created, message="File rekaman berhasil divalidasi dan diunggah untuk pemrosesan asinkron")
+    return ApiResponse(data=created, message="Recording file validated and uploaded for asynchronous processing")
 
 
 @router.delete("/{interview_id}", response_model=ApiResponse[dict[str, str]])
@@ -131,4 +131,4 @@ async def delete_interview_session(
 ) -> ApiResponse[dict[str, str]]:
     service = InterviewSessionService(db)
     await service.delete_session(interview_id=interview_id, current_user=current_user)
-    return ApiResponse(data={"id": interview_id}, message="Sesi wawancara berhasil dihapus")
+    return ApiResponse(data={"id": interview_id}, message="Interview session deleted successfully")

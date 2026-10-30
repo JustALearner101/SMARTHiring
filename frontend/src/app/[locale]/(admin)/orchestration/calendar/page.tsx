@@ -1,11 +1,11 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import { CalendarMatrixEvent } from "@/types/orchestration";
-import { OperationalPolicy } from "@/types/master";
+import { InterviewerContact, OperationalPolicy } from "@/types/master";
 import { listCalendarEvents } from "@/services/orchestrationService";
-import { getOperationalPolicy } from "@/services/masterService";
+import { getOperationalPolicy, listContacts } from "@/services/masterService";
 import TimezoneMatrixHeader from "@/components/orchestration/calendar/TimezoneMatrixHeader";
 import OperationalPolicyBanner from "@/components/orchestration/calendar/OperationalPolicyBanner";
 import CalendarMatrixView from "@/components/orchestration/calendar/CalendarMatrixView";
@@ -14,6 +14,7 @@ import { Modal } from "@/components/ui/modal";
 import Button from "@/components/ui/button/Button";
 import { BoltIcon, CheckCircleIcon, ShootingStarIcon } from "@/icons";
 import { useRouter } from "@/i18n/navigation";
+import { getMondayOfDate } from "@/utils/calendarTimezone";
 
 interface SelectedSlotInfo {
   date: string;
@@ -27,42 +28,110 @@ export default function CalendarMatrixPage() {
   const router = useRouter();
   const [selectedTimezone, setSelectedTimezone] = useState<"WIB" | "WITA" | "WIT">("WIB");
   const [events, setEvents] = useState<CalendarMatrixEvent[]>([]);
+  const [interviewers, setInterviewers] = useState<InterviewerContact[]>([]);
+  const [selectedInterviewerId, setSelectedInterviewerId] = useState<string>("");
+  const [currentWeekStart, setCurrentWeekStart] = useState<Date>(() =>
+    getMondayOfDate(new Date())
+  );
   const [policy, setPolicy] = useState<OperationalPolicy | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+
   const [isTesterOpen, setIsTesterOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<SelectedSlotInfo | null>(null);
   const [isSlotActionOpen, setIsSlotActionOpen] = useState(false);
 
-  // Hydrate the matrix strictly from the backend calendar API
+  // Keep a ref to avoid stale closure in polling intervals
+  const isFetchingRef = useRef(false);
+
+  // Fetch calendar events
+  const loadCalendar = useCallback(async (isBackground = false) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
+    if (isBackground) {
+      setIsSyncing(true);
+    } else {
+      setIsLoading(true);
+    }
+
+    try {
+      const apiEvents = await listCalendarEvents();
+      setEvents(Array.isArray(apiEvents) ? apiEvents : []);
+      setLastSyncedAt(new Date());
+    } catch (error) {
+      console.error("Failed to fetch calendar events:", error);
+    } finally {
+      setIsLoading(false);
+      setIsSyncing(false);
+      isFetchingRef.current = false;
+    }
+  }, []);
+
+  // Fetch master contacts and operational policy once on mount
   useEffect(() => {
     let isCancelled = false;
 
-    const loadCalendar = async () => {
+    const loadMasterData = async () => {
       try {
-        const apiEvents = await listCalendarEvents();
+        const [contactsData, policyData] = await Promise.allSettled([
+          listContacts(),
+          getOperationalPolicy(),
+        ]);
+
         if (isCancelled) return;
-        setEvents(Array.isArray(apiEvents) ? apiEvents : []);
+
+        if (contactsData.status === "fulfilled" && Array.isArray(contactsData.value)) {
+          setInterviewers(contactsData.value);
+          if (contactsData.value.length > 0) {
+            setSelectedInterviewerId(contactsData.value[0].id);
+          }
+        }
+
+        if (policyData.status === "fulfilled" && policyData.value) {
+          setPolicy(policyData.value);
+        }
       } catch (error) {
-        console.error("Failed to fetch calendar events:", error);
+        console.error("Failed to load master metadata:", error);
       }
     };
 
-    const loadPolicy = async () => {
-      try {
-        const apiPolicy = await getOperationalPolicy();
-        if (isCancelled || !apiPolicy) return;
-        setPolicy(apiPolicy);
-      } catch (error) {
-        console.error("Failed to fetch operational policy:", error);
-      }
-    };
-
-    void loadCalendar();
-    void loadPolicy();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadMasterData();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadCalendar(false);
 
     return () => {
       isCancelled = true;
     };
-  }, []);
+  }, [loadCalendar]);
+
+  // Real-time synchronization: Smart Polling every 15s + Window Focus revalidation
+  useEffect(() => {
+    const POLL_INTERVAL_MS = 15000;
+
+    const intervalId = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        void loadCalendar(true);
+      }
+    }, POLL_INTERVAL_MS);
+
+    const handleVisibilityOrFocus = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        void loadCalendar(true);
+      }
+    };
+
+    window.addEventListener("focus", handleVisibilityOrFocus);
+    document.addEventListener("visibilitychange", handleVisibilityOrFocus);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener("focus", handleVisibilityOrFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
+    };
+  }, [loadCalendar]);
 
   // When an available slot is clicked in the grid, open the quick slot action dialog
   const handleSelectSlot = (
@@ -70,12 +139,15 @@ export default function CalendarMatrixPage() {
     time: string,
     interviewer?: { id: string; name: string; role: string }
   ) => {
+    const matched = interviewers.find(
+      (i) => i.id === (interviewer?.id || selectedInterviewerId)
+    );
     setSelectedSlot({
       date,
       time,
-      interviewerId: interviewer?.id || "int-001",
-      interviewerName: interviewer?.name || "Budi Santoso",
-      interviewerRole: interviewer?.role || "VP of Engineering",
+      interviewerId: interviewer?.id || matched?.id || selectedInterviewerId || "",
+      interviewerName: interviewer?.name || matched?.name || "Pewawancara",
+      interviewerRole: interviewer?.role || matched?.role || "Interviewer",
     });
     setIsSlotActionOpen(true);
   };
@@ -85,25 +157,35 @@ export default function CalendarMatrixPage() {
     const isoString = `${selectedSlot.date}T${selectedSlot.time}:00`;
     setIsSlotActionOpen(false);
     router.push(
-      `/orchestration/scheduling?slot_start=${encodeURIComponent(isoString)}&interviewer_id=${encodeURIComponent(selectedSlot.interviewerId)}&interviewer_name=${encodeURIComponent(selectedSlot.interviewerName)}`
+      `/orchestration/scheduling?slot_start=${encodeURIComponent(
+        isoString
+      )}&interviewer_id=${encodeURIComponent(
+        selectedSlot.interviewerId
+      )}&interviewer_name=${encodeURIComponent(selectedSlot.interviewerName)}`
     );
   };
 
   return (
     <div className="space-y-6">
       <PageBreadcrumb pageTitle="Calendar Matrix" />
-
-      {/* Operational Policy Banner */}
-      <OperationalPolicyBanner onOpenTester={() => setIsTesterOpen(true)} policy={policy} />
-
-      {/* Weekly Matrix View */}
+      {/* Dynamic & Real-time Weekly Matrix View */}
       <CalendarMatrixView
         events={events}
         selectedTimezone={selectedTimezone}
+        interviewers={interviewers}
+        selectedInterviewerId={selectedInterviewerId}
+        onSelectInterviewer={setSelectedInterviewerId}
+        currentWeekStart={currentWeekStart}
+        onChangeWeek={setCurrentWeekStart}
+        policy={policy}
+        isLoading={isLoading}
+        isSyncing={isSyncing}
+        onRefresh={() => void loadCalendar(true)}
+        lastSyncedAt={lastSyncedAt}
         onSelectSlot={handleSelectSlot}
       />
 
-      {/* Quick Slot Action Modal (Milestone 3: Two-way Action Matrix -> Scheduling) */}
+      {/* Quick Slot Action Modal (Cross-Page Orchestration) */}
       {selectedSlot && (
         <Modal
           isOpen={isSlotActionOpen}
@@ -119,33 +201,35 @@ export default function CalendarMatrixPage() {
                 Slot Kalender Tersedia
               </h3>
               <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                Aksi Cepat Jadwal Wawancara (Cross-Page Orchestration)
+                Quick Interview Actions (Cross-Page Orchestration)
               </p>
             </div>
           </div>
 
-          <div className="mt-4 space-y-3 rounded-xl border border-gray-200/80 bg-gray-50/60 p-4 dark:border-gray-800 dark:bg-gray-800/40 text-xs">
-            <div className="flex justify-between items-center">
-              <span className="text-gray-500 dark:text-gray-400">Interviewer:</span>
+          <div className="mt-4 space-y-3 rounded-xl border border-gray-200/80 bg-gray-50/60 p-4 text-xs dark:border-gray-800 dark:bg-gray-800/40">
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500 dark:text-gray-400">Pewawancara:</span>
               <span className="font-bold text-gray-900 dark:text-white">
                 {selectedSlot.interviewerName}
               </span>
             </div>
-            <div className="flex justify-between items-center">
+            <div className="flex items-center justify-between">
               <span className="text-gray-500 dark:text-gray-400">Posisi:</span>
               <span className="text-gray-700 dark:text-gray-300">
                 {selectedSlot.interviewerRole}
               </span>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-500 dark:text-gray-400">Waktu ({selectedTimezone}):</span>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500 dark:text-gray-400">
+                Waktu ({selectedTimezone}):
+              </span>
               <span className="font-mono font-bold text-brand-600 dark:text-brand-400">
                 {selectedSlot.date} pukul {selectedSlot.time} {selectedTimezone}
               </span>
             </div>
             <div className="flex items-center gap-1.5 pt-1 text-[11px] text-success-700 dark:text-success-400">
               <CheckCircleIcon />
-              <span>Tidak ada konflik agenda / aturan operasional terdeteksi.</span>
+              <span>Tidak ada konflik jadwal atau pelanggaran aturan operasional.</span>
             </div>
           </div>
 

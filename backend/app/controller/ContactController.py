@@ -23,7 +23,7 @@ async def list_interviewers(
 ) -> ApiResponse[list[InterviewerContactDTO]]:
     service = ContactService(db)
     contacts = await service.list_interviewers(department=department)
-    return ApiResponse(data=contacts, message="Berhasil mengambil daftar kontak pewawancara")
+    return ApiResponse(data=contacts, message="Interviewer contacts retrieved successfully")
 
 
 @router.post("", response_model=ApiResponse[InterviewerContactDTO], status_code=status.HTTP_201_CREATED)
@@ -34,7 +34,7 @@ async def create_interviewer(
 ) -> ApiResponse[InterviewerContactDTO]:
     service = ContactService(db)
     created = await service.create_interviewer(dto)
-    return ApiResponse(data=created, message="Kontak pewawancara berhasil ditambahkan")
+    return ApiResponse(data=created, message="Interviewer contact created successfully")
 
 
 @router.patch("/{user_id}", response_model=ApiResponse[InterviewerContactDTO])
@@ -47,8 +47,8 @@ async def update_interviewer(
     service = ContactService(db)
     updated = await service.update_interviewer(user_id, dto)
     if not updated:
-        raise NotFoundException("Kontak tidak ditemukan")
-    return ApiResponse(data=updated, message="Kontak pewawancara berhasil diperbarui")
+        raise NotFoundException("Contact not found")
+    return ApiResponse(data=updated, message="Interviewer contact updated successfully")
 
 
 @router.delete("/{user_id}", response_model=ApiResponse[dict[str, str]])
@@ -59,4 +59,4 @@ async def delete_interviewer(
 ) -> ApiResponse[dict[str, str]]:
     service = ContactService(db)
     await service.delete_interviewer(user_id, current_user=current_user)
-    return ApiResponse(data={"deleted_id": user_id}, message="Akun pewawancara berhasil dinonaktifkan")
+    return ApiResponse(data={"deleted_id": user_id}, message="Interviewer account deactivated successfully")

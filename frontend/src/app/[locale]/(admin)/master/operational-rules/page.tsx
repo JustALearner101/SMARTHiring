@@ -130,15 +130,15 @@ export default function OperationalRulesPage() {
       );
       setFormPolicy(null);
       setSaveSuccess(true);
-      showSuccess("Berhasil Disimpan", "Kebijakan operasional & limits AI Orchestrator berhasil diperbarui.");
+      showSuccess("Successfully Saved", "Operational policies and AI Orchestrator limits successfully updated.");
       void queryClient.invalidateQueries({ queryKey: ["operationalRules"] });
       setIsConfirmPolicyOpen(false);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (error) {
       console.error("Failed to update operational policy:", error);
       showError(
-        "Gagal Menyimpan",
-        error instanceof Error ? error.message : "Terjadi kesalahan saat memperbarui kebijakan operasional."
+        "Failed to Save",
+        error instanceof Error ? error.message : "An error occurred while updating operational policies."
       );
     } finally {
       setIsSaving(false);
@@ -148,7 +148,7 @@ export default function OperationalRulesPage() {
   // Add Holiday Handler
   const handleAddHoliday = async () => {
     if (!newHolidayDate || !newHolidayName.trim()) {
-      showError("Validasi Gagal", "Harap isi tanggal dan nama hari libur secara lengkap.");
+      showError("Validation Failed", "Please provide both the date and name of the holiday.");
       return;
     }
 
@@ -171,7 +171,7 @@ export default function OperationalRulesPage() {
           })
         );
       }
-      showSuccess("Hari Libur Ditambahkan", `Hari libur "${newHolidayName}" berhasil didaftarkan ke kalender.`);
+      showSuccess("Holiday Added", `Holiday "${newHolidayName}" successfully added to the calendar.`);
       void queryClient.invalidateQueries({ queryKey: ["operationalRules"] });
       setNewHolidayDate("");
       setNewHolidayName("");
@@ -180,8 +180,8 @@ export default function OperationalRulesPage() {
     } catch (error) {
       console.error("Failed to create holiday:", error);
       showError(
-        "Gagal Menambahkan",
-        error instanceof Error ? error.message : "Terjadi kesalahan saat menambahkan hari libur."
+        "Failed to Add",
+        error instanceof Error ? error.message : "An error occurred while adding the holiday."
       );
     } finally {
       setIsAddingHoliday(false);
@@ -210,12 +210,12 @@ export default function OperationalRulesPage() {
       );
       void queryClient.invalidateQueries({ queryKey: ["operationalRules"] });
       setDeleteTargetHoliday(null);
-      showSuccess("Hari Libur Dihapus", `Hari libur "${deletedName}" berhasil dihapus dari database.`);
+      showSuccess("Holiday Deleted", `Holiday "${deletedName}" successfully removed from the database.`);
     } catch (error) {
       console.error("Failed to delete holiday:", error);
       showError(
-        "Gagal Menghapus",
-        error instanceof Error ? error.message : "Terjadi kesalahan saat menghapus hari libur."
+        "Failed to Delete",
+        error instanceof Error ? error.message : "An error occurred while deleting the holiday."
       );
     } finally {
       setIsDeletingHoliday(false);
@@ -298,7 +298,7 @@ export default function OperationalRulesPage() {
 
               {/* Triage Limits */}
               <div className="grid grid-cols-2 gap-3">
-                <FormField label="Maximum Number of Triage Rounds" hint="LIMITS Pillar (Escalate to HR if > 3)">
+                <FormField label="Maximum Number of Triage Rounds">
                   <InputField
                     type="number"
                     min={1}
@@ -307,7 +307,7 @@ export default function OperationalRulesPage() {
                     onChange={(e) => setPolicy({ ...policy, max_negotiation_rounds: parseInt(e.target.value) || 3 })}
                   />
                 </FormField>
-                <FormField label="Buffer Time Between Sessions (Minutes)" hint="Rest time buffer">
+                <FormField label="Buffer Time Between Sessions (Minutes)">
                   <InputField
                     type="number"
                     min={0}
@@ -343,9 +343,9 @@ export default function OperationalRulesPage() {
                   className="w-full"
                   onClick={handleSavePolicy}
                   disabled={!canManageRules || isSaving}
-                  title={!canManageRules ? "Hanya HR atau Admin yang berwenang memperbarui aturan operasional." : undefined}
+                  title={!canManageRules ? "Only HR or Admin can update operational rules." : undefined}
                 >
-                  {isSaving ? "Menyimpan Perubahan..." : "Save Operational Rules"}
+                  {isSaving ? "Saving Changes..." : "Save Operational Rules"}
                 </Button>
               </div>
             </div>
@@ -370,7 +370,7 @@ export default function OperationalRulesPage() {
                 startIcon={<PlusIcon/>}
                 onClick={() => setIsAddHolidayOpen(true)}
                 disabled={!canManageRules}
-                title={!canManageRules ? "Hanya HR atau Admin yang berwenang menambahkan hari libur." : undefined}
+                title={!canManageRules ? "Only HR or Admin can add holidays." : undefined}
               >
                 Add Holiday
               </Button>
@@ -447,7 +447,6 @@ export default function OperationalRulesPage() {
 
             <div className="mt-4 flex items-center justify-between text-xs text-gray-400">
               <span>{holidays.length} holidays registered in AI calendar</span>
-              <span className="font-mono">API Contract: tblm_holiday</span>
             </div>
           </div>
         </div>
@@ -499,7 +498,7 @@ export default function OperationalRulesPage() {
               Cancel
             </Button>
             <Button variant="primary" onClick={handleAddHoliday} disabled={isAddingHoliday}>
-              {isAddingHoliday ? "Menambahkan..." : "Add to Calendar"}
+              {isAddingHoliday ? "Adding..." : "Add to Calendar"}
             </Button>
           </div>
         </div>

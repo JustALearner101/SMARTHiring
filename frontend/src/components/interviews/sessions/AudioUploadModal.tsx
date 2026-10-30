@@ -68,7 +68,7 @@ export default function AudioUploadModal({
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeSession, setActiveSession] = useState<InterviewSession | null>(null);
   const [progress, setProgress] = useState(15);
-  const [statusMessage, setStatusMessage] = useState("Mengunggah berkas rekaman...");
+  const [statusMessage, setStatusMessage] = useState("Uploading recording file...");
 
   // Derived selection state
   const selectedCandidateId = chosenCandidateId || defaultCandidate?.id || "1";
@@ -102,7 +102,7 @@ export default function AudioUploadModal({
     setIsProcessing(false);
     setActiveSession(null);
     setProgress(15);
-    setStatusMessage("Mengunggah berkas rekaman...");
+    setStatusMessage("Uploading recording file...");
     onClose();
   };
 
@@ -185,7 +185,7 @@ export default function AudioUploadModal({
 
     setIsProcessing(true);
     setProgress(15);
-    setStatusMessage("Mengunggah berkas rekaman audio...");
+    setStatusMessage("Uploading audio recording file...");
 
     try {
       const created = await onSubmit(newSession, selectedFile);
@@ -247,7 +247,7 @@ export default function AudioUploadModal({
           <p className="text-xs text-gray-500 dark:text-gray-400">
             {isProcessing
               ? "Asynchronous speech-to-text diarization & Copilot rubric analysis pipeline in progress."
-              : "Unggah rekaman wawancara. AI akan mentranskripsi dan meng-generate rubrik kompetensi otomatis per kandidat."}
+              : "Upload interview audio recording. AI will transcribe speech and automatically generate candidate-specific competency rubrics."}
           </p>
         </div>
       </div>
@@ -259,7 +259,7 @@ export default function AudioUploadModal({
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-1.5">
                 {!isComplete && <TimeIcon className="animate-spin text-brand-500" />}
-                {isComplete ? "Pemrosesan Berhasil Selesai" : "Memproses Berkas Rekaman..."}
+                {isComplete ? "Processing Successfully Completed" : "Processing Recording File..."}
               </span>
               <span className="text-sm font-mono font-bold text-brand-600 dark:text-brand-400">
                 {progress}%

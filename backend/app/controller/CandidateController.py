@@ -27,7 +27,7 @@ async def list_candidates(
 ) -> ApiResponse[PaginatedResponse[CandidateDTO]]:
     service = CandidateService(db)
     result = await service.list_candidates(query=query, status=status, params=params, current_user=current_user)
-    return ApiResponse(data=result, message="Berhasil mengambil data kandidat")
+    return ApiResponse(data=result, message="Candidates retrieved successfully")
 
 
 @router.get("/{candidate_id}", response_model=ApiResponse[CandidateDTO])
@@ -39,8 +39,8 @@ async def get_candidate(
     service = CandidateService(db)
     candidate = await service.get_candidate_by_id(candidate_id, current_user=current_user)
     if not candidate:
-        raise NotFoundException("Kandidat tidak ditemukan")
-    return ApiResponse(data=candidate, message="Berhasil mengambil detail kandidat")
+        raise NotFoundException("Candidate not found")
+    return ApiResponse(data=candidate, message="Candidate details retrieved successfully")
 
 
 @router.post("", response_model=ApiResponse[CandidateDTO], status_code=status.HTTP_201_CREATED)
@@ -51,7 +51,7 @@ async def create_candidate(
 ) -> ApiResponse[CandidateDTO]:
     service = CandidateService(db)
     created = await service.create_candidate(dto, current_user=current_user)
-    return ApiResponse(data=created, message="Kandidat berhasil ditambahkan")
+    return ApiResponse(data=created, message="Candidate created successfully")
 
 
 @router.patch("/{candidate_id}", response_model=ApiResponse[CandidateDTO])
@@ -64,8 +64,8 @@ async def update_candidate(
     service = CandidateService(db)
     updated = await service.update_candidate(candidate_id, dto, current_user=current_user)
     if not updated:
-        raise NotFoundException("Kandidat tidak ditemukan")
-    return ApiResponse(data=updated, message="Kandidat berhasil diperbarui")
+        raise NotFoundException("Candidate not found")
+    return ApiResponse(data=updated, message="Candidate updated successfully")
 
 
 @router.post("/{candidate_id}/reapply", response_model=ApiResponse[CandidateDTO], status_code=status.HTTP_201_CREATED)
@@ -77,7 +77,7 @@ async def reapply_candidate(
 ) -> ApiResponse[CandidateDTO]:
     service = CandidateService(db)
     created = await service.reapply_candidate(candidate_id, dto, current_user=current_user)
-    return ApiResponse(data=created, message="Siklus lamaran baru berhasil dibuat dengan status SCREENING")
+    return ApiResponse(data=created, message="New application cycle created successfully with SCREENING status")
 
 
 @router.delete("/{candidate_id}", response_model=ApiResponse[dict[str, str]])
@@ -88,6 +88,6 @@ async def delete_candidate(
 ) -> ApiResponse[dict[str, str]]:
     service = CandidateService(db)
     await service.delete_candidate(candidate_id, current_user=current_user)
-    return ApiResponse(data={"deleted_id": candidate_id}, message="Kandidat berhasil dihapus")
+    return ApiResponse(data={"deleted_id": candidate_id}, message="Candidate deleted successfully")
 
 

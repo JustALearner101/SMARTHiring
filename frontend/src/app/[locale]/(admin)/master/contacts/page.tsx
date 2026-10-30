@@ -18,6 +18,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { EyeCloseIcon, EyeIcon, PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
 import { masterService } from "@/services";
+import TablePagination from "@/components/common/TablePagination";
 import type { UserRole } from "@/types/auth";
 import { Department, InterviewerContact, Timezone } from "@/types/master";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -32,6 +33,8 @@ export default function ContactsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDept, setSelectedDept] = useState<string>("ALL");
   const [selectedTimezone, setSelectedTimezone] = useState<string>("ALL");
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
 
   // Modals
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -84,6 +87,12 @@ export default function ContactsPage() {
     });
   }, [contacts, searchQuery, selectedDept, selectedTimezone]);
 
+  const totalPages = Math.ceil(filteredContacts.length / pageSize) || 1;
+  const paginatedContacts = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredContacts.slice(start, start + pageSize);
+  }, [filteredContacts, currentPage, pageSize]);
+
   // Open Add Modal
   const handleOpenAdd = () => {
     setActiveContact(null);
@@ -135,24 +144,24 @@ export default function ContactsPage() {
       !formData.department.trim()
     ) {
       showError(
-        "Validasi Gagal",
-        "Mohon lengkapi nama, username login, email, nomor telepon, departemen, dan jabatan."
+        "Validation Failed",
+        "Please provide name, username, email, phone number, department, and job title."
       );
       return;
     }
 
     if (!activeContact && formData.password.trim().length < 6) {
       showError(
-        "Password Terlalu Pendek",
-        "Harap isi password akses sistem minimal 6 karakter agar pengguna dapat login."
+        "Password Too Short",
+        "Please provide a system password of at least 6 characters for user login."
       );
       return;
     }
 
     if (activeContact && formData.password.trim() !== "" && formData.password.trim().length < 6) {
       showError(
-        "Password Terlalu Pendek",
-        "Jika ingin mengganti password, masukkan minimal 6 karakter (atau kosongkan untuk mempertahankan password lama)."
+        "Password Too Short",
+        "To change the password, enter at least 6 characters (or leave blank to keep the current password)."
       );
       return;
     }
@@ -187,8 +196,8 @@ export default function ContactsPage() {
           ]
         );
         showSuccess(
-          "Berhasil Diperbarui",
-          `Data akun & profil "${formData.name}" (@${updated.username || formData.username}) berhasil diperbarui.`
+          "Successfully Updated",
+          `Account & profile for "${formData.name}" (@${updated.username || formData.username}) successfully updated.`
         );
       } else {
         const created = await masterService.createContact({
@@ -209,8 +218,8 @@ export default function ContactsPage() {
           (old: InterviewerContact[] | undefined) => [created, ...(old || [])]
         );
         showSuccess(
-          "Pengguna & Interviewer Ditambahkan",
-          `Akun "${formData.name}" (@${created.username || formData.username}) siap digunakan untuk login dengan role ${formData.system_role}.`
+          "User & Interviewer Added",
+          `Account "${formData.name}" (@${created.username || formData.username}) is ready for login with role ${formData.system_role}.`
         );
       }
       void queryClient.invalidateQueries({ queryKey: ["contacts"] });
@@ -219,10 +228,10 @@ export default function ContactsPage() {
     } catch (error) {
       console.error("Failed to save contact:", error);
       showError(
-        "Gagal Menyimpan",
+        "Failed to Save",
         error instanceof Error
           ? error.message
-          : "Terjadi kesalahan sistem saat menyimpan data akun interviewer."
+          : "System error occurred while saving interviewer account."
       );
     } finally {
       setIsSaving(false);
@@ -246,14 +255,14 @@ export default function ContactsPage() {
       setIsDeleteModalOpen(false);
       setActiveContact(null);
       showSuccess(
-        "Akun Dinonaktifkan",
-        `Akses login dan kontak "${deletedName}" telah dinonaktifkan dari sistem.`
+        "Account Deactivated",
+        `Login access and contact for "${deletedName}" have been deactivated.`
       );
     } catch (error) {
       console.error("Failed to deactivate contact:", error);
       showError(
-        "Gagal Menonaktifkan Akun",
-        error instanceof Error ? error.message : "Terjadi kesalahan saat menonaktifkan pengguna."
+        "Failed to Deactivate Account",
+        error instanceof Error ? error.message : "An error occurred while deactivating the user."
       );
     } finally {
       setIsSaving(false);
@@ -313,7 +322,7 @@ export default function ContactsPage() {
               Interviewer &amp; Internal System Users
             </h3>
             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-              Kelola direktori pewawancara, ketersediaan kalender AI Retriever, serta akun login sistem (Role, Username, &amp; Password).
+              Manage interviewer directory, calendar availability for AI Context Retriever, and system login accounts (Role, Username, &amp; Password).
             </p>
           </div>
           <Button
@@ -324,7 +333,7 @@ export default function ContactsPage() {
             disabled={!canManageContacts}
             title={
               !canManageContacts
-                ? "Hanya HR atau Admin yang berhak mendaftarkan interviewer baru."
+                ? "Only HR or Admin can register new interviewers."
                 : undefined
             }
           >
@@ -338,7 +347,10 @@ export default function ContactsPage() {
             <InputField
               placeholder="Search name, username, employee ID, email, or position..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
             />
           </div>
 
@@ -355,7 +367,10 @@ export default function ContactsPage() {
                 { value: "Operations", label: "Operations" },
               ]}
               value={selectedDept}
-              onChange={(e) => setSelectedDept(e.target.value)}
+              onChange={(e) => {
+                setSelectedDept(e.target.value);
+                setCurrentPage(1);
+              }}
             />
           </div>
 
@@ -368,14 +383,18 @@ export default function ContactsPage() {
                 { value: "WIT", label: "WIT (UTC+9)" },
               ]}
               value={selectedTimezone}
-              onChange={(e) => setSelectedTimezone(e.target.value)}
+              onChange={(e) => {
+                setSelectedTimezone(e.target.value);
+                setCurrentPage(1);
+              }}
             />
           </div>
         </div>
 
         {/* Contacts Table */}
-        <div className="mt-5 overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
-          <Table>
+        <div className="mt-5 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xs dark:border-gray-800 dark:bg-gray-900">
+          <div className="max-w-full overflow-x-auto">
+            <Table>
             <TableHeader className="bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-800">
               <TableRow>
                 <TableCell
@@ -430,7 +449,7 @@ export default function ContactsPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredContacts.map((item) => (
+                paginatedContacts.map((item) => (
                   <TableRow
                     key={item.id}
                     className="hover:bg-gray-50/70 dark:hover:bg-white/[0.02] transition-colors"
@@ -530,12 +549,20 @@ export default function ContactsPage() {
           </Table>
         </div>
 
-        {/* Footer Summary */}
-        <div className="mt-4 flex items-center justify-between text-xs text-gray-400">
-          <span>
-            Showing {filteredContacts.length} of {contacts.length} active system users
-          </span>
-          <span className="font-mono">API Contract: tblm_user (Argon2 + RBAC)</span>
+        {/* Table Pagination */}
+        <TablePagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={filteredContacts.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(newSize) => {
+            setPageSize(newSize);
+            setCurrentPage(1);
+          }}
+          pageSizeOptions={[10, 20, 50]}
+          isLoading={isLoading}
+        />
         </div>
       </div>
 
@@ -551,8 +578,8 @@ export default function ContactsPage() {
           </h3>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
             {activeContact
-              ? "Perbarui profil departemen, zona waktu, hak akses role sistem, atau reset password login pengguna."
-              : "Daftarkan Hiring Manager, Pewawancara, atau Staf HR/Admin baru beserta kredensial login sistem."}
+              ? "Update department profile, timezone, system role access, or reset login password."
+              : "Register a new Hiring Manager, Interviewer, or HR/Admin staff member with system credentials."}
           </p>
 
           <div className="mt-5 space-y-3.5">
@@ -750,8 +777,8 @@ export default function ContactsPage() {
         title={activeContact ? "Confirm Update Interviewer" : "Confirm Add Interviewer"}
         description={
           activeContact
-            ? "Apakah Anda yakin ingin memperbarui informasi profil dan hak akses login pengguna ini?"
-            : `Daftarkan akun "${formData.name}" (@${formData.username}) dengan role sistem ${formData.system_role}?`
+            ? "Are you sure you want to update this user's profile information and access role?"
+            : `Register account "${formData.name}" (@${formData.username}) with system role ${formData.system_role}?`
         }
         confirmText={activeContact ? "Yes, Save Changes" : "Yes, Register Account"}
         cancelText="Cancel"
@@ -765,7 +792,7 @@ export default function ContactsPage() {
         onConfirm={handleConfirmDelete}
         isLoading={isSaving}
         title="Confirm Deactivate User Account"
-        description={`Nonaktifkan kontak & akses login "${activeContact?.name}" (${activeContact?.role})? Riwayat wawancara dan jejak audit historis pengguna ini tetap terjaga.`}
+        description={`Deactivate contact and login access for "${activeContact?.name}" (${activeContact?.role})? Interview history and audit logs will remain preserved.`}
         confirmText="Yes, Deactivate"
         cancelText="Cancel"
         variant="danger"

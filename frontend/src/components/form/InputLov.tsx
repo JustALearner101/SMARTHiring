@@ -27,7 +27,7 @@ const InputLov: React.FC<InputLovProps> = ({
   id,
   options,
   value,
-  placeholder = "Pilih salah satu...",
+  placeholder = "Select an option...",
   searchPlaceholder = "Cari data...",
   disabled = false,
   error = false,
@@ -126,7 +126,7 @@ const InputLov: React.FC<InputLovProps> = ({
           <div className="max-h-60 overflow-y-auto p-1.5 custom-scrollbar">
             {filteredOptions.length === 0 ? (
               <div className="py-4 text-center text-xs text-gray-400">
-                Tidak ada data yang cocok
+                No matching data found
               </div>
             ) : (
               filteredOptions.map((opt) => {

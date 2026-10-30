@@ -25,8 +25,8 @@ async def save_hr_decision(
         current_user=current_user,
     )
     msg = (
-        "Rekomendasi evaluasi Pewawancara berhasil dikirimkan ke HR untuk tindak lanjut"
+        "Interviewer evaluation recommendation submitted to HR for followup"
         if saved.workflow_status == "PENDING_HR_FOLLOWUP"
-        else "Keputusan akhir HR berhasil difinalisasi secara permanen"
+        else "HR final decision permanently finalized"
     )
     return ApiResponse(data=saved, message=msg)

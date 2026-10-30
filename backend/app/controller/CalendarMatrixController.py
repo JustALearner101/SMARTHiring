@@ -18,4 +18,4 @@ async def list_calendar_events(
 ) -> ApiResponse[list[CalendarMatrixEventDTO]]:
     service = CalendarMatrixService(db)
     events = await service.list_calendar_events(user_id=user_id, start_iso=start, end_iso=end)
-    return ApiResponse(data=events, message="Berhasil mengambil event kalender")
+    return ApiResponse(data=events, message="Calendar events retrieved successfully")

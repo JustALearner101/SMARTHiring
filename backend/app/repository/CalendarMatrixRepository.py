@@ -139,7 +139,7 @@ class CalendarMatrixRepository(BaseRepository[CalendarEvent]):
         conflicts = (await self.session.execute(conflict_stmt)).scalars().all()
         if conflicts:
             raise ConflictException(
-                f"Slot waktu ({start_utc.isoformat()} - {end_utc.isoformat()}) berkonflik dengan jadwal lain."
+                f"Time slot ({start_utc.isoformat()} - {end_utc.isoformat()}) conflicts with another scheduled event."
             )
 
         new_event = CalendarEvent(

@@ -163,31 +163,31 @@ export default function EmailViewer({ email, onSendReply }: EmailViewerProps) {
             type="button"
             onClick={() =>
               handleQuickReply(
-                "Halo, saya menyetujui perubahan jadwal ke hari Kamis pukul 14:00 - 15:00 WIB. Sudah saya tandai di kalender saya."
+                "Hello, I agree to the schedule change to Thursday at 14:00 - 15:00 WIB. I have marked it on my calendar."
               )
             }
             className="rounded-lg border border-success-200 bg-success-50 px-2.5 py-1 text-xs font-medium text-success-700 hover:bg-success-100 dark:border-success-500/30 dark:bg-success-500/10 dark:text-success-300"
           >
-            Agree to Reschedule (Kamis 14:00 WIB)
+            Agree to Reschedule (Thursday 14:00 WIB)
           </button>
 
           <button
             type="button"
             onClick={() =>
               handleQuickReply(
-                "Jadwal wawancara pada hari Rabu pukul 10:00 WIB sudah terkonfirmasi. Saya akan bergabung tepat waktu."
+                "The interview schedule on Wednesday at 10:00 WIB is confirmed. I will join on time."
               )
             }
             className="rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700 hover:bg-brand-100 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300"
           >
-            Confirm Original Slot (Rabu 10:00 WIB)
+            Confirm Original Slot (Wednesday 10:00 WIB)
           </button>
 
           <button
             type="button"
             onClick={() =>
               handleQuickReply(
-                "Mohon maaf, pada waktu tersebut saya ada emergency deployment. Mohon koordinasikan ulang ke hari Jumat sore."
+                "Apologies, I have an emergency deployment at that time. Please coordinate for Friday afternoon instead."
               )
             }
             className="rounded-lg border border-warning-200 bg-warning-50 px-2.5 py-1 text-xs font-medium text-warning-700 hover:bg-warning-100 dark:border-warning-500/30 dark:bg-warning-500/10 dark:text-warning-300"

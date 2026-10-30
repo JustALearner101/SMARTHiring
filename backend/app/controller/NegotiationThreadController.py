@@ -21,7 +21,7 @@ async def list_threads(
 ) -> ApiResponse[PaginatedResponse[NegotiationThreadDTO]]:
     service = NegotiationThreadService(db)
     threads = await service.list_threads(status=status, params=params)
-    return ApiResponse(data=threads, message="Berhasil mengambil daftar negosiasi triage")
+    return ApiResponse(data=threads, message="Triage negotiation threads retrieved successfully")
 
 
 @router.get("/{thread_id}", response_model=ApiResponse[NegotiationThreadDTO])
@@ -32,8 +32,8 @@ async def get_thread(
     service = NegotiationThreadService(db)
     thread = await service.get_thread(thread_id)
     if not thread:
-        raise NotFoundException("Thread negosiasi tidak ditemukan")
-    return ApiResponse(data=thread, message="Berhasil mengambil detail thread negosiasi")
+        raise NotFoundException("Negotiation thread not found")
+    return ApiResponse(data=thread, message="Negotiation thread details retrieved successfully")
 
 
 @router.post("/{thread_id}/reply", response_model=ApiResponse[ThreadMessageDTO])
@@ -47,6 +47,6 @@ async def reply_thread_message(
     service = NegotiationThreadService(db)
     try:
         msg = await service.reply_thread_message(thread_id, content, sender_role=sender_role, channel=channel)
-        return ApiResponse(data=msg, message="Balasan pesan negosiasi berhasil dicatat")
+        return ApiResponse(data=msg, message="Negotiation reply message recorded successfully")
     except ValueError as e:
         raise NotFoundException(str(e)) from e

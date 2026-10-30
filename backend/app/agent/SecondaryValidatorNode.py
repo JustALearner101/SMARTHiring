@@ -11,7 +11,7 @@ class SecondaryValidatorNode:
         if not slot:
             return {
                 "secondary_validator_passed": True,
-                "validator_notes": "Tidak ada slot kalender yang perlu divalidasi.",
+                "validator_notes": "No calendar slot needs validation.",
             }
 
         start_utc_str = slot.get("start_utc", "")
@@ -46,9 +46,9 @@ class SecondaryValidatorNode:
             }
 
             notes = (
-                "Secondary Validator Alert: Usulan slot Jumat pukul 11:30 - 13:00 WIB ditolak karena bertabrakan "
-                "dengan batas waktu ibadah Sholat Jumat [rule-jumatan]. Slot secara otomatis disesuaikan ke pukul "
-                "14:00 WIB sesuai aturan kebijakan operasional perusahaan."
+                "Secondary Validator Alert: Proposed Friday slot at 11:30 - 13:00 WIB rejected because it overlaps "
+                "with Friday prayer blackout hours [rule-jumatan]. Slot automatically adjusted to "
+                "14:00 WIB in accordance with company operational policy."
             )
 
             return {
@@ -76,8 +76,8 @@ class SecondaryValidatorNode:
             }
 
             notes = (
-                "Secondary Validator Alert: Slot berada di luar jam operasional kerja (09:00 - 17:00 WIB) [rule-working-hours]. "
-                "Slot secara otomatis disesuaikan ke pukul 10:00 WIB."
+                "Secondary Validator Alert: Slot is outside standard working hours (09:00 - 17:00 WIB) [rule-working-hours]. "
+                "Slot automatically adjusted to 10:00 WIB."
             )
 
             return {
@@ -89,6 +89,6 @@ class SecondaryValidatorNode:
 
         return {
             "secondary_validator_passed": True,
-            "validator_notes": "Slot terverifikasi mematuhi jam operasional 09:00 - 17:00 WIB, bebas bentrok Sholat Jumat, dan memenuhi buffer aman 15 menit.",
+            "validator_notes": "Slot verified to comply with 09:00 - 17:00 WIB operational hours, free of Friday prayer conflicts, and meets the 15-minute buffer requirement.",
             "status": "PENDING_APPROVAL",
         }

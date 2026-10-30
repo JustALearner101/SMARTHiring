@@ -36,7 +36,7 @@ async def list_rubrics(
         for_interviewer_id=for_interviewer_id,
         candidate_id=candidate_id,
     )
-    return ApiResponse(data=rubrics, message="Berhasil mengambil daftar profil rubrik penilaian")
+    return ApiResponse(data=rubrics, message="Rubric profiles retrieved successfully")
 
 
 @router.post(
@@ -51,7 +51,7 @@ async def create_rubric_profile(
 ) -> ApiResponse[RubricProfileDTO]:
     service = RubricService(db)
     created = await service.create_rubric_profile(dto=dto, current_user=current_user)
-    return ApiResponse(data=created, message="Profil rubrik penilaian berhasil dibuat")
+    return ApiResponse(data=created, message="Rubric profile created successfully")
 
 
 @router.post(
@@ -76,7 +76,7 @@ async def delete_rubric_profile(
 ) -> ApiResponse[dict[str, str]]:
     service = RubricService(db)
     await service.delete_rubric_profile(profile_id=profile_id, current_user=current_user)
-    return ApiResponse(data={"id": profile_id}, message="Profil rubrik penilaian berhasil dihapus")
+    return ApiResponse(data={"id": profile_id}, message="Rubric profile deleted successfully")
 
 
 @router.post(
@@ -96,7 +96,7 @@ async def add_competency_to_rubric(
         dto=dto,
         current_user=current_user,
     )
-    return ApiResponse(data=created, message="Indikator kompetensi berhasil ditambahkan")
+    return ApiResponse(data=created, message="Competency indicator added successfully")
 
 
 @router.patch(
@@ -117,7 +117,7 @@ async def update_competency_in_rubric(
         dto=dto,
         current_user=current_user,
     )
-    return ApiResponse(data=updated, message="Indikator kompetensi berhasil diperbarui")
+    return ApiResponse(data=updated, message="Competency indicator updated successfully")
 
 
 @router.delete(
@@ -136,4 +136,4 @@ async def delete_competency_from_rubric(
         competency_id=competency_id,
         current_user=current_user,
     )
-    return ApiResponse(data={"id": competency_id}, message="Indikator kompetensi berhasil dihapus")
+    return ApiResponse(data={"id": competency_id}, message="Competency indicator deleted successfully")

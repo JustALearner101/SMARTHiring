@@ -142,7 +142,7 @@ function ReviewContent() {
           setSessionData(null);
           setAccessDeniedMessage(
             error.message ||
-              "Akses ditolak (403): Anda tidak memiliki izin untuk membuka sesi wawancara milik pewawancara lain."
+              "Access denied (403): You do not have permission to open an interview session belonging to another interviewer."
           );
         } else {
           console.error("Failed to fetch interview review data:", error);
@@ -280,13 +280,13 @@ function ReviewContent() {
         const resultingStatusLabel = saved.resulting_candidate_status || decision;
         if (saved.workflow_status === "PENDING_HR_FOLLOWUP") {
           showSuccess(
-            "Rekomendasi Evaluasi Diteruskan ke HR",
-            `Rekomendasi ${decision} untuk ${sessionData.candidate_name} terkunci dan dikirim ke HR untuk tindak lanjut final (status: ${resultingStatusLabel}).`
+            "Evaluation Recommendation Forwarded to HR",
+            `Recommendation ${decision} for ${sessionData.candidate_name} is locked and submitted to HR for final review (status: ${resultingStatusLabel}).`
           );
         } else {
           showSuccess(
-            "Keputusan Final HR Disimpan Permanen",
-            `Keputusan final ${decision} untuk ${sessionData.candidate_name} terkunci. Status aplikasi kandidat otomatis diperbarui ke ${resultingStatusLabel}.`
+            "HR Final Decision Permanently Saved",
+            `Final decision ${decision} for ${sessionData.candidate_name} is locked. Candidate application status automatically updated to ${resultingStatusLabel}.`
           );
         }
       } catch (error) {
@@ -294,8 +294,8 @@ function ReviewContent() {
         const msg =
           error instanceof Error
             ? error.message
-            : "Gagal menyimpan keputusan evaluasi ke server.";
-        showError("Gagal Menyimpan Keputusan", msg);
+            : "Failed to save evaluation decision to server.";
+        showError("Failed to Save Decision", msg);
       }
     },
     [queryClient, sessionData, showError, showSuccess]

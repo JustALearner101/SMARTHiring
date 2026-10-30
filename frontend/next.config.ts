@@ -11,8 +11,23 @@ if (fs.existsSync(rootEnvPath) && typeof process.loadEnvFile === "function") {
 
 const withNextIntl = createNextIntlPlugin();
 
+/**
+ * Route prefixes that are temporarily taken out of the app.
+ * Page files are intentionally kept in `src/app/[locale]/(admin)/...` so they
+ * can be re-enabled later by removing the prefix from this list.
+ */
+const DISABLED_ROUTE_PREFIXES = ["/simulator", "/audit/guardrail"];
+
 const nextConfig: NextConfig = {
   output: "standalone",
+  async redirects() {
+    return DISABLED_ROUTE_PREFIXES.flatMap((prefix) => [
+      { source: prefix, destination: "/", permanent: false },
+      { source: `${prefix}/:path*`, destination: "/", permanent: false },
+      { source: `/:locale(en)${prefix}`, destination: "/", permanent: false },
+      { source: `/:locale(en)${prefix}/:path*`, destination: "/", permanent: false },
+    ]);
+  },
   webpack(config) {
     config.module.rules.push({
       test: /\.svg$/,

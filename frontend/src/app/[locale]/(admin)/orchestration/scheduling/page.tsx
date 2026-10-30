@@ -16,6 +16,7 @@ import {
   ChatIcon,
   CheckCircleIcon,
   CloseIcon,
+  CloseLineIcon,
   EnvelopeIcon,
 } from "@/icons";
 import { Link } from "@/i18n/navigation";
@@ -61,7 +62,7 @@ function SchedulingContent() {
     const interName = interviewerName || "Budi Santoso";
 
     if (threadId) {
-      return `Triage dan jadwalkan ulang technical interview untuk ${candName} bersama ${interName} (Thread #${threadId})`;
+      return `Triage and reschedule technical interview for ${candName} with ${interName} (Thread #${threadId})`;
     }
 
     if (slotStart) {
@@ -76,10 +77,10 @@ function SchedulingContent() {
           minute: "2-digit",
           timeZone: "Asia/Jakarta",
         };
-        const formatted = new Intl.DateTimeFormat("id-ID", options).format(dt);
-        return `Jadwalkan technical interview untuk ${candName} bersama ${interName} pada ${formatted} WIB`;
+        const formatted = new Intl.DateTimeFormat("en-US", options).format(dt);
+        return `Schedule technical interview for ${candName} with ${interName} on ${formatted} WIB`;
       }
-      return `Jadwalkan technical interview untuk ${candName} bersama ${interName} pada ${slotStart}`;
+      return `Schedule technical interview for ${candName} with ${interName} on ${slotStart}`;
     }
 
     return "";
@@ -290,7 +291,7 @@ function SchedulingContent() {
     } catch (error) {
       console.error("Failed to execute scheduling command:", error);
       const errMsg =
-        error instanceof Error ? error.message : "Gagal mengeksekusi perintah orkestrasi.";
+        error instanceof Error ? error.message : "Failed to execute orchestration command.";
       showError("AI Orchestration Failed", errMsg);
       setIsProcessing(false);
       setStatus("IDLE");
@@ -342,7 +343,7 @@ function SchedulingContent() {
     } catch (error) {
       console.error("Failed to resolve disambiguation command:", error);
       const errMsg =
-        error instanceof Error ? error.message : "Gagal memproses klarifikasi kontak.";
+        error instanceof Error ? error.message : "Failed to process contact disambiguation.";
       showError("Disambiguation Failed", errMsg);
       setIsProcessing(false);
       setStatus("IDLE");
@@ -506,14 +507,14 @@ function SchedulingContent() {
         <div className="mb-4 rounded-xl border border-warning-200 bg-warning-50 p-3.5 dark:border-warning-800/60 dark:bg-warning-500/10">
           <div className="flex items-center gap-2.5">
             <div className="text-warning-600 dark:text-warning-400">
-              <BoltIcon className="h-4 w-4" />
+              <BoltIcon/>
             </div>
             <div className="text-xs text-start">
               <span className="font-bold text-warning-900 dark:text-warning-200">
-                Konteks Triage Thread #{threadId} Aktif:
+                Active Thread #{threadId} Triage Context:
               </span>{" "}
               <span className="text-warning-800 dark:text-warning-300">
-                Menangani eskalasi negosiasi untuk {targetCandidate?.name || "kandidat"}. Command telah disiapkan di bawah untuk menjadwalkan ulang.
+                Handling negotiation escalation for {targetCandidate?.name || "candidate"}. Command prepared below to reschedule.
               </span>
             </div>
           </div>
@@ -524,14 +525,14 @@ function SchedulingContent() {
         <div className="mb-4 rounded-xl border border-brand-200 bg-brand-50 p-3.5 dark:border-brand-800/60 dark:bg-brand-500/10">
           <div className="flex items-center gap-2.5">
             <div className="text-brand-600 dark:text-brand-400">
-              <BoltIcon className="h-4 w-4" />
+              <BoltIcon/>
             </div>
             <div className="text-xs text-start">
               <span className="font-bold text-brand-900 dark:text-brand-200">
-                Konteks Slot Calendar Matrix Aktif:
+                Active Calendar Matrix Slot Context:
               </span>{" "}
               <span className="text-brand-800 dark:text-brand-300">
-                Slot waktu telah dipilih dari Calendar Matrix. Klik &quot;AI Orchestration&quot; untuk memvalidasi dan memproses proposal jadwal.
+                Time slot selected from Calendar Matrix. Click &quot;AI Orchestration&quot; to validate and process proposed schedule.
               </span>
             </div>
           </div>
@@ -673,20 +674,7 @@ function SchedulingContent() {
                       >
                         <span>Triage Threads</span>
                       </Link>
-                      <Link
-                        href="/simulator/email"
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-brand-300 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-800 transition-colors hover:bg-brand-100 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300 shadow-2xs"
-                      >
-                        <EnvelopeIcon className="text-brand-600" />
-                        <span>Email Simulator</span>
-                      </Link>
-                      <Link
-                        href="/simulator/whatsapp"
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-success-300 bg-success-50 px-3 py-2 text-xs font-semibold text-success-800 transition-colors hover:bg-success-100 dark:border-success-500/30 dark:bg-success-500/10 dark:text-success-300 shadow-2xs"
-                      >
-                        <ChatIcon className="text-success-600" />
-                        <span>WhatsApp Simulator</span>
-                      </Link>
+                      {/* Simulator shortcuts hidden while the Simulator module is taken out (see next.config.ts) */}
                     </div>
                   </div>
                 </div>
@@ -721,7 +709,7 @@ function SchedulingContent() {
             {status === "REJECTED" && (
               <div className="rounded-2xl border border-gray-200 bg-gray-50 p-6 dark:border-gray-800 dark:bg-gray-800/40 text-center">
                 <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-error-50 text-error-500 dark:bg-error-500/10 mb-2">
-                  <CloseIcon />
+                  <CloseLineIcon/>
                 </div>
                 <h3 className="mt-2 text-sm font-semibold text-gray-800 dark:text-white">
                   Action Plan Rejected by HR

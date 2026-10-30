@@ -46,7 +46,7 @@ async def test_friday_prayer_blackout_blocked(mock_session, default_work_calenda
     assert result.is_available is False
     assert result.status == "BLOCKED_FRIDAY_PRAYER"
     assert result.rule_code == "[rule-jumatan]"
-    assert "Sholat Jumat" in result.message
+    assert "Friday prayer" in result.message
 
 
 async def test_friday_outside_prayer_allowed(mock_session, default_work_calendar):

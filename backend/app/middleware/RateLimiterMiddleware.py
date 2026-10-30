@@ -114,7 +114,7 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
                 },
                 content={
                     "success": False,
-                    "message": f"Terlalu banyak permintaan (Rate limit exceeded: maksimal {matched_rule.limit} per {matched_rule.window_seconds} detik). Silakan tunggu {retry_after} detik.",
+                    "message": f"Too many requests (Rate limit exceeded: maximum {matched_rule.limit} per {matched_rule.window_seconds} seconds). Please wait {retry_after} seconds.",
                     "data": {"retry_after_seconds": retry_after},
                 },
             )

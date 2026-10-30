@@ -91,7 +91,7 @@ export default function SlotConflictCheckerModal({
   onClose,
 }: SlotConflictCheckerModalProps) {
   const [contacts, setContacts] = useState<InterviewerContact[]>([]);
-  const [interviewerId, setInterviewerId] = useState("int-001");
+  const [interviewerId, setInterviewerId] = useState("");
   const [date, setDate] = useState("2026-10-30"); // Default Friday to test rule-jumatan
   const [time, setTime] = useState("12:00");
   const [duration, setDuration] = useState(60);
@@ -224,7 +224,7 @@ export default function SlotConflictCheckerModal({
 
           <div>
             <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-              Tanggal (YYYY-MM-DD):
+              Date (YYYY-MM-DD):
             </label>
             <input
               type="date"
@@ -236,7 +236,7 @@ export default function SlotConflictCheckerModal({
 
           <div>
             <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-              Jam Mulai (HH:mm):
+              Start Time (HH:mm):
             </label>
             <input
               type="time"
@@ -248,27 +248,27 @@ export default function SlotConflictCheckerModal({
 
           <div>
             <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-              Durasi Wawancara:
+              Interview Duration:
             </label>
             <select
               value={duration}
               onChange={(e) => setDuration(Number(e.target.value))}
               className="w-full rounded-xl border border-gray-300 bg-white p-2.5 text-xs text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-800 dark:text-white"
             >
-              <option value={30}>30 Menit</option>
-              <option value={45}>45 Menit</option>
-              <option value={60}>60 Menit (1 Jam)</option>
-              <option value={90}>90 Menit</option>
+              <option value={30}>30 Minutes</option>
+              <option value={45}>45 Minutes</option>
+              <option value={60}>60 Minutes (1 Hour)</option>
+              <option value={90}>90 Minutes</option>
             </select>
           </div>
         </div>
 
         <div className="flex justify-end gap-2 pt-2">
           <Button size="sm" variant="outline" onClick={onClose} type="button">
-            Tutup
+            Close
           </Button>
           <Button size="sm" type="submit">
-            Cek Validitas Slot Sekarang
+            Check Slot Validity Now
           </Button>
         </div>
       </form>
@@ -285,7 +285,7 @@ export default function SlotConflictCheckerModal({
             <div>
               <div className="flex items-center gap-2">
                 <h4 className={`text-xs font-bold ${TONE_TITLE[tone]}`}>
-                  {result.is_available ? "SLOT VALID & TERSEDIA" : "SLOT DITOLAK OLEH ATURAN OPERASIONAL"}
+                  {result.is_available ? "SLOT VALID & AVAILABLE" : "SLOT REJECTED BY OPERATIONAL RULES"}
                 </h4>
                 <span
                   className={`rounded px-1.5 py-0.2 font-mono text-[10px] font-bold shadow-xs ${TONE_BADGE[tone]}`}
@@ -304,13 +304,13 @@ export default function SlotConflictCheckerModal({
 
               {result.conflicting_event && (
                 <p className={`mt-1 text-[11px] font-semibold ${TONE_TEXT[tone]}`}>
-                  Bentrok dengan agenda: {result.conflicting_event}
+                  Conflicts with event: {result.conflicting_event}
                 </p>
               )}
 
               {result.suggested_alternatives && result.suggested_alternatives.length > 0 && (
                 <div className="mt-2.5 text-[11px] text-gray-600 dark:text-gray-400">
-                  <span className="font-semibold block">Saran Jam Alternatif dari AI:</span>
+                  <span className="font-semibold block">AI Suggested Alternative Times:</span>
                   <div className="mt-1 flex gap-1.5">
                     {result.suggested_alternatives.map((alt) => (
                       <button

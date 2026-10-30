@@ -104,7 +104,7 @@ async def get_current_user(
         if dev_user:
             return dev_user
 
-    raise UnauthorizedException("Autentikasi diperlukan. Sertakan header Authorization Bearer token.")
+    raise UnauthorizedException("Authentication required. Please include Authorization Bearer token header.")
 
 
 def require_roles(allowed_roles: list[str]):
@@ -113,7 +113,7 @@ def require_roles(allowed_roles: list[str]):
     async def role_checker(user: User = Depends(get_current_user)) -> User:
         if user.vrole not in allowed_roles:
             raise ForbiddenException(
-                f"Peran '{user.vrole}' tidak memiliki wewenang untuk mengeksekusi aksi ini. Diperlukan peran: {allowed_roles}"
+                f"Role '{user.vrole}' does not have permission to execute this action. Required roles: {allowed_roles}"
             )
         return user
 

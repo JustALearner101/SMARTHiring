@@ -3,6 +3,7 @@
  */
 export * as masterService from "./masterService";
 export * as orchestrationService from "./orchestrationService";
+export * as dashboardService from "./dashboardService";
 export * as simulatorService from "./simulatorService";
 export * as interviewService from "./interviewService";
 export * as auditService from "./auditService";

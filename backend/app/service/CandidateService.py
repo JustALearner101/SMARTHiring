@@ -141,10 +141,10 @@ class CandidateService:
     ) -> CandidateDTO:
         prev = await self.candidate_repo.get_by_id(candidate_id)
         if not prev:
-            raise NotFoundException("Kandidat tidak ditemukan")
+            raise NotFoundException("Candidate not found")
         if prev.vstatus != "REJECTED":
             raise BusinessRuleException(
-                f"Hanya kandidat berstatus REJECTED yang dapat diajukan ulang (status saat ini: {prev.vstatus})."
+                f"Only candidates with REJECTED status can be re-applied (current status: {prev.vstatus})."
             )
 
         target_position = (dto.applied_position or prev.vjob_position).strip()
@@ -160,7 +160,7 @@ class CandidateService:
         )
         if active_same_pos:
             raise ConflictException(
-                f"Siklus lamaran baru ({active_same_pos.vcandidate_code}) untuk posisi {target_position} sudah aktif."
+                f"A new application cycle ({active_same_pos.vcandidate_code}) for position {target_position} is already active."
             )
 
         max_cycle = (
@@ -172,7 +172,7 @@ class CandidateService:
         code = await self._generate_unique_code()
         reapply_note = (
             dto.notes
-            or f"Re-application (Cycle #{next_cycle}) dari lamaran sebelumnya {prev.vcandidate_code}."
+            or f"Re-application (Cycle #{next_cycle}) referencing previous application {prev.vcandidate_code}."
         )
 
         new_candidate = await self.candidate_repo.create(
@@ -203,8 +203,8 @@ class CandidateService:
             actor_type="HUMAN",
             title=f"New Application Cycle #{next_cycle} ({code})",
             description=(
-                f"Kandidat {prev.vname} mendaftar kembali untuk posisi {target_position} "
-                f"(siklus baru {code}, merujuk riwayat {prev.vcandidate_code})."
+                f"Candidate {prev.vname} re-applied for {target_position} "
+                f"(new cycle {code}, referencing {prev.vcandidate_code})."
             ),
             metadata={
                 "new_candidate_id": new_candidate.nid,
@@ -252,7 +252,7 @@ class CandidateService:
     ) -> None:
         candidate = await self.candidate_repo.get_by_id(candidate_id)
         if not candidate:
-            raise NotFoundException("Kandidat tidak ditemukan")
+            raise NotFoundException("Candidate not found")
 
         interview_count = (
             await self.session.execute(
@@ -272,7 +272,7 @@ class CandidateService:
 
         if interview_count or thread_count or recipient_count:
             raise ConflictException(
-                f"Kandidat {candidate.vname} ({candidate.vcandidate_code}) tidak dapat dihapus permanen karena telah memiliki riwayat penjadwalan/wawancara untuk integritas audit."
+                f"Candidate {candidate.vname} ({candidate.vcandidate_code}) cannot be permanently deleted because scheduling/interview history exists for audit integrity."
             )
 
         code = candidate.vcandidate_code
@@ -286,6 +286,6 @@ class CandidateService:
             actor=actor,
             actor_type="HUMAN",
             title=f"Candidate Deleted ({code})",
-            description=f"Data kandidat {name} ({code}) dihapus dari direktori master sebelum memiliki riwayat wawancara.",
+            description=f"Candidate {name} ({code}) deleted from master directory prior to any interview history.",
             metadata={"deleted_candidate_id": cand_nid, "candidate_code": code},
         )

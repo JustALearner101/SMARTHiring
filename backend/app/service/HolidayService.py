@@ -46,7 +46,7 @@ class HolidayService:
     async def delete_holiday(self, holiday_id: str) -> None:
         holiday = await self.holiday_repo.get_by_id(holiday_id)
         if not holiday:
-            raise NotFoundException("Hari libur tidak ditemukan")
+            raise NotFoundException("Holiday not found")
         await self.holiday_repo.delete(holiday)
 
     async def is_holiday(self, target_date: dt_date) -> Holiday | None:

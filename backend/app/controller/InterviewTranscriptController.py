@@ -20,7 +20,7 @@ async def get_interview_transcripts(
 ) -> ApiResponse[list[TranscriptSegmentDTO]]:
     service = InterviewTranscriptService(db)
     transcripts = await service.get_transcripts(interview_id, current_user=current_user)
-    return ApiResponse(data=transcripts, message="Berhasil mengambil transkrip wawancara")
+    return ApiResponse(data=transcripts, message="Interview transcripts retrieved successfully")
 
 
 @router.post("/{interview_id}/swap-speakers", response_model=ApiResponse[InterviewSessionDTO])
@@ -31,7 +31,7 @@ async def swap_interview_speakers(
 ) -> ApiResponse[InterviewSessionDTO]:
     service = InterviewTranscriptService(db)
     updated_session = await service.swap_session_speakers(interview_id, current_user=current_user)
-    return ApiResponse(data=updated_session, message="Peran pembicara berhasil ditukar dan di-evaluasi ulang")
+    return ApiResponse(data=updated_session, message="Speaker roles successfully swapped and re-evaluated")
 
 
 @router.post("/{interview_id}/re-evaluate", response_model=ApiResponse[InterviewSessionDTO])
@@ -42,4 +42,4 @@ async def re_evaluate_interview_session(
 ) -> ApiResponse[InterviewSessionDTO]:
     service = InterviewTranscriptService(db)
     updated_session = await service.re_evaluate_session(interview_id, current_user=current_user)
-    return ApiResponse(data=updated_session, message="Sesi wawancara berhasil dievaluasi ulang dari transkrip")
+    return ApiResponse(data=updated_session, message="Interview session successfully re-evaluated from transcript")

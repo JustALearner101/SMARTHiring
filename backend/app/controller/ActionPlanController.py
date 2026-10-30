@@ -23,8 +23,8 @@ async def get_current_plan(
     service = ActionPlanService(db)
     plan = await service.get_current_plan()
     if not plan:
-        raise NotFoundException("Belum ada rencana aksi aktif")
-    return ApiResponse(data=plan, message="Berhasil mengambil rencana aksi aktif")
+        raise NotFoundException("No active action plan available")
+    return ApiResponse(data=plan, message="Active action plan retrieved successfully")
 
 
 @router.post("/{plan_id}/approve", response_model=ApiResponse[ActionPlanDTO])
@@ -37,7 +37,7 @@ async def approve_plan(
     service = ActionPlanService(db)
     try:
         plan = await service.approve_plan(plan_id, request)
-        return ApiResponse(data=plan, message="Rencana aksi disetujui oleh HR, jendela undo 60 detik diaktifkan")
+        return ApiResponse(data=plan, message="Action plan approved by HR, 60-second undo window activated")
     except ValueError as e:
         raise NotFoundException(str(e)) from e
 
@@ -52,7 +52,7 @@ async def undo_plan(
     service = ActionPlanService(db)
     try:
         plan = await service.undo_plan(plan_id, request)
-        return ApiResponse(data=plan, message="Aksi berhasil dibatalkan oleh HR dalam batas jendela undo")
+        return ApiResponse(data=plan, message="Action successfully undone by HR within undo window")
     except ValueError as e:
         raise NotFoundException(str(e)) from e
 

@@ -101,12 +101,17 @@ async def test_interview_file_upload_and_evidence_pipeline(test_session: AsyncSe
 
 @pytest.mark.asyncio
 async def test_hr_decision_recording_api(client: AsyncClient, test_session: AsyncSession):
-    # Upload interview first to establish database records
+    from app.model.UserModel import User
+    hr_user = (await test_session.execute(select(User).where(User.vrole == "HR", User.vstatus == "ACTIVE"))).scalars().first()
+    hr_id_str = str(hr_user.nid) if hr_user else None
+
+    # Upload interview first to establish database records (assigned to HR directly)
     upload_res = await client.post(
         "/api/v1/interviews/sessions/upload",
         json={
             "candidate_id": "1",
             "profile_id": "1",
+            "interviewer_id": hr_id_str,
             "consent_status": "GRANTED",
             "audio_url": "https://storage.smarthiring.ai/interviews/sample_test.mp3",
             "audio_duration": "45:20",

@@ -16,4 +16,4 @@ async def list_simulated_emails(
 ) -> ApiResponse[list[SimulatedEmailDTO]]:
     service = SimulatorEmailService(db)
     emails = await service.list_emails(folder=folder)
-    return ApiResponse(data=emails, message="Berhasil mengambil email simulator")
+    return ApiResponse(data=emails, message="Simulated emails retrieved successfully")

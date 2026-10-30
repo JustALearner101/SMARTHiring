@@ -24,7 +24,7 @@ class GuardrailNode:
     def scan_text(cls, text: str) -> tuple[bool, str]:
         clean_text = text.strip().lower()
         if not clean_text:
-            return True, "Input kosong atau aman."
+            return True, "Empty input or safe."
 
         for pattern in COMPILED_PATTERNS:
             if pattern.search(clean_text):
@@ -38,7 +38,7 @@ class GuardrailNode:
         if any(kw in clean_text for kw in suspicious_keywords):
             return False, "Guardrail Alert: High-risk text patterns detected and blocked."
 
-        return True, "Instructions verified to be safe from prompt injection."
+        return True, "Instruction verified safe: No prompt injection detected."
 
     @classmethod
     async def run(cls, state: OrchestratorAgentState) -> dict[str, Any]:
