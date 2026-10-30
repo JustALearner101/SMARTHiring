@@ -52,7 +52,7 @@ Untuk menjamin konsistensi constraint database lintas database engine, `Base.met
 | [`FollowupModel.py`](file:///D:/Project/Heketon/backend/app/model/FollowupModel.py) | `tblt_followup_plan`, `tblt_action_recipient` | Rencana aksi interview yang dihasilkan AI dengan status approval dan token undo. |
 | [`InterviewModel.py`](file:///D:/Project/Heketon/backend/app/model/InterviewModel.py) | `tblt_interview`, `tblt_source_file` | Sesi wawancara, persetujuan consent GDPR/PDP kandidat, dan URL rekaman audio. |
 | [`JobModel.py`](file:///D:/Project/Heketon/backend/app/model/JobModel.py) | `tblt_job`, `tblt_transcript_segment` | Pipeline ASR / Speech-to-Text dan segmen transkripsi dengan confidence score. |
-| [`RubricModel.py`](file:///D:/Project/Heketon/backend/app/model/RubricModel.py) | `tblm_profile`, `tblm_competency` | Profil evaluasi posisi kerja dan rubrik bobot kompetensi. |
+| [`RubricModel.py`](file:///D:/Project/Heketon/backend/app/model/RubricModel.py) | `tblm_profile`, `tblm_competency` | Profil evaluasi rubrik berbasis per kandidat (`nid_candidate` FK to `tblm_candidate.nid`) dan indikator kompetensi. |
 | [`SummaryModel.py`](file:///D:/Project/Heketon/backend/app/model/SummaryModel.py) | `tblt_summary_point`, `tblt_summary_evidence`, `tblt_hr_decision`, `tblt_flag` | Poin ringkasan kompetensi dengan kutipan verbatim bukti transkrip dan keputusan mutlak HR. |
 | [`AuditModel.py`](file:///D:/Project/Heketon/backend/app/model/AuditModel.py) | `tblt_audit_log`, `tblt_system_log` | Jejak audit SHA-256 hash-chained yang bersifat tamper-evident. |
 
@@ -83,7 +83,7 @@ uv run alembic downgrade -1
 ```
 
 > [!NOTE]
-> Versi migrasi skema saat ini adalah `06784f3e4d33` (`06784f3e4d33_add_orchestration_and_extended_model_.py`).
+> Versi migrasi skema saat ini adalah `00676c75559c` (`00676c75559c_add_candidate_to_profile.py`), yang menambahkan relasi per kandidat `nid_candidate` ke tabel `tblm_profile`.
 
 ---
 
@@ -101,4 +101,18 @@ Mengisi data awal untuk kebutuhan demo dan pengujian lokal (interviewer Budi San
 ```bash
 cd backend
 uv run python -m scripts.seed
+```
+
+### 5.3. Pencabutan & Pembersihan Data (`scripts/unseed.py`)
+Mencabut / membersihkan seluruh data development dan transaksi dari database PostgreSQL:
+```bash
+cd backend
+# 1. Full Purge: Bersihkan seluruh tabel aplikasi
+uv run python -m scripts.unseed
+
+# 2. Safe Purge: Bersihkan data demo transaksi, pertahankan akun hr.admin dan work calendar
+uv run python -m scripts.unseed --keep-admin
+
+# 3. Dry Run: Tampilkan jumlah baris tiap tabel tanpa menghapus
+uv run python -m scripts.unseed --dry-run
 ```

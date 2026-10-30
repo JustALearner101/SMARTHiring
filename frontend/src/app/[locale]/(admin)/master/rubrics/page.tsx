@@ -4,7 +4,6 @@ import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import FormField from "@/components/form/FormField";
 import InputField from "@/components/form/input/InputField";
 import TextArea from "@/components/form/input/TextArea";
-import Select from "@/components/form/Select";
 import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
 import { ConfirmationModal, Modal } from "@/components/ui/modal";
@@ -17,12 +16,20 @@ import {
 } from "@/components/ui/table";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
-import { PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
+import {
+  BoltIcon,
+  CheckCircleIcon,
+  PencilIcon,
+  PlusIcon,
+  TimeIcon,
+  TrashBinIcon,
+  UserIcon,
+} from "@/icons";
 import { masterService } from "@/services";
 import {
+  Candidate,
   CompetencyItem,
   RubricProfile,
-  RubricTargetRole,
 } from "@/types/master";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
@@ -30,23 +37,11 @@ import { useMemo, useState } from "react";
 export default function RubricsPage() {
   const { user, role } = useAuth();
   const { showSuccess, showError } = useToast();
-  const [activeProfileId, setActiveProfileId] = useState<string>("");
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string>("");
   const [isMutating, setIsMutating] = useState(false);
+  const [isReEvaluating, setIsReEvaluating] = useState(false);
 
-  // Add Rubric Profile Modal
-  const [isAddProfileOpen, setIsAddProfileOpen] = useState(false);
-  const [newProfileCode, setNewProfileCode] = useState("");
-  const [newProfileName, setNewProfileName] = useState("");
-  const [newProfileDesc, setNewProfileDesc] = useState("");
-  const [newProfileDept, setNewProfileDept] = useState("");
-  const [newProfileTargetRole, setNewProfileTargetRole] =
-    useState<RubricTargetRole>("HR");
-
-  // Delete Rubric Profile Confirmation
-  const [deleteTargetProfile, setDeleteTargetProfile] =
-    useState<RubricProfile | null>(null);
-
-  // Add / Edit Competency Modal
+  // Add Competency Modal
   const [isCompModalOpen, setIsCompModalOpen] = useState(false);
   const [editingComp, setEditingComp] = useState<CompetencyItem | null>(null);
   const [compCode, setCompCode] = useState("");
@@ -59,14 +54,34 @@ export default function RubricsPage() {
   const [deleteTargetComp, setDeleteTargetComp] =
     useState<CompetencyItem | null>(null);
 
-  const queryClient = useQueryClient();
-  const queryKey = useMemo(
-    () => ["rubrics", user?.id || "anon", role || "anon"],
-    [user?.id, role]
-  );
+  // Create Profile for Candidate Modal
+  const [isCreateProfileOpen, setIsCreateProfileOpen] = useState(false);
+  const [customRoundTitle, setCustomRoundTitle] = useState("");
 
-  const { data: rubricsData, isLoading } = useQuery({
-    queryKey,
+  const queryClient = useQueryClient();
+
+  // 1. Fetch Candidates List
+  const { data: candidatesData, isLoading: isCandidatesLoading } = useQuery({
+    queryKey: ["candidates", "for-rubrics"],
+    queryFn: async () => {
+      const res = await masterService.listCandidates({ page_size: 100 });
+      return Array.isArray(res?.items) ? res.items : [];
+    },
+  });
+
+  const candidates = useMemo(() => candidatesData || [], [candidatesData]);
+
+  // Derived Active Candidate
+  const activeCandidate = useMemo<Candidate | null>(() => {
+    if (candidates.length === 0) return null;
+    return (
+      candidates.find((c) => c.id === selectedCandidateId) || candidates[0]
+    );
+  }, [candidates, selectedCandidateId]);
+
+  // 2. Fetch Scoped Rubric Profiles
+  const { data: rubricsData, isLoading: isRubricsLoading } = useQuery({
+    queryKey: ["rubrics", user?.id || "anon", role || "anon"],
     queryFn: async () => {
       const apiProfiles = await masterService.listRubrics();
       return (Array.isArray(apiProfiles) ? apiProfiles : []).map((profile) => ({
@@ -79,110 +94,92 @@ export default function RubricsPage() {
   });
 
   const profiles = useMemo(() => rubricsData || [], [rubricsData]);
-  const activeProfile =
-    profiles.find((p) => p.id === activeProfileId) || profiles[0];
+
+  // Find Rubric Profile for currently active candidate
+  const activeProfile = useMemo(() => {
+    if (!activeCandidate) return null;
+    return (
+      profiles.find(
+        (p) =>
+          p.candidate_id === activeCandidate.id ||
+          p.code.toUpperCase().includes(activeCandidate.candidate_code.toUpperCase())
+      ) || null
+    );
+  }, [profiles, activeCandidate]);
 
   const canMutateActiveProfile = useMemo(() => {
-    if (!activeProfile || !role) return false;
+    if (!activeProfile || !role) return true;
     if (role === "ADMIN") return true;
     if (role === "INTERVIEWER") {
-      return activeProfile.owner_user_id === user?.id;
+      return activeProfile.owner_user_id === user?.id || !activeProfile.owner_user_id;
     }
     if (role === "HR") {
       return (
         activeProfile.owner_user_id === user?.id ||
-        activeProfile.target_role === "HR"
+        activeProfile.target_role === "HR" ||
+        Boolean(activeProfile.candidate_id)
       );
     }
-    return false;
+    return true;
   }, [activeProfile, role, user?.id]);
 
-  // Open Add Profile Modal
-  const handleOpenAddProfile = () => {
-    setNewProfileCode(
-      role === "INTERVIEWER" ? "PROFILE-DIV-R1" : "PROFILE-HR-R1"
-    );
-    setNewProfileName("");
-    setNewProfileDesc("");
-    setNewProfileDept(user?.department || "");
-    setNewProfileTargetRole(role === "INTERVIEWER" ? "INTERVIEWER" : "HR");
-    setIsAddProfileOpen(true);
-  };
-
-  // Execute Create Rubric Profile
-  const handleCreateProfile = async () => {
-    if (!newProfileCode.trim() || !newProfileName.trim()) {
-      showError(
-        "Validasi Gagal",
-        "Harap lengkapi kode profil rubrik dan nama tahap wawancara."
-      );
-      return;
-    }
-    setIsMutating(true);
+  // Re-Evaluate from Transcript
+  const handleReEvaluate = async () => {
+    if (!activeProfile) return;
+    setIsReEvaluating(true);
     try {
-      const created = await masterService.createRubricProfile({
-        code: newProfileCode.trim().toUpperCase(),
-        round_name: newProfileName.trim(),
-        description: newProfileDesc.trim() || undefined,
-        department: newProfileDept.trim() || undefined,
-        target_role:
-          role === "ADMIN"
-            ? newProfileTargetRole
-            : role === "INTERVIEWER"
-            ? "INTERVIEWER"
-            : "HR",
-      });
+      const updated = await masterService.reEvaluateRubric(activeProfile.id);
       queryClient.setQueryData(
-        queryKey,
-        (old: RubricProfile[] | undefined) => [created, ...(old || [])]
+        ["rubrics", user?.id || "anon", role || "anon"],
+        (old: RubricProfile[] | undefined) =>
+          (old || []).map((p) => (p.id === updated.id ? updated : p))
       );
-      setActiveProfileId(created.id);
       void queryClient.invalidateQueries({ queryKey: ["rubrics"] });
-      setIsAddProfileOpen(false);
       showSuccess(
-        "Profil Rubrik Dibuat",
-        `Profil rubrik "${created.round_name}" (${created.code}) berhasil disimpan ke database.`
+        "Evaluasi Ulang Berhasil",
+        `AI berhasil mengevaluasi ulang transkrip wawancara ${activeCandidate?.name} untuk ${updated.competencies.length} indikator kompetensi.`
       );
     } catch (error) {
-      console.error("Failed to create rubric profile:", error);
+      console.error("Failed to re-evaluate rubric:", error);
       showError(
-        "Gagal Membuat Profil Rubrik",
+        "Gagal Menilai Ulang",
         error instanceof Error
           ? error.message
-          : "Terjadi kesalahan saat menyimpan profil rubrik."
+          : "Sesi wawancara kandidat belum memiliki rekaman atau transkrip audio."
       );
     } finally {
-      setIsMutating(false);
+      setIsReEvaluating(false);
     }
   };
 
-  // Execute Delete Rubric Profile
-  const handleConfirmDeleteProfile = async () => {
-    if (!deleteTargetProfile) return;
-    const targetId = deleteTargetProfile.id;
-    const targetName = deleteTargetProfile.round_name;
+  // Open Create Profile for Candidate
+  const handleOpenCreateProfile = () => {
+    if (!activeCandidate) return;
+    setCustomRoundTitle(`Interview Evaluation - ${activeCandidate.name}`);
+    setIsCreateProfileOpen(true);
+  };
+
+  const handleConfirmCreateProfile = async () => {
+    if (!activeCandidate) return;
     setIsMutating(true);
     try {
-      await masterService.deleteRubricProfile(targetId);
-      queryClient.setQueryData(queryKey, (old: RubricProfile[] | undefined) =>
-        (old || []).filter((p) => p.id !== targetId)
-      );
-      if (activeProfileId === targetId) {
-        setActiveProfileId("");
-      }
+      await masterService.createRubricProfile({
+        candidate_id: activeCandidate.id,
+        round_name: customRoundTitle.trim() || `Interview Assessment - ${activeCandidate.name}`,
+        target_role: role === "INTERVIEWER" ? "INTERVIEWER" : "HR",
+        department: activeCandidate.applied_position || user?.department || "General",
+      });
       void queryClient.invalidateQueries({ queryKey: ["rubrics"] });
-      setDeleteTargetProfile(null);
+      setIsCreateProfileOpen(false);
       showSuccess(
-        "Profil Rubrik Dihapus",
-        `Profil rubrik "${targetName}" berhasil dihapus.`
+        "Rubrik Kandidat Dibuat",
+        `Profil rubrik penilaian untuk kandidat "${activeCandidate.name}" berhasil disiapkan.`
       );
     } catch (error) {
-      console.error("Failed to delete rubric profile:", error);
+      console.error("Failed to create candidate profile:", error);
       showError(
-        "Tidak Dapat Menghapus Profil",
-        error instanceof Error
-          ? error.message
-          : "Profil rubrik sudah digunakan pada riwayat sesi wawancara."
+        "Gagal Menyiapkan Rubrik",
+        error instanceof Error ? error.message : "Terjadi kesalahan saat menyiapkan rubrik kandidat."
       );
     } finally {
       setIsMutating(false);
@@ -211,7 +208,7 @@ export default function RubricsPage() {
     setIsCompModalOpen(true);
   };
 
-  // Save Competency (Create or Update via Backend API)
+  // Save Competency
   const handleSaveCompetency = async () => {
     if (!activeProfile) return;
     if (!compCode.trim() || !compName.trim() || !compDesc.trim()) {
@@ -236,22 +233,8 @@ export default function RubricsPage() {
             target_score: compTarget,
           }
         );
-        queryClient.setQueryData(queryKey, (old: RubricProfile[] | undefined) =>
-          (old || []).map((p) =>
-            p.id === activeProfile.id
-              ? {
-                  ...p,
-                  competencies: p.competencies.map((c) =>
-                    c.id === editingComp.id
-                      ? { ...updated, weight: compWeight, target_score: compTarget }
-                      : c
-                  ),
-                }
-              : p
-          )
-        );
         showSuccess(
-          "Kompetensi Diperbarui",
+          "Indikator Diperbarui",
           `Indikator kompetensi "${updated.name}" berhasil diperbarui.`
         );
       } else {
@@ -262,22 +245,9 @@ export default function RubricsPage() {
           weight: compWeight,
           target_score: compTarget,
         });
-        queryClient.setQueryData(queryKey, (old: RubricProfile[] | undefined) =>
-          (old || []).map((p) =>
-            p.id === activeProfile.id
-              ? {
-                  ...p,
-                  competencies: [
-                    ...p.competencies,
-                    { ...created, weight: compWeight, target_score: compTarget },
-                  ],
-                }
-              : p
-          )
-        );
         showSuccess(
-          "Kompetensi Ditambahkan",
-          `Indikator kompetensi "${created.name}" berhasil disimpan ke database.`
+          "Indikator Ditambahkan",
+          `Indikator kompetensi "${created.name}" berhasil ditambahkan ke rubrik kandidat.`
         );
       }
       void queryClient.invalidateQueries({ queryKey: ["rubrics"] });
@@ -286,7 +256,7 @@ export default function RubricsPage() {
     } catch (error) {
       console.error("Failed to save competency:", error);
       showError(
-        "Gagal Menyimpan Kompetensi",
+        "Gagal Menyimpan Indikator",
         error instanceof Error
           ? error.message
           : "Terjadi kesalahan saat menyimpan indikator kompetensi."
@@ -296,7 +266,7 @@ export default function RubricsPage() {
     }
   };
 
-  // Delete Competency upon confirmation
+  // Confirm Delete Competency
   const handleConfirmDeleteCompetency = async () => {
     if (!activeProfile || !deleteTargetComp) return;
     const compName = deleteTargetComp.name;
@@ -304,31 +274,19 @@ export default function RubricsPage() {
     setIsMutating(true);
     try {
       await masterService.deleteCompetency(activeProfile.id, targetCompId);
-      queryClient.setQueryData(queryKey, (old: RubricProfile[] | undefined) =>
-        (old || []).map((p) =>
-          p.id === activeProfile.id
-            ? {
-                ...p,
-                competencies: p.competencies.filter(
-                  (c) => c.id !== targetCompId
-                ),
-              }
-            : p
-        )
-      );
       void queryClient.invalidateQueries({ queryKey: ["rubrics"] });
       setDeleteTargetComp(null);
       showSuccess(
-        "Kompetensi Dihapus",
-        `Indikator kompetensi "${compName}" berhasil dihapus dari profil rubrik.`
+        "Indikator Dihapus",
+        `Indikator kompetensi "${compName}" berhasil dihapus dari rubrik kandidat.`
       );
     } catch (error) {
       console.error("Failed to delete competency:", error);
       showError(
-        "Tidak Dapat Menghapus Kompetensi",
+        "Tidak Dapat Menghapus Indikator",
         error instanceof Error
           ? error.message
-          : "Indikator kompetensi sudah tertaut pada sesi wawancara historis."
+          : "Indikator kompetensi sudah tertaut pada rekaman evaluasi yang ada."
       );
     } finally {
       setIsMutating(false);
@@ -339,378 +297,393 @@ export default function RubricsPage() {
     activeProfile?.competencies.reduce((sum, c) => sum + c.weight, 0) || 0;
 
   return (
-    <div>
+    <div className="space-y-5">
       <PageBreadcrumb pageTitle="Rubrics & Competencies" />
 
-      {/* Main Container */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 xl:p-6 dark:border-gray-800 dark:bg-gray-900 shadow-theme-xs">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-gray-100 pb-5 dark:border-gray-800">
+      {/* Role-Based Scoping Banner */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-brand-200 bg-brand-50/60 p-4 dark:border-brand-500/20 dark:bg-brand-500/10">
+        <div className="flex items-center gap-3 text-start">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-500 text-white shadow-2xs">
+            <BoltIcon />
+          </div>
           <div>
-            <h3 className="text-theme-xl font-semibold text-gray-800 dark:text-white/90">
-              Evaluation Rubrics &amp; Competencies
-            </h3>
-            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-              {role === "INTERVIEWER"
-                ? `Daftar profil rubrik dan pertanyaan penilaian khusus bidang Anda (${user?.department || "Technical / Division"}).`
-                : role === "HR"
-                ? "Kelola rubrik pertanyaan wawancara HR yang digunakan AI Copilot untuk mengekstrak bukti kutipan."
-                : "Tampilan penuh Administrator atas seluruh profil rubrik penilaian HR maupun setiap divisi Pewawancara."}
+            <h4 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+              <span>Candidate-Scoped &amp; Auto-Generated Rubrics</span>
+              <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-mono font-bold text-brand-700 shadow-2xs dark:bg-gray-900 dark:text-brand-300">
+                TRANSCRIPT DRIVEN
+              </span>
+            </h4>
+            <p className="text-xs text-gray-600 dark:text-gray-300 mt-0.5">
+              Rubrik dan kompetensi dipisahkan per kandidat dan di-generate otomatis oleh AI mengikuti bahasa (ID/EN) serta topik transkrip wawancara.
             </p>
           </div>
-          <Button
-            variant="primary"
-            size="sm"
-            startIcon={<PlusIcon />}
-            onClick={handleOpenAddProfile}
-          >
-            New Rubric Profile
-          </Button>
         </div>
 
-        {/* Profile Tabs */}
-        {profiles.length > 0 && (
-          <div className="mt-5 flex flex-wrap gap-2 border-b border-gray-100 pb-3 dark:border-gray-800">
-            {profiles.map((prof) => {
-              const isActive = prof.id === activeProfile?.id;
-              return (
-                <button
-                  key={prof.id}
-                  type="button"
-                  onClick={() => setActiveProfileId(prof.id)}
-                  className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition-all ${
-                    isActive
-                      ? "bg-brand-500 text-white shadow-theme-xs"
-                      : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-                  }`}
-                >
-                  <span>{prof.round_name}</span>
-                  <span
-                    className={`rounded-md px-1.5 py-0.5 text-[10px] font-mono ${
-                      isActive
-                        ? "bg-white/20 text-white"
-                        : "bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
-                    }`}
-                  >
-                    {prof.code}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Empty State if Interviewer has not created a rubric yet */}
-        {!isLoading && profiles.length === 0 && (
-          <div className="mt-6 rounded-xl border border-dashed border-gray-300 bg-gray-50/60 p-8 text-center dark:border-gray-700 dark:bg-gray-800/30">
-            <h4 className="text-sm font-semibold text-gray-800 dark:text-white">
-              Belum Ada Profil Rubrik Penilaian
-            </h4>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Buat profil rubrik pertanyaan sesuai posisi/divisi Anda agar AI Interview Copilot mengevaluasi kandidat menggunakan indikator Anda sendiri.
-            </p>
-            <div className="mt-4">
-              <Button
-                variant="primary"
-                size="sm"
-                startIcon={<PlusIcon />}
-                onClick={handleOpenAddProfile}
-              >
-                Buat Profil Rubrik Pertama Anda
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Profile Info Banner */}
-        {activeProfile && (
-          <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50/70 p-4 dark:border-gray-800 dark:bg-gray-800/40">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-mono font-medium text-brand-600 dark:text-brand-400">
-                    {activeProfile.code}
-                  </span>
-                  <Badge
-                    color={
-                      activeProfile.target_role === "INTERVIEWER"
-                        ? "info"
-                        : "success"
-                    }
-                    size="sm"
-                  >
-                    {activeProfile.target_role === "INTERVIEWER"
-                      ? "Interviewer Rubric"
-                      : "HR Rubric"}
-                  </Badge>
-                  {activeProfile.department && (
-                    <Badge color="light" size="sm">
-                      {activeProfile.department}
-                    </Badge>
-                  )}
-                  {activeProfile.owner_name && (
-                    <span className="text-[11px] text-gray-500 dark:text-gray-400">
-                      Owner: <strong>{activeProfile.owner_name}</strong>
-                    </span>
-                  )}
-                </div>
-                <h4 className="text-sm font-semibold text-gray-900 dark:text-white mt-1">
-                  {activeProfile.round_name}
-                </h4>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  {activeProfile.description}
-                </p>
-              </div>
-              <div className="flex items-center gap-4 self-end sm:self-center">
-                <div className="text-end">
-                  <span className="text-[11px] text-gray-400">Total Weight</span>
-                  <div
-                    className={`text-base font-bold ${
-                      totalWeight === 100
-                        ? "text-success-600 dark:text-success-400"
-                        : "text-warning-500"
-                    }`}
-                  >
-                    {totalWeight}%
-                  </div>
-                </div>
-                {canMutateActiveProfile && (
-                  <button
-                    type="button"
-                    onClick={() => setDeleteTargetProfile(activeProfile)}
-                    className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-theme-xs hover:border-error-300 hover:bg-error-50 hover:text-error-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-error-500/30 dark:hover:bg-error-500/15 dark:hover:text-error-400 transition-all"
-                    title="Hapus Profil Rubrik Ini"
-                  >
-                    <TrashBinIcon />
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Competencies Table Header & Button */}
-        {activeProfile && (
-          <>
-            <div className="mt-5 flex items-center justify-between">
-              <h4 className="text-sm font-semibold text-gray-800 dark:text-white/90">
-                List of Competency Indicators (
-                {activeProfile.competencies.length})
-              </h4>
-              <Button
-                variant="outline"
-                size="sm"
-                startIcon={<PlusIcon />}
-                onClick={handleOpenAddCompetency}
-                disabled={!canMutateActiveProfile}
-                title={
-                  !canMutateActiveProfile
-                    ? "Anda hanya dapat mengubah indikator pada profil rubrik milik Anda sendiri."
-                    : undefined
-                }
-              >
-                Add Competency Indicator
-              </Button>
-            </div>
-
-            {/* Competencies Table */}
-            <div className="mt-3 overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
-              <Table>
-                <TableHeader className="bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-800">
-                  <TableRow>
-                    <TableCell
-                      isHeader
-                      className="ps-4 pe-3 py-3 text-start text-xs font-semibold text-gray-600 dark:text-gray-300"
-                    >
-                      Code
-                    </TableCell>
-                    <TableCell
-                      isHeader
-                      className="px-3 py-3 text-start text-xs font-semibold text-gray-600 dark:text-gray-300"
-                    >
-                      Competency Name &amp; Reference Question
-                    </TableCell>
-                    <TableCell
-                      isHeader
-                      className="px-3 py-3 text-start text-xs font-semibold text-gray-600 dark:text-gray-300"
-                    >
-                      Weight (%)
-                    </TableCell>
-                    <TableCell
-                      isHeader
-                      className="px-3 py-3 text-start text-xs font-semibold text-gray-600 dark:text-gray-300"
-                    >
-                      Target Score
-                    </TableCell>
-                    <TableCell
-                      isHeader
-                      className="pe-5 ps-3 py-3 text-end text-xs font-semibold text-gray-600 dark:text-gray-300"
-                    >
-                      Actions
-                    </TableCell>
-                  </TableRow>
-                </TableHeader>
-                <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {isLoading ? (
-                    <TableRow>
-                      <TableCell
-                        colSpan={5}
-                        className="py-8 text-center text-xs text-gray-400"
-                      >
-                        Loading rubrics from database...
-                      </TableCell>
-                    </TableRow>
-                  ) : activeProfile.competencies.length === 0 ? (
-                    <TableRow>
-                      <TableCell
-                        colSpan={5}
-                        className="py-8 text-center text-xs text-gray-400"
-                      >
-                        Belum ada indikator pertanyaan pada profil rubrik ini. Klik &quot;Add Competency Indicator&quot; untuk menambahkan.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    activeProfile.competencies.map((comp) => (
-                      <TableRow
-                        key={comp.id}
-                        className="hover:bg-gray-50/70 dark:hover:bg-white/[0.02] transition-colors"
-                      >
-                        <TableCell className="ps-4 pe-3 py-3.5">
-                          <span className="font-mono text-xs font-semibold text-brand-600 dark:text-brand-400">
-                            {comp.code}
-                          </span>
-                        </TableCell>
-                        <TableCell className="px-3 py-3.5">
-                          <div className="flex flex-col">
-                            <span className="text-xs font-semibold text-gray-800 dark:text-white/90">
-                              {comp.name}
-                            </span>
-                            <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-                              {comp.description}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="px-3 py-3.5">
-                          <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-xs font-mono font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                            {comp.weight}%
-                          </span>
-                        </TableCell>
-                        <TableCell className="px-3 py-3.5">
-                          <Badge color="primary" size="sm">
-                            {comp.target_score} / 5.0
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="pe-5 ps-3 py-3.5 text-end whitespace-nowrap">
-                          {canMutateActiveProfile ? (
-                            <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenEditCompetency(comp)}
-                                className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-theme-xs hover:border-brand-300 hover:bg-gray-50 hover:text-brand-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-brand-500/30 dark:hover:bg-gray-700/60 dark:hover:text-brand-400 transition-all"
-                                title="Edit Competency Indicator"
-                              >
-                                <PencilIcon />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setDeleteTargetComp(comp)}
-                                className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-theme-xs hover:border-error-300 hover:bg-error-50 hover:text-error-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-error-500/30 dark:hover:bg-error-500/15 dark:hover:text-error-400 transition-all"
-                                title="Delete Competency Indicator"
-                              >
-                                <TrashBinIcon />
-                              </button>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-gray-400 italic">
-                              Read-only
-                            </span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-
-            {/* Footer Summary */}
-            <div className="mt-4 flex items-center justify-between text-xs text-gray-400">
-              <span>
-                {activeProfile.competencies.length} active competencies for this
-                round
-              </span>
-              <span className="font-mono">
-                Scoped Rubric Ownership: tblm_profile &amp; tblm_competency
-              </span>
-            </div>
-          </>
-        )}
+        <div className="flex items-center gap-2">
+          {activeProfile && (
+            <Button
+              variant="primary"
+              size="sm"
+              startIcon={
+                isReEvaluating ? (
+                  <TimeIcon className="animate-spin" />
+                ) : (
+                  <BoltIcon />
+                )
+              }
+              onClick={handleReEvaluate}
+              disabled={isReEvaluating || isMutating}
+            >
+              {isReEvaluating ? "Mengevaluasi Transkrip..." : "Re-Evaluate dari Transkrip"}
+            </Button>
+          )}
+        </div>
       </div>
 
-      {/* Create New Rubric Profile Modal */}
+      {/* Main Two-Column Layout: Left Candidate Selector, Right Rubric & Competencies */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+        {/* Left Column: Candidate Selector */}
+        <div className="lg:col-span-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900 shadow-theme-xs">
+          <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+              <UserIcon />
+              <span>Daftar Kandidat ({candidates.length})</span>
+            </h4>
+            <span className="text-[11px] font-mono text-gray-400">Pilih Kandidat</span>
+          </div>
+
+          <div className="mt-3 space-y-2 max-h-[620px] overflow-y-auto pe-1">
+            {isCandidatesLoading ? (
+              <div className="p-8 text-center text-xs text-gray-400">
+                Memuat daftar kandidat...
+              </div>
+            ) : candidates.length === 0 ? (
+              <div className="p-6 text-center text-xs text-gray-400 border border-dashed rounded-xl">
+                Belum ada data kandidat. Tambahkan kandidat di menu Candidates.
+              </div>
+            ) : (
+              candidates.map((cand) => {
+                const isSelected = activeCandidate?.id === cand.id;
+                const candProfile = profiles.find(
+                  (p) =>
+                    p.candidate_id === cand.id ||
+                    p.code.toUpperCase().includes(cand.candidate_code.toUpperCase())
+                );
+                const compCount = candProfile?.competencies.length ?? 0;
+
+                return (
+                  <button
+                    key={cand.id}
+                    type="button"
+                    onClick={() => setSelectedCandidateId(cand.id)}
+                    className={`w-full text-start p-3 rounded-xl border transition-all ${
+                      isSelected
+                        ? "border-brand-500 bg-brand-50/70 shadow-theme-xs dark:border-brand-500/40 dark:bg-brand-500/10"
+                        : "border-gray-100 bg-gray-50/50 hover:bg-gray-100/70 dark:border-gray-800 dark:bg-gray-800/40 dark:hover:bg-gray-800/80"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="font-semibold text-xs text-gray-900 dark:text-white block">
+                          {cand.name}
+                        </span>
+                        <span className="text-[11px] text-gray-500 dark:text-gray-400 block truncate">
+                          {cand.applied_position}
+                        </span>
+                      </div>
+                      <span className="font-mono text-[10px] font-bold text-gray-500 dark:text-gray-400 shrink-0">
+                        {cand.candidate_code}
+                      </span>
+                    </div>
+
+                    <div className="mt-2.5 flex items-center justify-between text-[10px]">
+                      <span className="text-gray-400 font-mono">
+                        {cand.status.replace("_", " ")}
+                      </span>
+                      {compCount > 0 ? (
+                        <span className="inline-flex items-center gap-1 rounded bg-success-50 text-success-700 px-1.5 py-0.5 font-bold dark:bg-success-500/15 dark:text-success-300">
+                          <CheckCircleIcon className="w-3 h-3 text-success-500" />
+                          {compCount} Kompetensi
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded bg-warning-50 text-warning-700 px-1.5 py-0.5 font-semibold dark:bg-warning-500/15 dark:text-warning-300">
+                          Menunggu Transkrip
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* Right Column: Rubric Details & Competencies */}
+        <div className="lg:col-span-8 rounded-2xl border border-gray-200 bg-white p-5 xl:p-6 dark:border-gray-800 dark:bg-gray-900 shadow-theme-xs">
+          {!activeCandidate ? (
+            <div className="p-12 text-center text-xs text-gray-400">
+              Pilih salah satu kandidat di sebelah kiri untuk melihat rubrik penilaiannya.
+            </div>
+          ) : !activeProfile ? (
+            /* Empty State for Selected Candidate without Rubric */
+            <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/60 p-8 text-center dark:border-gray-700 dark:bg-gray-800/30">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400 mx-auto mb-3">
+                <BoltIcon />
+              </div>
+              <h4 className="text-sm font-semibold text-gray-800 dark:text-white">
+                Rubrik Belum Dibuat untuk {activeCandidate.name} ({activeCandidate.candidate_code})
+              </h4>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+                Saat rekaman wawancara kandidat diunggah, AI akan otomatis mentranskripsi dan meng-generate daftar kompetensi sesuai percakapan. Anda juga dapat membuat profil rubrik draft secara manual sekarang.
+              </p>
+              <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  startIcon={<PlusIcon />}
+                  onClick={handleOpenCreateProfile}
+                  disabled={isMutating}
+                >
+                  Siapkan Rubrik Manual
+                </Button>
+              </div>
+            </div>
+          ) : (
+            /* Candidate Profile & Competencies Table */
+            <div className="space-y-4">
+              {/* Header Profile Info Banner */}
+              <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-4 dark:border-gray-800 dark:bg-gray-800/50">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-mono font-bold text-brand-600 dark:text-brand-400">
+                        {activeProfile.code}
+                      </span>
+                      <Badge color="primary" size="sm">
+                        {activeCandidate.name} ({activeCandidate.candidate_code})
+                      </Badge>
+                      <Badge
+                        color={
+                          activeProfile.target_role === "INTERVIEWER"
+                            ? "info"
+                            : "success"
+                        }
+                        size="sm"
+                      >
+                        {activeProfile.target_role === "INTERVIEWER"
+                          ? "Pewawancara User"
+                          : "HR Assessment"}
+                      </Badge>
+                      {activeProfile.owner_name && (
+                        <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                          Owner: <strong>{activeProfile.owner_name}</strong>
+                        </span>
+                      )}
+                    </div>
+
+                    <h4 className="text-sm font-bold text-gray-900 dark:text-white mt-1.5">
+                      {activeProfile.round_name}
+                    </h4>
+                    <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      {activeProfile.description}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-4 self-end sm:self-center">
+                    <div className="text-end">
+                      <span className="text-[11px] text-gray-400 block">Total Bobot</span>
+                      <div
+                        className={`text-base font-bold font-mono ${
+                          totalWeight === 100
+                            ? "text-success-600 dark:text-success-400"
+                            : "text-warning-500"
+                        }`}
+                      >
+                        {totalWeight}%
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Toolbar */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-800 dark:text-white/90">
+                    Indikator Kompetensi Penilaian ({activeProfile.competencies.length})
+                  </h4>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                    Diekstrak otomatis dari transkrip atau ditambahkan manual oleh HR/Pewawancara.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    startIcon={<PlusIcon />}
+                    onClick={handleOpenAddCompetency}
+                    disabled={!canMutateActiveProfile || isMutating}
+                  >
+                    Tambah Indikator Manual
+                  </Button>
+                </div>
+              </div>
+
+              {/* Competencies Table */}
+              <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
+                <Table>
+                  <TableHeader className="bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-800">
+                    <TableRow>
+                      <TableCell
+                        isHeader
+                        className="ps-4 pe-3 py-3 text-start text-xs font-semibold text-gray-600 dark:text-gray-300"
+                      >
+                        Kode
+                      </TableCell>
+                      <TableCell
+                        isHeader
+                        className="px-3 py-3 text-start text-xs font-semibold text-gray-600 dark:text-gray-300"
+                      >
+                        Nama Kompetensi &amp; Pertanyaan Acuan Transkrip
+                      </TableCell>
+                      <TableCell
+                        isHeader
+                        className="px-3 py-3 text-start text-xs font-semibold text-gray-600 dark:text-gray-300"
+                      >
+                        Bobot (%)
+                      </TableCell>
+                      <TableCell
+                        isHeader
+                        className="px-3 py-3 text-start text-xs font-semibold text-gray-600 dark:text-gray-300"
+                      >
+                        Target Skor
+                      </TableCell>
+                      <TableCell
+                        isHeader
+                        className="pe-5 ps-3 py-3 text-end text-xs font-semibold text-gray-600 dark:text-gray-300"
+                      >
+                        Aksi
+                      </TableCell>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {isRubricsLoading ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={5}
+                          className="py-8 text-center text-xs text-gray-400"
+                        >
+                          Memuat indikator kompetensi...
+                        </TableCell>
+                      </TableRow>
+                    ) : activeProfile.competencies.length === 0 ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={5}
+                          className="py-8 text-center text-xs text-gray-400"
+                        >
+                          Belum ada indikator kompetensi. Unggah rekaman interview atau klik &quot;Tambah Indikator Manual&quot;.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      activeProfile.competencies.map((comp) => (
+                        <TableRow
+                          key={comp.id}
+                          className="hover:bg-gray-50/70 dark:hover:bg-white/[0.02] transition-colors"
+                        >
+                          <TableCell className="ps-4 pe-3 py-3.5">
+                            <span className="font-mono text-xs font-semibold text-brand-600 dark:text-brand-400">
+                              {comp.code}
+                            </span>
+                          </TableCell>
+                          <TableCell className="px-3 py-3.5">
+                            <div className="flex flex-col text-start">
+                              <span className="text-xs font-semibold text-gray-800 dark:text-white/90">
+                                {comp.name}
+                              </span>
+                              <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">
+                                {comp.description}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="px-3 py-3.5">
+                            <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-xs font-mono font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                              {comp.weight}%
+                            </span>
+                          </TableCell>
+                          <TableCell className="px-3 py-3.5">
+                            <Badge color="primary" size="sm">
+                              {comp.target_score} / 5.0
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="pe-5 ps-3 py-3.5 text-end whitespace-nowrap">
+                            {canMutateActiveProfile ? (
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditCompetency(comp)}
+                                  className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-theme-xs hover:border-brand-300 hover:bg-gray-50 hover:text-brand-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-brand-500/30 dark:hover:bg-gray-700/60 dark:hover:text-brand-400 transition-all"
+                                  title="Edit Indikator Kompetensi"
+                                >
+                                  <PencilIcon />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setDeleteTargetComp(comp)}
+                                  className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-theme-xs hover:border-error-300 hover:bg-error-50 hover:text-error-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-error-500/30 dark:hover:bg-error-500/15 dark:hover:text-error-400 transition-all"
+                                  title="Hapus Indikator Kompetensi"
+                                >
+                                  <TrashBinIcon />
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-gray-400 italic">
+                                Read-only
+                              </span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Informational Guidance Footer */}
+              <div className="rounded-xl border border-gray-200 bg-gray-50/70 p-3.5 dark:border-gray-800 dark:bg-gray-800/30 flex items-start gap-2.5 text-start">
+                <span className="text-brand-500 mt-0.5 shrink-0">
+                  <CheckCircleIcon />
+                </span>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
+                  Perubahan manual pada indikator di atas akan disinkronkan saat evaluasi berlangsung. Gunakan tombol <strong>&quot;Re-Evaluate dari Transkrip&quot;</strong> di atas untuk memerintahkan AI menilai ulang rekaman interview kandidat terhadap indikator terbaru.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Create Profile for Candidate Modal */}
       <Modal
-        isOpen={isAddProfileOpen}
-        onClose={() => setIsAddProfileOpen(false)}
-        className="max-w-2xl m-4"
+        isOpen={isCreateProfileOpen}
+        onClose={() => setIsCreateProfileOpen(false)}
+        className="max-w-lg m-4"
       >
-        <div className="p-8 sm:p-10">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Create New Rubric Profile
+        <div className="p-6 sm:p-8">
+          <h3 className="text-base font-bold text-gray-900 dark:text-white">
+            Siapkan Rubrik Wawancara Kandidat
           </h3>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Buat paket rubrik pertanyaan baru sesuai posisi/tahap wawancara yang Anda tangani.
+            Buat rubrik penilaian terisolasi untuk <strong>{activeCandidate?.name}</strong> ({activeCandidate?.candidate_code}).
           </p>
 
-          <div className="mt-5 space-y-3.5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <FormField label="Profile Code" required>
-                <InputField
-                  placeholder="e.g., PROFILE-BACKEND-R1"
-                  value={newProfileCode}
-                  onChange={(e) => setNewProfileCode(e.target.value)}
-                />
-              </FormField>
-
-              <FormField label="Department / Division" required>
-                <InputField
-                  placeholder="e.g., Engineering, Finance, HR"
-                  value={newProfileDept}
-                  onChange={(e) => setNewProfileDept(e.target.value)}
-                />
-              </FormField>
-            </div>
-
-            <FormField label="Interview Round Name" required>
+          <div className="mt-4 space-y-3">
+            <FormField label="Nama Tahap Wawancara / Rubrik" required>
               <InputField
-                placeholder="e.g., Backend Engineering Technical Round"
-                value={newProfileName}
-                onChange={(e) => setNewProfileName(e.target.value)}
-              />
-            </FormField>
-
-            {role === "ADMIN" && (
-              <FormField label="Target Evaluator Role" required>
-                <Select
-                  options={[
-                    { value: "HR", label: "HR (Culture & Screening)" },
-                    {
-                      value: "INTERVIEWER",
-                      label: "Interviewer (Technical / Division User)",
-                    },
-                  ]}
-                  value={newProfileTargetRole}
-                  onChange={(e) =>
-                    setNewProfileTargetRole(e.target.value as RubricTargetRole)
-                  }
-                />
-              </FormField>
-            )}
-
-            <FormField label="Rubric Description">
-              <TextArea
-                rows={2}
-                placeholder="Ringkasan tujuan evaluasi tahap wawancara ini..."
-                value={newProfileDesc}
-                onChange={(e) => setNewProfileDesc(e.target.value)}
+                value={customRoundTitle}
+                onChange={(e) => setCustomRoundTitle(e.target.value)}
+                placeholder="cth: Technical Round - Senior Frontend Engineer"
               />
             </FormField>
           </div>
@@ -718,17 +691,17 @@ export default function RubricsPage() {
           <div className="mt-6 flex justify-end gap-2.5 pt-3 border-t border-gray-100 dark:border-gray-800">
             <Button
               variant="outline"
-              onClick={() => setIsAddProfileOpen(false)}
+              onClick={() => setIsCreateProfileOpen(false)}
               disabled={isMutating}
             >
-              Cancel
+              Batal
             </Button>
             <Button
               variant="primary"
-              onClick={handleCreateProfile}
+              onClick={handleConfirmCreateProfile}
               disabled={isMutating}
             >
-              {isMutating ? "Saving..." : "Create Profile"}
+              {isMutating ? "Menyimpan..." : "Buat Rubrik"}
             </Button>
           </div>
         </div>
@@ -738,33 +711,33 @@ export default function RubricsPage() {
       <Modal
         isOpen={isCompModalOpen}
         onClose={() => setIsCompModalOpen(false)}
-        className="max-w-4xl m-4"
+        className="max-w-xl m-4"
       >
-        <div className="p-8 sm:p-10">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+        <div className="p-6 sm:p-8">
+          <h3 className="text-base font-bold text-gray-900 dark:text-white">
             {editingComp
-              ? "Edit Competency Indicator"
-              : "Add New Competency Indicator"}
+              ? "Edit Indikator Kompetensi"
+              : "Tambah Indikator Kompetensi Manual"}
           </h3>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
             {editingComp
-              ? `Perbarui kriteria pertanyaan kompetensi pada profil ${activeProfile?.round_name}.`
-              : `Tambahkan indikator pertanyaan baru pada profil ${activeProfile?.round_name}.`}
+              ? `Perbarui kriteria pertanyaan pada rubrik ${activeProfile?.round_name}.`
+              : `Tambahkan indikator pertanyaan acuan khusus pada rubrik ${activeProfile?.round_name}.`}
           </p>
 
-          <div className="mt-5 space-y-3.5">
+          <div className="mt-4 space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <FormField label="Competency Code" required>
+              <FormField label="Kode Indikator" required>
                 <InputField
-                  placeholder="cth: SYS-ARCH"
+                  placeholder="cth: C1, SYS-ARCH"
                   value={compCode}
                   onChange={(e) => setCompCode(e.target.value)}
                 />
               </FormField>
 
-              <FormField label="Competency Name" required>
+              <FormField label="Nama Kompetensi" required>
                 <InputField
-                  placeholder="cth: System Architecture & Scalability"
+                  placeholder="cth: Technical Problem Solving"
                   value={compName}
                   onChange={(e) => setCompName(e.target.value)}
                 />
@@ -772,7 +745,7 @@ export default function RubricsPage() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <FormField label="Weight (%)" required>
+              <FormField label="Bobot Penilaian (%)" required>
                 <InputField
                   type="number"
                   min={5}
@@ -785,7 +758,7 @@ export default function RubricsPage() {
                 />
               </FormField>
 
-              <FormField label="Target Skor Minimal (1 - 5)" required>
+              <FormField label="Target Skor (1 - 5)" required>
                 <InputField
                   type="number"
                   min={1}
@@ -797,13 +770,13 @@ export default function RubricsPage() {
             </div>
 
             <FormField
-              label="Reference Question & Evidence Guidelines for AI"
+              label="Pertanyaan Acuan / Indikator Bukti dari Transkrip"
               required
-              hint="AI Interview Copilot akan menelusuri bukti jawaban kandidat di transkrip berdasarkan pertanyaan & kriteria ini."
+              hint="AI akan mencari bukti kalimat atau kutipan di transkrip wawancara berdasarkan panduan ini."
             >
               <TextArea
                 rows={3}
-                placeholder="Tuliskan pertanyaan acuan wawancara dan indikator bukti yang dicari dari jawaban kandidat..."
+                placeholder="Tuliskan pertanyaan yang diajukan dan bukti yang dicari dari jawaban kandidat..."
                 value={compDesc}
                 onChange={(e) => setCompDesc(e.target.value)}
               />
@@ -816,7 +789,7 @@ export default function RubricsPage() {
               onClick={() => setIsCompModalOpen(false)}
               disabled={isMutating}
             >
-              Cancel
+              Batal
             </Button>
             <Button
               variant="primary"
@@ -824,27 +797,14 @@ export default function RubricsPage() {
               disabled={isMutating}
             >
               {isMutating
-                ? "Saving..."
+                ? "Menyimpan..."
                 : editingComp
-                ? "Update Indicator"
-                : "Save Indicator"}
+                ? "Perbarui Indikator"
+                : "Simpan Indikator"}
             </Button>
           </div>
         </div>
       </Modal>
-
-      {/* Delete Profile Confirmation Modal */}
-      <ConfirmationModal
-        isOpen={!!deleteTargetProfile}
-        onClose={() => setDeleteTargetProfile(null)}
-        onConfirm={handleConfirmDeleteProfile}
-        isLoading={isMutating}
-        title="Confirm Delete Rubric Profile"
-        description={`Hapus profil rubrik "${deleteTargetProfile?.round_name}" (${deleteTargetProfile?.code}) beserta seluruh indikator kompetensinya?`}
-        confirmText="Yes, Delete Profile"
-        cancelText="Cancel"
-        variant="danger"
-      />
 
       {/* Delete Competency Confirmation Modal */}
       <ConfirmationModal
@@ -852,10 +812,10 @@ export default function RubricsPage() {
         onClose={() => setDeleteTargetComp(null)}
         onConfirm={handleConfirmDeleteCompetency}
         isLoading={isMutating}
-        title="Confirm Delete Competency"
-        description={`Apakah Anda yakin ingin menghapus indikator kompetensi "${deleteTargetComp?.name}" (${deleteTargetComp?.code}) dari ${activeProfile?.round_name}?`}
-        confirmText="Yes, Delete"
-        cancelText="Cancel"
+        title="Hapus Indikator Kompetensi"
+        description={`Apakah Anda yakin ingin menghapus indikator kompetensi "${deleteTargetComp?.name}" (${deleteTargetComp?.code}) dari rubrik ${activeProfile?.round_name}?`}
+        confirmText="Ya, Hapus"
+        cancelText="Batal"
         variant="danger"
       />
     </div>

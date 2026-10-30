@@ -154,15 +154,20 @@ export interface RubricProfile {
   department?: string | null;
   owner_user_id?: string | null;
   owner_name?: string | null;
+  candidate_id?: string | null;
+  candidate_name?: string | null;
+  candidate_code?: string | null;
+  applied_position?: string | null;
   competencies: CompetencyItem[];
 }
 
 export interface RubricProfileCreateInput {
-  code: string;
-  round_name: string;
+  code?: string;
+  round_name?: string;
   description?: string;
   target_role?: RubricTargetRole;
   department?: string;
+  candidate_id?: string | null;
 }
 
 /**

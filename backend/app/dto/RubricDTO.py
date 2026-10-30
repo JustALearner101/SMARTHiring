@@ -41,12 +41,17 @@ class RubricProfileDTO(BaseDTO):
     department: str | None = None
     owner_user_id: str | None = None
     owner_name: str | None = None
+    candidate_id: str | None = None
+    candidate_name: str | None = None
+    candidate_code: str | None = None
+    applied_position: str | None = None
     competencies: list[CompetencyItemDTO] = Field(default_factory=list)
 
 
 class RubricProfileCreateDTO(BaseDTO):
-    code: str
-    round_name: str
+    code: str | None = None
+    round_name: str | None = None
     description: str | None = None
     target_role: RubricTargetRole | None = None
     department: str | None = None
+    candidate_id: str | None = None

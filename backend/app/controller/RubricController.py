@@ -23,6 +23,10 @@ async def list_rubrics(
         None,
         description="Optional interviewer user ID to load rubrics owned by that interviewer",
     ),
+    candidate_id: str | None = Query(
+        None,
+        description="Optional candidate ID to filter rubrics for a specific candidate",
+    ),
     current_user: User | None = Depends(get_optional_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[list[RubricProfileDTO]]:
@@ -30,6 +34,7 @@ async def list_rubrics(
     rubrics = await service.list_rubric_profiles(
         current_user=current_user,
         for_interviewer_id=for_interviewer_id,
+        candidate_id=candidate_id,
     )
     return ApiResponse(data=rubrics, message="Berhasil mengambil daftar profil rubrik penilaian")
 
@@ -47,6 +52,20 @@ async def create_rubric_profile(
     service = RubricService(db)
     created = await service.create_rubric_profile(dto=dto, current_user=current_user)
     return ApiResponse(data=created, message="Profil rubrik penilaian berhasil dibuat")
+
+
+@router.post(
+    "/{profile_id}/re-evaluate",
+    response_model=ApiResponse[RubricProfileDTO],
+)
+async def re_evaluate_rubric(
+    profile_id: str,
+    current_user: User = Depends(require_roles(["HR", "ADMIN", "INTERVIEWER"])),
+    db: AsyncSession = Depends(get_db),
+) -> ApiResponse[RubricProfileDTO]:
+    service = RubricService(db)
+    evaluated = await service.re_evaluate_rubric(profile_id=profile_id, current_user=current_user)
+    return ApiResponse(data=evaluated, message="Penilaian rubrik berhasil dievaluasi ulang dari transkrip")
 
 
 @router.delete("/{profile_id}", response_model=ApiResponse[dict[str, str]])
