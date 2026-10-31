@@ -331,17 +331,24 @@ class InterviewAnalyzerGraph:
                 specs = [(c.code, c.name, c.reference_question) for c in fallback_competencies().competencies]
 
             for sort_idx, (c_code, c_name, c_q) in enumerate(specs, start=1):
-                comp = Competency(
-                    nid_profile=profile_id,
-                    vcode=c_code,
-                    vname=c_name,
-                    vreference_question=c_q,
-                    vvisibility_class="GENERAL",
-                    nsort_order=sort_idx,
-                    vcrea="SYSTEM_TRANSCRIPT_ASR",
-                )
-                self.session.add(comp)
-                competencies.append(comp)
+                comp = next((c for c in competencies if c.vcode == c_code), None)
+                if comp:
+                    comp.vname = c_name
+                    comp.vreference_question = c_q
+                    comp.nsort_order = sort_idx
+                    comp.vcrea = "SYSTEM_TRANSCRIPT_ASR"
+                else:
+                    comp = Competency(
+                        nid_profile=profile_id,
+                        vcode=c_code,
+                        vname=c_name,
+                        vreference_question=c_q,
+                        vvisibility_class="GENERAL",
+                        nsort_order=sort_idx,
+                        vcrea="SYSTEM_TRANSCRIPT_ASR",
+                    )
+                    self.session.add(comp)
+                    competencies.append(comp)
 
             await self.session.commit()
 

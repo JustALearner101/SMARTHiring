@@ -569,7 +569,7 @@ async def test_rubrics_scoped_ownership_and_crud(client: AsyncClient):
         headers=intv_headers,
     )
     assert add_comp.status_code == 201
-    comp_id = add_comp.json()["data"]["competencies"][0]["id"]
+    comp_id = add_comp.json()["data"]["id"]
 
     patch_comp = await client.patch(
         f"/api/v1/rubrics/{profile_id}/competencies/{comp_id}",
@@ -577,7 +577,7 @@ async def test_rubrics_scoped_ownership_and_crud(client: AsyncClient):
         headers=intv_headers,
     )
     assert patch_comp.status_code == 200
-    assert patch_comp.json()["data"]["competencies"][0]["weight"] == 50
+    assert patch_comp.json()["data"]["weight"] == 50
 
     # 3. HR's default rubric list does NOT mix Interviewer's custom rubric, and HR cannot mutate it
     hr_list = await client.get("/api/v1/rubrics", headers=hr_headers)
@@ -630,6 +630,9 @@ async def test_two_tier_decision_handoff_and_anti_idor(client: AsyncClient):
         "/api/v1/auth/login",
         json={"username": "hr.admin", "password": "password123"},
     )
+    assert login_a.status_code == 200, f"login_a failed: {login_a.text}"
+    assert login_b.status_code == 200, f"login_b failed: {login_b.text}"
+    assert login_hr.status_code == 200, f"login_hr failed: {login_hr.text}"
     headers_a = {"Authorization": f"Bearer {login_a.json()['data']['access_token']}"}
     headers_b = {"Authorization": f"Bearer {login_b.json()['data']['access_token']}"}
     headers_hr = {"Authorization": f"Bearer {login_hr.json()['data']['access_token']}"}

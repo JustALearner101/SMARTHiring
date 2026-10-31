@@ -14,6 +14,7 @@ class CompetencyItemDTO(BaseDTO):
     description: str
     weight: float = 25.0
     target_score: int = 4
+    target_level: int | None = None
 
 
 class CompetencyCreateDTO(BaseDTO):
@@ -22,6 +23,7 @@ class CompetencyCreateDTO(BaseDTO):
     description: str
     weight: float = 25.0
     target_score: int = 4
+    target_level: int | None = None
 
 
 class CompetencyUpdateDTO(BaseDTO):
@@ -30,6 +32,7 @@ class CompetencyUpdateDTO(BaseDTO):
     description: str | None = None
     weight: float | None = None
     target_score: int | None = None
+    target_level: int | None = None
 
 
 class RubricProfileDTO(BaseDTO):

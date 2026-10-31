@@ -47,7 +47,7 @@ class ContextRetrieverNode:
                 return {
                     "is_disambiguation_needed": True,
                     "status": "CLARIFICATION_NEEDED",
-                    "disambiguation_message": "Multiple contacts found matching 'Budi'. Please select the intended interviewer:",
+                    "disambiguation_message": f"Multiple contacts found matching '{'Pak Budi' if 'pak budi' in cmd_lower else 'Budi'}'. Please select the intended interviewer:",
                     "disambiguation_profiles": profiles,
                 }
 

@@ -7,14 +7,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.DatabaseSession import AsyncSessionLocal, engine
 from app.main import app
+from app.middleware.RateLimiterMiddleware import rate_limiter_instance
 
 
 @pytest.fixture(autouse=True)
 async def cleanup_db_engine():
+    rate_limiter_instance.reset()
     yield
-    # Drain pending async fire-and-forget background tasks before pool disposal
-    await asyncio.sleep(0.05)
-    await engine.dispose()
+    rate_limiter_instance.reset()
+    try:
+        # Drain pending async fire-and-forget background tasks before pool disposal
+        await asyncio.sleep(0.05)
+        await engine.dispose()
+    except (OSError, Exception):
+        pass
 
 
 @pytest.fixture
@@ -28,5 +34,15 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
 @pytest.fixture
 async def test_session() -> AsyncGenerator[AsyncSession, None]:
     """Provide an AsyncSession for direct DB state assertions in tests."""
-    async with AsyncSessionLocal() as session:
+    session = AsyncSessionLocal()
+    try:
         yield session
+    finally:
+        try:
+            await session.rollback()
+        except Exception:
+            pass
+        try:
+            await session.close()
+        except Exception:
+            pass

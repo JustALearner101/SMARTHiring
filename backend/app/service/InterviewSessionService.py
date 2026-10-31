@@ -221,7 +221,7 @@ class InterviewSessionService:
             return int(requested_interviewer_id)
         if profile_id_int:
             profile = await self.rubric_repo.get_by_id(profile_id_int)
-            if profile and profile.nid_owner_user:
+            if profile and profile.vtarget_role == "INTERVIEWER" and profile.nid_owner_user:
                 return profile.nid_owner_user
         if current_user:
             return current_user.nid

@@ -1,4 +1,6 @@
+import json
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,14 +36,32 @@ class RubricService:
         self.audit_service = AuditLogService(session)
 
     @staticmethod
-    def _to_competency_dto(c: Competency) -> CompetencyItemDTO:
+    def _parse_competency_metadata(raw: str | None) -> dict[str, Any]:
+        raw_str = (raw or "").strip()
+        if raw_str.startswith("{") and raw_str.endswith("}"):
+            try:
+                data = json.loads(raw_str)
+                if isinstance(data, dict):
+                    return data
+            except Exception:
+                pass
+        return {"description": raw_str, "weight": 25.0, "target_score": 4}
+
+    @classmethod
+    def _to_competency_dto(cls, c: Competency) -> CompetencyItemDTO:
+        meta = cls._parse_competency_metadata(c.vreference_question)
+        desc = meta.get("description") or c.vreference_question or f"Competency Assessment for {c.vname}"
+        weight = float(meta.get("weight", 25.0))
+        target_score = int(meta.get("target_score", 4))
+        target_level = int(meta.get("target_level", target_score))
         return CompetencyItemDTO(
             id=str(c.nid),
             code=c.vcode,
             name=c.vname,
-            description=c.vreference_question or f"Competency Assessment for {c.vname}",
-            weight=25.0,
-            target_score=4,
+            description=desc,
+            weight=weight,
+            target_score=target_score,
+            target_level=target_level,
         )
 
     def _to_profile_dto(self, p: Profile) -> RubricProfileDTO:
@@ -327,11 +347,19 @@ class RubricService:
             raise ConflictException(f"Competency code '{clean_code}' already exists in this rubric profile.")
 
         now = datetime.now(UTC)
+        target_score = dto.target_level if dto.target_level is not None else dto.target_score
+        target_level = dto.target_level if dto.target_level is not None else target_score
+        meta = {
+            "description": dto.description.strip(),
+            "weight": float(dto.weight),
+            "target_score": target_score,
+            "target_level": target_level,
+        }
         comp = Competency(
             nid_profile=profile.nid,
             vcode=clean_code,
             vname=dto.name.strip(),
-            vreference_question=dto.description.strip(),
+            vreference_question=json.dumps(meta),
             vvisibility_class="HR_ONLY" if profile.vtarget_role == "HR" else "GENERAL",
             nsort_order=len(profile.competencies) + 1,
             vcrea=current_user.vusername,
@@ -362,6 +390,7 @@ class RubricService:
         if not comp:
             raise NotFoundException("Competency indicator not found.")
 
+        meta = self._parse_competency_metadata(comp.vreference_question)
         if dto.code is not None:
             clean_code = dto.code.strip().upper()
             if any(c.nid != comp.nid and c.vcode.upper() == clean_code for c in profile.competencies):
@@ -370,7 +399,17 @@ class RubricService:
         if dto.name is not None:
             comp.vname = dto.name.strip()
         if dto.description is not None:
-            comp.vreference_question = dto.description.strip()
+            meta["description"] = dto.description.strip()
+        if dto.weight is not None:
+            meta["weight"] = float(dto.weight)
+        if dto.target_level is not None:
+            meta["target_score"] = int(dto.target_level)
+            meta["target_level"] = int(dto.target_level)
+        elif dto.target_score is not None:
+            meta["target_score"] = int(dto.target_score)
+            meta["target_level"] = int(dto.target_score)
+
+        comp.vreference_question = json.dumps(meta)
 
         now = datetime.now(UTC)
         comp.dmodi = now
