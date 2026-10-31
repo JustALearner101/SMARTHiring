@@ -74,8 +74,15 @@ jobs:
       - name: Execute Alembic Database Migrations
         run: uv run alembic upgrade head
 
+      - name: Seed Database Records
+        run: uv run python -m scripts.seed
+
       - name: Execute Full Pytest Test Suite
         run: uv run pytest -v
+
+      - name: Clean Up Seeded Records (Targeted Unseed)
+        if: always()
+        run: uv run python -m scripts.unseed --targeted
 
   frontend-check-and-build:
     name: Frontend Lint & Production Build
