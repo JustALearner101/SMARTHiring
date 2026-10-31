@@ -1,5 +1,4 @@
 from typing import Any, Literal
-from pydantic import Field
 
 from app.dto.BaseDTO import BaseDTO
 

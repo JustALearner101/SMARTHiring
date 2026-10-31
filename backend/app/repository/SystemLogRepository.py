@@ -47,21 +47,28 @@ class SystemLogRepository(BaseRepository[SystemLog]):
         vlog_method: str | None = None,
         vlog_status_code: str | None = None,
     ) -> None:
-        async with AsyncSessionLocal() as session:
-            try:
-                log_entry = SystemLog(
-                    vlog_level=vlog_level.upper(),
-                    vlog_message=vlog_message,
-                    vlog_stacktrace=vlog_stacktrace,
-                    vlog_source=vlog_source,
-                    vlog_path=vlog_path,
-                    vlog_method=vlog_method,
-                    vlog_status_code=str(vlog_status_code) if vlog_status_code else None,
-                )
-                session.add(log_entry)
-                await session.commit()
-            except Exception:
-                await session.rollback()
+        try:
+            async with AsyncSessionLocal() as session:
+                try:
+                    log_entry = SystemLog(
+                        vlog_level=vlog_level.upper(),
+                        vlog_message=vlog_message,
+                        vlog_stacktrace=vlog_stacktrace,
+                        vlog_source=vlog_source,
+                        vlog_path=vlog_path,
+                        vlog_method=vlog_method,
+                        vlog_status_code=str(vlog_status_code) if vlog_status_code else None,
+                    )
+                    session.add(log_entry)
+                    await session.commit()
+                except Exception:
+                    try:
+                        await session.rollback()
+                    except Exception:
+                        pass
+        except Exception:
+            # Fire-and-forget system logging should never crash the caller or teardown
+            pass
 
     async def list_logs(
         self,

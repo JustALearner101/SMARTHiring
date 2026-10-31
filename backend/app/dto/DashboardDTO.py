@@ -1,13 +1,15 @@
 from typing import Literal
+
 from pydantic import Field
 
 from app.dto.BaseDTO import BaseDTO
 
-
 # ── Section 1: Summary Metrics & Charts ────────────────────────────────────
+
 
 class MetricCardDTO(BaseDTO):
     """Satu kartu KPI di dashboard."""
+
     key: str
     label: str
     value: int
@@ -17,6 +19,7 @@ class MetricCardDTO(BaseDTO):
 
 class PipelineStageDTO(BaseDTO):
     """Satu stage di hiring pipeline funnel."""
+
     status: str
     label: str
     count: int
@@ -25,12 +28,14 @@ class PipelineStageDTO(BaseDTO):
 
 class TrendPointDTO(BaseDTO):
     """Satu titik data di trend chart mingguan."""
+
     week_label: str
     count: int
 
 
 class DashboardSummaryDTO(BaseDTO):
     """Response untuk GET /dashboard/summary."""
+
     metrics: list[MetricCardDTO] = Field(default_factory=list)
     pipeline: list[PipelineStageDTO] = Field(default_factory=list)
     weekly_trend: list[TrendPointDTO] = Field(default_factory=list)
@@ -38,8 +43,10 @@ class DashboardSummaryDTO(BaseDTO):
 
 # ── Section 2: Upcoming Interviews ──────────────────────────────────────────
 
+
 class UpcomingInterviewDTO(BaseDTO):
     """Satu interview yang akan datang."""
+
     id: str
     candidate_name: str
     candidate_code: str
@@ -55,8 +62,10 @@ class UpcomingInterviewDTO(BaseDTO):
 
 # ── Section 3: Activity Feed ────────────────────────────────────────────────
 
+
 class PendingApprovalDTO(BaseDTO):
     """Action plan menunggu approval."""
+
     id: str
     candidate_name: str
     position: str
@@ -68,6 +77,7 @@ class PendingApprovalDTO(BaseDTO):
 
 class ActiveNegotiationDTO(BaseDTO):
     """Negotiation thread yang masih aktif."""
+
     id: str
     candidate_name: str
     position: str
@@ -81,6 +91,7 @@ class ActiveNegotiationDTO(BaseDTO):
 
 class RecentAuditDTO(BaseDTO):
     """Event audit log terbaru."""
+
     id: str
     timestamp: str
     event_type: str
@@ -91,7 +102,7 @@ class RecentAuditDTO(BaseDTO):
 
 class ActivityFeedDTO(BaseDTO):
     """Response untuk GET /dashboard/activityFeed."""
+
     pending_approvals: list[PendingApprovalDTO] = Field(default_factory=list)
     active_negotiations: list[ActiveNegotiationDTO] = Field(default_factory=list)
     recent_audit: list[RecentAuditDTO] = Field(default_factory=list)
-

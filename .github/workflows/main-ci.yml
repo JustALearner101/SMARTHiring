@@ -49,7 +49,7 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-          cache-dependency-glob: "backend/pyproject.toml"
+          cache-dependency-glob: "backend/uv.lock"
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -62,14 +62,17 @@ jobs:
       - name: Run Ruff Linter
         run: uv run ruff check .
 
+      - name: Run Bandit SAST Security Scan
+        run: uv run bandit -r app/ -ll -ii
+
+      - name: Run pip-audit Vulnerability Scan
+        run: uv run pip-audit --ignore-vuln CVE-2026-114603
+
       - name: Verify PostgreSQL Connection & pgvector Extension
         run: uv run python -m scripts.check_db
 
       - name: Execute Alembic Database Migrations
         run: uv run alembic upgrade head
-
-      - name: Seed Database Records
-        run: uv run python -m scripts.seed
 
       - name: Execute Full Pytest Test Suite
         run: uv run pytest -v

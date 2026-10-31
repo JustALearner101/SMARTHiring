@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncGenerator
 
 import pytest
@@ -11,6 +12,8 @@ from app.main import app
 @pytest.fixture(autouse=True)
 async def cleanup_db_engine():
     yield
+    # Drain pending async fire-and-forget background tasks before pool disposal
+    await asyncio.sleep(0.05)
     await engine.dispose()
 
 
