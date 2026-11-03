@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { Link } from "@/i18n/navigation";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -49,47 +50,65 @@ function getIconBg(key: string) {
 export function MetricCards({ metrics }: MetricCardsProps) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 md:gap-6">
-      {metrics.map((m) => (
-        <div
-          key={m.key}
-          className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900"
-        >
+      {metrics.map((m) => {
+        const isApprovals = m.key === "pending_approvals";
+        const cardBody = (
           <div
-            className={`flex h-12 w-12 items-center justify-center rounded-xl ${getIconBg(
-              m.key
-            )}`}
+            className={`rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900 transition-all ${
+              isApprovals
+                ? "hover:border-warning-300 dark:hover:border-warning-600/50 hover:shadow-theme-sm cursor-pointer"
+                : ""
+            }`}
           >
-            {getMetricIcon(m.key)}
-          </div>
-
-          <div className="mt-5 flex items-end justify-between">
-            <div>
-              <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                {m.label}
-              </span>
-              <h4 className="mt-1 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-                {m.value.toLocaleString("id-ID")}
-              </h4>
+            <div
+              className={`flex h-12 w-12 items-center justify-center rounded-xl ${getIconBg(
+                m.key
+              )}`}
+            >
+              {getMetricIcon(m.key)}
             </div>
 
-            {m.trend !== "neutral" && (
-              <Badge
-                color={m.trend === "up" ? "success" : "error"}
-                size="sm"
-                startIcon={
-                  m.trend === "up" ? (
-                    <ArrowUpIcon className="text-success-600 dark:text-success-500" />
-                  ) : (
-                    <ArrowDownIcon className="text-error-600 dark:text-error-500" />
-                  )
-                }
-              >
-                {Math.abs(m.change_percent)}%
-              </Badge>
-            )}
+            <div className="mt-5 flex items-end justify-between">
+              <div>
+                <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                  {m.label}
+                </span>
+                <h4 className="mt-1 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
+                  {m.value.toLocaleString("id-ID")}
+                </h4>
+              </div>
+
+              {m.trend !== "neutral" ? (
+                <Badge
+                  color={m.trend === "up" ? "success" : "error"}
+                  size="sm"
+                  startIcon={
+                    m.trend === "up" ? (
+                      <ArrowUpIcon className="text-success-600 dark:text-success-500" />
+                    ) : (
+                      <ArrowDownIcon className="text-error-600 dark:text-error-500" />
+                    )
+                  }
+                >
+                  {Math.abs(m.change_percent)}%
+                </Badge>
+              ) : isApprovals && m.value > 0 ? (
+                <span className="text-xs font-semibold text-warning-600 dark:text-warning-400">
+                  Needs Review →
+                </span>
+              ) : null}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+
+        return isApprovals ? (
+          <Link key={m.key} href="/orchestration/scheduling" className="block">
+            {cardBody}
+          </Link>
+        ) : (
+          <div key={m.key}>{cardBody}</div>
+        );
+      })}
     </div>
   );
 }

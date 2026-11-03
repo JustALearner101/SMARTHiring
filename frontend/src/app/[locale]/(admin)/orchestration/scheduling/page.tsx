@@ -8,6 +8,7 @@ import DisambiguationModal from "@/components/orchestration/DisambiguationModal"
 import OrchestrationPipelineLoader from "@/components/orchestration/OrchestrationPipelineLoader";
 import UndoBufferBanner from "@/components/orchestration/UndoBufferBanner";
 import Button from "@/components/ui/button/Button";
+import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/context/ToastContext";
 import {
   AudioIcon,
@@ -24,6 +25,7 @@ import { getCandidate, listCandidates } from "@/services/masterService";
 import {
   approveActionPlan,
   executeCommand,
+  getActionPlan,
   getCurrentActionPlan,
   isDeadlockResult,
   isDisambiguationResult,
@@ -50,11 +52,12 @@ import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } fr
 function SchedulingContent() {
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
+  const planIdParam = searchParams.get("planId") || searchParams.get("plan_id");
   const candidateId = searchParams.get("candidateId") || searchParams.get("candidate_id");
   const slotStart = searchParams.get("slot_start");
   const interviewerName = searchParams.get("interviewer_name");
   const threadId = searchParams.get("thread_id");
-  const { showError } = useToast();
+  const { showError, showSuccess, showInfo } = useToast();
 
   const [candidatesQueue, setCandidatesQueue] = useState<Candidate[]>([]);
   const [apiCandidate, setApiCandidate] = useState<Candidate | null>(null);
@@ -123,6 +126,11 @@ function SchedulingContent() {
   const [outOfScopeData, setOutOfScopeData] = useState<OutOfScopeResult | null>(null);
   const [deadlockData, setDeadlockData] = useState<DeadlockEscalatedResult | null>(null);
 
+  // Rejection modal & reason state (UX improvement)
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
+  const [isSubmittingReject, setIsSubmittingReject] = useState(false);
+
   // Prevents the 60s countdown and the "Send Now" button from double-dispatching.
   const finalizedRef = useRef(false);
 
@@ -156,7 +164,7 @@ function SchedulingContent() {
     []
   );
 
-  // Initial hydration strictly for CommandBar context & active 60s Undo safety window
+  // Initial hydration: handles deep-link ?planId=... and restores active approvals / undo window
   useEffect(() => {
     let cancelled = false;
 
@@ -177,20 +185,81 @@ function SchedulingContent() {
         console.error("Failed to fetch preset scenarios:", error);
       }
 
-      // Only restore an action plan automatically if it is actively counting down in the 60s Undo Window
+      // 1. Deep Link Priority: If specific planId query param is passed
+      if (planIdParam && planIdParam !== "undefined" && planIdParam !== "null") {
+        try {
+          const targetedPlan = await getActionPlan(planIdParam);
+          if (!cancelled && targetedPlan) {
+            setActivePlan(targetedPlan);
+            if (targetedPlan.status === "PENDING_APPROVAL") {
+              setStatus("PENDING_APPROVAL");
+              pushAudit(
+                "PLAN_VALIDATED",
+                "Action Plan Loaded for Review",
+                targetedPlan.validator_notes ||
+                  `Action Plan #${targetedPlan.id} untuk ${targetedPlan.candidate_name} siap ditinjau untuk persetujuan.`,
+                "Approval Gate Node",
+                "warning",
+                true
+              );
+            } else if (targetedPlan.status === "UNDO_WINDOW") {
+              const expiresAt = targetedPlan.undo_expires_at;
+              const remaining =
+                typeof expiresAt === "number" && expiresAt > Date.now()
+                  ? Math.max(1, Math.ceil((expiresAt - Date.now()) / 1000))
+                  : 60;
+              setUndoSeconds(remaining);
+              setStatus("UNDO_WINDOW");
+              pushAudit(
+                "UNDO_BUFFER_STARTED",
+                "Active 60-Second Undo Buffer Restored",
+                `Plan #${targetedPlan.id} sedang dalam masa tunda (${remaining} detik tersisa) sebelum pengiriman eksternal.`,
+                "Approval Gate Node",
+                "warning",
+                true
+              );
+            } else if (targetedPlan.status === "REJECTED") {
+              setStatus("REJECTED");
+            } else if (targetedPlan.status === "EXECUTED") {
+              setStatus("EXECUTED");
+            } else if (targetedPlan.status === "UNDONE") {
+              setStatus("UNDONE");
+            }
+            return;
+          }
+        } catch (error) {
+          console.error("Failed to fetch targeted action plan:", error);
+        }
+      }
+
+      // 2. Fallback: Restore any active action plan (either in UNDO_WINDOW or PENDING_APPROVAL)
       try {
         const plan = await getCurrentActionPlan();
-        if (!cancelled && plan && plan.status === "UNDO_WINDOW") {
-          const expiresAt = plan.undo_expires_at;
-          if (typeof expiresAt === "number" && expiresAt > Date.now()) {
-            const remaining = Math.max(1, Math.ceil((expiresAt - Date.now()) / 1000));
+        if (!cancelled && plan) {
+          if (plan.status === "UNDO_WINDOW") {
+            const expiresAt = plan.undo_expires_at;
+            if (typeof expiresAt === "number" && expiresAt > Date.now()) {
+              const remaining = Math.max(1, Math.ceil((expiresAt - Date.now()) / 1000));
+              setActivePlan(plan);
+              setUndoSeconds(remaining);
+              setStatus("UNDO_WINDOW");
+              pushAudit(
+                "UNDO_BUFFER_STARTED",
+                "Active 60-Second Undo Buffer Restored",
+                `Plan #${plan.id} sedang dalam masa tunda (${remaining} detik tersisa) sebelum pengiriman eksternal.`,
+                "Approval Gate Node",
+                "warning",
+                true
+              );
+            }
+          } else if (plan.status === "PENDING_APPROVAL") {
             setActivePlan(plan);
-            setUndoSeconds(remaining);
-            setStatus("UNDO_WINDOW");
+            setStatus("PENDING_APPROVAL");
             pushAudit(
-              "UNDO_BUFFER_STARTED",
-              "Active 60-Second Undo Buffer Restored",
-              `Plan #${plan.id} sedang dalam masa tunda (${remaining} detik tersisa) sebelum pengiriman eksternal.`,
+              "PLAN_VALIDATED",
+              "Action Plan Awaiting Approval",
+              plan.validator_notes ||
+                `Action plan #${plan.id} untuk ${plan.candidate_name} menunggu persetujuan HR.`,
               "Approval Gate Node",
               "warning",
               true
@@ -198,7 +267,7 @@ function SchedulingContent() {
           }
         }
       } catch (error) {
-        console.error("Failed to check active undo window:", error);
+        console.error("Failed to check active action plan:", error);
       }
     };
 
@@ -207,7 +276,7 @@ function SchedulingContent() {
     return () => {
       cancelled = true;
     };
-  }, [pushAudit]);
+  }, [planIdParam, pushAudit]);
 
   // Candidate context from ?candidateId=...
   useEffect(() => {
@@ -305,7 +374,7 @@ function SchedulingContent() {
           "Out-of-Scope Request Refused (Pillar LIMITS)",
           result.escalation_reason || result.message,
           "Planner & Triage Agent",
-          "danger"
+          "error"
         );
         return;
       }
@@ -320,7 +389,7 @@ function SchedulingContent() {
           "Negotiation Limit Exceeded — Escalated to HR",
           result.escalation_reason || result.message,
           "Planner & Triage Agent",
-          "danger"
+          "error"
         );
         return;
       }
@@ -334,7 +403,7 @@ function SchedulingContent() {
           "Adversarial Prompt Injection Blocked (Pillar PERMISSIONS)",
           result.message || "Command contained adversarial prompt injection.",
           "Guardrail Node",
-          "danger"
+          "error"
         );
         return;
       }
@@ -391,7 +460,7 @@ function SchedulingContent() {
         return;
       }
 
-      applyPlan(result);
+      applyPlan(result as ActionPlan);
     } catch (error) {
       console.error("Failed to resolve disambiguation command:", error);
       const errMsg =
@@ -451,8 +520,15 @@ function SchedulingContent() {
         "Approval Gate Node",
         "warning"
       );
+      showSuccess(
+        "Action Plan Disetujui",
+        "Jendela pembatalan (Undo Buffer) 60 detik diaktifkan sebelum pengiriman pesan eksternal."
+      );
+      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     } catch (error) {
       console.error("Failed to approve action plan:", error);
+      showError("Gagal Menyetujui", "Terjadi kesalahan saat menyetujui Action Plan.");
       setIsApprovingPlan(false);
     }
   };
@@ -478,8 +554,12 @@ function SchedulingContent() {
         "HR Admin (You)",
         "error"
       );
+      showInfo("Pengiriman Dibatalkan", "Pengiriman berhasil ditarik kembali dalam masa tunda.");
+      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     } catch (error) {
       console.error("Failed to undo action plan:", error);
+      showError("Gagal Membatalkan", "Terjadi kesalahan saat membatalkan pengiriman.");
     }
   };
 
@@ -500,6 +580,8 @@ function SchedulingContent() {
       setActivePlan(executedPlan);
       setStatus("EXECUTED");
       void queryClient.invalidateQueries({ queryKey: ["candidates"] });
+      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       listCandidates({ page_size: 20 })
         .then((page) => {
           if (Array.isArray(page?.items)) setCandidatesQueue(page.items);
@@ -522,31 +604,54 @@ function SchedulingContent() {
         "Channel & Calendar Executor",
         "success"
       );
+      showSuccess("Terkirim", "Pesan dan jadwal wawancara berhasil dikirimkan ke semua pihak.");
     } catch (error) {
       console.error("Failed to dispatch action plan:", error);
+      showError("Gagal Mengirimkan", "Terjadi kesalahan saat mengirimkan jadwal wawancara.");
     }
   };
 
-  // 6. Reject Plan (TC-CHB-20: calls POST /api/v1/actionPlans/{plan_id}/reject)
-  const handleReject = async () => {
+  // 6. Reject Plan (TC-CHB-20: with Confirmation Modal & Feedback)
+  const handleOpenRejectModal = () => {
+    setRejectReason("Jadwal tidak sesuai dengan ketersediaan interviewer atau kandidat.");
+    setIsRejectModalOpen(true);
+  };
+
+  const handleConfirmReject = async () => {
     finalizedRef.current = true;
     const plan = activePlan;
-    if (plan?.id) {
-      try {
-        const rejected = await rejectActionPlan(plan.id, "Rejected by HR at approval gate");
-        setActivePlan(rejected);
-      } catch (err) {
-        console.error("Failed to reject action plan on backend:", err);
-      }
+    if (!plan?.id) return;
+
+    setIsSubmittingReject(true);
+    try {
+      const reason = rejectReason.trim() || "Rejected by HR at approval gate";
+      const rejected = await rejectActionPlan(plan.id, reason);
+      setActivePlan(rejected);
+      setStatus("REJECTED");
+
+      pushAudit(
+        "PLAN_REJECTED",
+        "Action Plan Rejected by HR (Approval Gate)",
+        `Rencana ditolak: "${reason}". Tidak ada pesan atau jadwal kalender yang dieksekusi.`,
+        "HR Admin (You)",
+        "error"
+      );
+
+      showInfo(
+        "Action Plan Ditolak",
+        `Rencana jadwal untuk ${plan.candidate_name} berhasil ditolak. Notifikasi pembatalan dicatat.`
+      );
+
+      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      void queryClient.invalidateQueries({ queryKey: ["candidates"] });
+    } catch (err) {
+      console.error("Failed to reject action plan on backend:", err);
+      showError("Gagal Menolak Rencana", "Terjadi kesalahan saat memproses penolakan di server.");
+    } finally {
+      setIsSubmittingReject(false);
+      setIsRejectModalOpen(false);
     }
-    setStatus("REJECTED");
-    pushAudit(
-      "PLAN_REJECTED",
-      "Action Plan Rejected by HR (Approval Gate)",
-      "The plan was rejected at the approval gate. No external messages or calendar events dispatched.",
-      "HR Admin (You)",
-      "danger"
-    );
   };
 
   // 7. Reset to Clean Idle State
@@ -598,6 +703,33 @@ function SchedulingContent() {
                 Time slot selected from Calendar Matrix. Click &quot;AI Orchestration&quot; to validate and process proposed schedule.
               </span>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Context Banner ketika sedang meninjau Action Plan tertentu (Pillar APPROVAL UX) */}
+      {status === "PENDING_APPROVAL" && activePlan && (
+        <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-brand-200 bg-brand-50/80 p-4 dark:border-brand-500/20 dark:bg-brand-500/10 shadow-theme-xs">
+          <div className="flex items-center gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-500 text-white font-bold text-xs shadow-theme-xs">
+              #{activePlan.id}
+            </span>
+            <div className="text-start">
+              <h4 className="text-sm font-bold text-gray-900 dark:text-white">
+                Sedang Meninjau Rencana Aksi AI: {activePlan.candidate_name}
+              </h4>
+              <p className="text-xs text-gray-600 dark:text-gray-300">
+                Posisi: {activePlan.candidate_position} · {activePlan.proposed_slot?.formatted_wib || "Jadwal Terjadwal"}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/"
+              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 shadow-theme-xs transition-colors"
+            >
+              ← Kembali ke Dashboard
+            </Link>
           </div>
         </div>
       )}
@@ -780,10 +912,22 @@ function SchedulingContent() {
                 <p className="mt-1 text-xs text-gray-600 dark:text-gray-300 max-w-md mx-auto leading-relaxed">
                   Rencana aksi ditolak pada gerbang persetujuan HR. Tercatat secara permanen di AuditLog (PLAN_REJECTED). Tidak ada event Calendar, email, atau pesan WhatsApp yang dikirimkan.
                 </p>
-                <div className="mt-4">
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-2.5">
                   <Button variant="primary" size="sm" onClick={handleReset}>
                     Create New Action Plan
                   </Button>
+                  <Link
+                    href="/"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 shadow-theme-xs transition-colors"
+                  >
+                    Back to Dashboard
+                  </Link>
+                  <Link
+                    href="/master/candidates"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-brand-300 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-100 dark:border-brand-500/30 dark:bg-brand-500/15 dark:text-brand-300 shadow-theme-xs transition-colors"
+                  >
+                    Candidates Directory
+                  </Link>
                 </div>
               </div>
             )}
@@ -898,7 +1042,7 @@ function SchedulingContent() {
               <ConfirmationCard
                 plan={activePlan}
                 onApprove={handleApprove}
-                onReject={handleReject}
+                onReject={handleOpenRejectModal}
                 isApproving={status === "UNDO_WINDOW" || isApprovingPlan}
               />
             )}
@@ -922,6 +1066,62 @@ function SchedulingContent() {
         targetPosition={modalCandidate?.applied_position ?? "Applied Position"}
         profiles={disambiguationProfiles}
       />
+
+      {/* Rejection Confirmation Modal (UX Feedback & Reason Capture) */}
+      <Modal
+        isOpen={isRejectModalOpen}
+        onClose={() => setIsRejectModalOpen(false)}
+        className="max-w-md p-6"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-error-50 text-error-600 dark:bg-error-500/15 dark:text-error-400">
+              <CloseLineIcon />
+            </div>
+            <div className="text-start">
+              <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                Tolak Rencana Penjadwalan?
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Rencana aksi ini akan dibatalkan secara permanen di gerbang persetujuan.
+              </p>
+            </div>
+          </div>
+
+          <div className="text-start">
+            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+              Alasan Penolakan (Tercatat di Audit Log)
+            </label>
+            <textarea
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              rows={3}
+              className="w-full rounded-xl border border-gray-300 p-2.5 text-xs text-gray-900 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+              placeholder="Contoh: Interviewer berhalangan pada jam tersebut..."
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2.5 pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsRejectModalOpen(false)}
+              disabled={isSubmittingReject}
+            >
+              Batal
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              className="bg-error-600 hover:bg-error-700 text-white"
+              onClick={handleConfirmReject}
+              disabled={isSubmittingReject}
+            >
+              {isSubmittingReject ? "Memproses..." : "Konfirmasi Tolak"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

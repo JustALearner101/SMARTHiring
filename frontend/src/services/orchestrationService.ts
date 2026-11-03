@@ -115,14 +115,33 @@ export async function executeCommand(
   return normalizePlan(result as ActionPlan);
 }
 
-/** Returns null when the backend has no active plan (HTTP 404). */
+/** Returns null when the backend has no active plan (HTTP 404 or inactive). */
 export async function getCurrentActionPlan(): Promise<ActionPlan | null> {
   try {
     const plan = await request<ActionPlan>(API_ENDPOINTS.ACTION_PLANS_CURRENT);
     return normalizePlan(plan);
   } catch (error) {
     if (isNotFoundError(error)) return null;
-    throw error;
+    console.warn("No active action plan currently available:", error);
+    return null;
+  }
+}
+
+/** Fetches a specific ActionPlan by ID (HTTP 404 or invalid returns null). */
+export async function getActionPlan(planId: string): Promise<ActionPlan | null> {
+  const cleanId = String(planId || "").trim();
+  if (!cleanId || cleanId === "undefined" || cleanId === "null") {
+    return null;
+  }
+  try {
+    const plan = await request<ActionPlan>(
+      `${API_ENDPOINTS.ACTION_PLANS}/${encodeURIComponent(cleanId)}`
+    );
+    return normalizePlan(plan);
+  } catch (error) {
+    if (isNotFoundError(error)) return null;
+    console.warn("Action plan not found or unavailable:", cleanId, error);
+    return null;
   }
 }
 

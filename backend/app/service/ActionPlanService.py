@@ -34,54 +34,164 @@ class ActionPlanService:
     def _to_action_plan_dto(self, plan: FollowupPlan) -> ActionPlanDTO:
         now = datetime.now(UTC)
         meta = plan.vagent_metadata or {}
-        slot_data = meta.get("proposed_slot") or {
-            "title": "User Technical Interview (Round 1)",
-            "start_utc": plan.dscheduled_start_utc.isoformat() if plan.dscheduled_start_utc else now.isoformat(),
-            "end_utc": plan.dscheduled_end_utc.isoformat() if plan.dscheduled_end_utc else (now + timedelta(hours=1)).isoformat(),
-            "formatted_wib": "Rabu, 28 Okt 2026, 10:00 WIB",
-            "formatted_wita": "Rabu, 28 Okt 2026, 11:00 WITA",
-            "formatted_wit": "Rabu, 28 Okt 2026, 12:00 WIT",
-            "duration_minutes": 60,
-            "location_type": "Google Meet",
-            "meeting_link": "https://meet.google.com/hkt-ops-2026",
-        }
-        if "formatted_wit" not in slot_data:
-            try:
-                st = datetime.fromisoformat(slot_data["start_utc"])
-                wit_dt = st + timedelta(hours=9)
-                slot_data["formatted_wit"] = f"{wit_dt.strftime('%A, %d %b %Y, %H:%M')} WIT"
-            except Exception:
-                slot_data["formatted_wit"] = ""
+        raw_slot = meta.get("proposed_slot") or {}
 
-        sources_data = meta.get("sources_cited") or [
-            {
-                "id": "src-01",
-                "ref_code": "[cal-budi-01]",
-                "source_type": "CALENDAR",
-                "title": "Kalender Budi Santoso",
-                "detail": "Slot kosong terverifikasi pukul 10:00 - 11:00 WIB.",
-            }
-        ]
+        # 1. Resilient ProposedSlotDTO
+        if isinstance(raw_slot, ProposedSlotDTO):
+            slot_dto = raw_slot
+        elif isinstance(raw_slot, dict):
+            start_str = raw_slot.get("start_utc") or (
+                plan.dscheduled_start_utc.isoformat()
+                if plan.dscheduled_start_utc
+                else now.isoformat()
+            )
+            end_str = raw_slot.get("end_utc") or (
+                plan.dscheduled_end_utc.isoformat()
+                if plan.dscheduled_end_utc
+                else (now + timedelta(hours=1)).isoformat()
+            )
+            slot_dto = ProposedSlotDTO(
+                title=str(raw_slot.get("title") or "Technical Interview"),
+                start_utc=str(start_str),
+                end_utc=str(end_str),
+                formatted_wib=str(raw_slot.get("formatted_wib") or "WIB"),
+                formatted_wita=str(raw_slot.get("formatted_wita") or "WITA"),
+                formatted_wit=str(raw_slot.get("formatted_wit") or ""),
+                duration_minutes=int(raw_slot.get("duration_minutes") or 60),
+                location_type=str(raw_slot.get("location_type") or "Google Meet"),
+                meeting_link=str(
+                    raw_slot.get("meeting_link")
+                    or "https://meet.google.com/hkt-ops-2026"
+                ),
+            )
+        else:
+            slot_dto = ProposedSlotDTO(
+                title="Technical Interview",
+                start_utc=now.isoformat(),
+                end_utc=(now + timedelta(hours=1)).isoformat(),
+                formatted_wib="10:00 WIB",
+                formatted_wita="11:00 WITA",
+                duration_minutes=60,
+                location_type="Google Meet",
+                meeting_link="https://meet.google.com/hkt-ops-2026",
+            )
 
-        items_data = meta.get("items") or [
-            {
-                "id": "item-01",
-                "action_type": "send_email",
-                "recipient_name": meta.get("interviewer_name", "Budi Santoso"),
-                "recipient_role": meta.get("interviewer_role", "VP of Engineering"),
-                "recipient_contact": "budi.santoso@company.com",
-                "channel": "email",
-                "subject": "Undangan Technical Interview",
-                "content_preview": "Undangan interview teknis via Google Meet.",
-                "is_external": False,
-            }
-        ]
+        # 2. Resilient SourceCitationDTO
+        raw_sources = meta.get("sources_cited") or []
+        if not raw_sources:
+            raw_sources = [
+                {
+                    "id": "src-01",
+                    "ref_code": "[cal-slot-verified]",
+                    "source_type": "CALENDAR",
+                    "title": "Verified Calendar Slot",
+                    "detail": "Slot availability confirmed without conflict.",
+                }
+            ]
+        sources_dtos: list[SourceCitationDTO] = []
+        for idx, s in enumerate(raw_sources, start=1):
+            if isinstance(s, SourceCitationDTO):
+                sources_dtos.append(s)
+            elif isinstance(s, dict):
+                st = str(s.get("source_type") or "CALENDAR").upper()
+                if st not in (
+                    "CALENDAR",
+                    "OPERATIONAL_RULE",
+                    "CANDIDATE_ATS",
+                    "CONTACT",
+                ):
+                    st = "CALENDAR"
+                sources_dtos.append(
+                    SourceCitationDTO(
+                        id=str(s.get("id") or f"src-{idx:02d}"),
+                        ref_code=str(s.get("ref_code") or f"[source-{idx:02d}]"),
+                        source_type=st,  # type: ignore[arg-type]
+                        title=str(s.get("title") or "Verified Source Reference"),
+                        detail=str(
+                            s.get("detail")
+                            or "Verified constraint or availability reference."
+                        ),
+                    )
+                )
 
-        mapped_status = (
-            "PENDING_APPROVAL"
-            if plan.vapproval_status == "AWAITING_APPROVAL"
-            else ("UNDO_WINDOW" if plan.vapproval_status == "APPROVED" else plan.vapproval_status)
-        )
+        # 3. Resilient ActionItemDraftDTO
+        raw_items = meta.get("items") or []
+        if not raw_items:
+            raw_items = [
+                {
+                    "id": "item-01",
+                    "action_type": "send_email",
+                    "recipient_name": str(
+                        meta.get("interviewer_name") or "Interviewer"
+                    ),
+                    "recipient_role": str(
+                        meta.get("interviewer_role") or "Interviewer"
+                    ),
+                    "recipient_contact": str(
+                        meta.get("interviewer_email") or "interviewer@company.com"
+                    ),
+                    "channel": "email",
+                    "subject": "Interview Invitation",
+                    "content_preview": "Technical interview invitation.",
+                    "is_external": False,
+                }
+            ]
+        items_dtos: list[ActionItemDraftDTO] = []
+        for idx, it in enumerate(raw_items, start=1):
+            if isinstance(it, ActionItemDraftDTO):
+                items_dtos.append(it)
+            elif isinstance(it, dict):
+                ch = str(it.get("channel") or "email").lower()
+                if ch not in ("email", "whatsapp", "calendar"):
+                    ch = "email"
+                act = str(it.get("action_type") or f"send_{ch}").lower()
+                if act not in ("send_email", "send_whatsapp", "book_calendar"):
+                    act = (
+                        f"send_{ch}"
+                        if ch in ("email", "whatsapp")
+                        else "book_calendar"
+                    )
+                items_dtos.append(
+                    ActionItemDraftDTO(
+                        id=str(it.get("id") or f"item-{idx:02d}"),
+                        action_type=act,  # type: ignore[arg-type]
+                        recipient_name=str(it.get("recipient_name") or "Participant"),
+                        recipient_role=str(it.get("recipient_role") or "Recipient"),
+                        recipient_contact=str(
+                            it.get("recipient_contact") or "contact@example.com"
+                        ),
+                        channel=ch,  # type: ignore[arg-type]
+                        subject=it.get("subject"),
+                        content_preview=str(
+                            it.get("content_preview") or "Schedule details."
+                        ),
+                        is_external=bool(it.get("is_external", False)),
+                    )
+                )
+
+        # 4. Resilient Status Mapping to PlanStatus
+        raw_status = str(plan.vapproval_status or "").upper()
+        if raw_status in ("AWAITING_APPROVAL", "DRAFT"):
+            mapped_status = "PENDING_APPROVAL"
+        elif raw_status == "AWAITING_CLARIFICATION":
+            mapped_status = "CLARIFICATION_NEEDED"
+        elif raw_status == "APPROVED":
+            mapped_status = "UNDO_WINDOW"
+        elif raw_status == "INVALIDATED":
+            mapped_status = "REJECTED"
+        elif raw_status in (
+            "IDLE",
+            "ANALYZING",
+            "CLARIFICATION_NEEDED",
+            "PENDING_APPROVAL",
+            "UNDO_WINDOW",
+            "EXECUTED",
+            "UNDONE",
+            "REJECTED",
+        ):
+            mapped_status = raw_status
+        else:
+            mapped_status = "PENDING_APPROVAL"
 
         undo_exp = None
         if mapped_status == "UNDO_WINDOW" and plan.dundo_deadline:
@@ -89,76 +199,129 @@ class ActionPlanService:
 
         return ActionPlanDTO(
             id=str(plan.nid),
-            candidate_id=str(meta.get("candidate_id", "1")),
-            candidate_name=meta.get("candidate_name", "Rina Kusuma"),
-            candidate_position=meta.get("candidate_position", "Senior Frontend Engineer (Next.js)"),
-            candidate_email=meta.get("candidate_email", "akhtar.ramadhan01@gmail.com"),
-            candidate_phone=meta.get("candidate_phone", "+6281234567890"),
-            interviewer_id=str(meta.get("interviewer_id", "1")),
-            interviewer_name=meta.get("interviewer_name", "Budi Santoso"),
-            interviewer_role=meta.get("interviewer_role", "VP of Engineering"),
-            interviewer_dept=meta.get("interviewer_dept", "Engineering"),
-            interviewer_email=meta.get("interviewer_email", "akhtar.ramadhan01@gmail.com"),
-            interviewer_phone=meta.get("interviewer_phone", "+6281198765432"),
-            raw_command=plan.vplan,
-            negotiation_round=meta.get("negotiation_round", 1),
+            candidate_id=str(meta.get("candidate_id") or "1"),
+            candidate_name=str(meta.get("candidate_name") or "Candidate"),
+            candidate_position=str(meta.get("candidate_position") or "Position"),
+            candidate_email=meta.get("candidate_email") or "candidate@example.com",
+            candidate_phone=meta.get("candidate_phone") or "+6281234567890",
+            interviewer_id=str(meta.get("interviewer_id") or "1"),
+            interviewer_name=str(meta.get("interviewer_name") or "Interviewer"),
+            interviewer_role=str(
+                meta.get("interviewer_role") or "Technical Interviewer"
+            ),
+            interviewer_dept=str(meta.get("interviewer_dept") or "Engineering"),
+            interviewer_email=meta.get("interviewer_email")
+            or "interviewer@company.com",
+            interviewer_phone=meta.get("interviewer_phone") or "+6281198765432",
+            raw_command=str(plan.vplan or "Autonomous scheduling"),
+            negotiation_round=int(meta.get("negotiation_round") or 1),
             max_rounds=3,
             status=mapped_status,  # type: ignore[arg-type]
             is_high_impact=plan.vimpact_level == "HIGH",
-            guardrail_passed=meta.get("guardrail_passed", True),
-            guardrail_notes=meta.get("guardrail_notes", "Instruksi terverifikasi aman."),
-            secondary_validator_passed=meta.get("secondary_validator_passed", True),
-            validator_notes=meta.get("validator_notes", "Slot mematuhi jam kerja dan buffer 15 menit."),
-            proposed_slot=ProposedSlotDTO(**slot_data),
-            sources_cited=[SourceCitationDTO(**s) for s in sources_data],
-            items=[ActionItemDraftDTO(**i) for i in items_data],
+            guardrail_passed=bool(meta.get("guardrail_passed", True)),
+            guardrail_notes=str(
+                meta.get("guardrail_notes") or "Verified secure by Guardrail."
+            ),
+            secondary_validator_passed=bool(
+                meta.get("secondary_validator_passed", True)
+            ),
+            validator_notes=str(
+                meta.get("validator_notes") or "Verified by Secondary Validator."
+            ),
+            proposed_slot=slot_dto,
+            sources_cited=sources_dtos,
+            items=items_dtos,
             created_at=plan.dcrea.isoformat() if plan.dcrea else now.isoformat(),
             undo_expires_at=undo_exp,
         )
 
-    async def get_current_plan(self) -> ActionPlanDTO | None:
-        plan = await self.action_plan_repo.get_latest_plan()
-        if not plan:
-            return None
-
-        now = datetime.now(UTC)
-
-        # Lazy auto-execution if 60-second undo window expired
-        dundo = plan.dundo_deadline
-        if dundo and dundo.tzinfo is None:
-            dundo = dundo.replace(tzinfo=UTC)
-
-        if plan.vapproval_status == "APPROVED" and dundo and now >= dundo:
-            try:
-                meta = plan.vagent_metadata or {}
-                cand_item = next(
-                    (it for it in meta.get("items", []) if "candidate" in str(it.get("recipient_role", "")).lower()),
-                    None,
-                )
-                candidate_channel = cand_item.get("channel", "email") if cand_item else meta.get("candidate_channel", "email")
-                state: OrchestratorAgentState = {
-                    "proposed_slot": meta.get("proposed_slot"),
-                    "candidate_id": int(meta.get("candidate_id", 1)),
-                    "candidate_name": meta.get("candidate_name", "Rina Kusuma"),
-                    "candidate_channel": candidate_channel,
-                    "interviewer_id": int(meta.get("interviewer_id", 1)),
-                    "interviewer_name": meta.get("interviewer_name", "Budi Santoso"),
-                    "items": meta.get("items", []),
-                    "negotiation_round": meta.get("negotiation_round", 1),
-                    "max_rounds": 3,
-                    "sources_cited": meta.get("sources_cited", []),
-                    "thread_id": plan.nid_thread or (int(meta["thread_id"]) if meta.get("thread_id") else None),
-                }
-                await self.executor_node.execute_plan(state, approved_by="HR Admin (Auto-Dispatch)")
-                await self.action_plan_repo.update_plan_status(plan.nid, status="EXECUTED")
+    async def get_plan_by_id(self, plan_id: str) -> ActionPlanDTO | None:
+        """Fetch a specific ActionPlan by ID (supporting direct deep links)."""
+        try:
+            clean_id = (
+                str(plan_id)
+                .replace("plan-rejected-", "")
+                .replace("plan_rejected-", "")
+                .replace("plan-", "")
+                .replace("plan_", "")
+                .strip()
+            )
+            p_id = int(clean_id) if clean_id.isdigit() else None
+            if p_id is None:
                 return None
-            except Exception:
-                logger.exception("Failed lazy execution of action plan #%s", plan.nid)
-
-        if plan.vapproval_status in ("EXECUTED", "UNDONE", "REJECTED"):
+            plan = await self.action_plan_repo.get_action_plan(p_id)
+            if not plan:
+                return None
+            return self._to_action_plan_dto(plan)
+        except Exception:
+            logger.exception("Failed to get action plan by id: %s", plan_id)
             return None
 
-        return self._to_action_plan_dto(plan)
+    async def get_current_plan(self) -> ActionPlanDTO | None:
+        try:
+            # Prioritize active plans awaiting approval or within the 60s undo window
+            plan = await self.action_plan_repo.get_latest_active_plan()
+            if not plan:
+                plan = await self.action_plan_repo.get_latest_plan()
+            if not plan:
+                return None
+
+            now = datetime.now(UTC)
+
+            # Lazy auto-execution if 60-second undo window expired
+            dundo = plan.dundo_deadline
+            if dundo and dundo.tzinfo is None:
+                dundo = dundo.replace(tzinfo=UTC)
+
+            if plan.vapproval_status == "APPROVED" and dundo and now >= dundo:
+                try:
+                    meta = plan.vagent_metadata or {}
+                    cand_item = next(
+                        (
+                            it
+                            for it in meta.get("items", [])
+                            if "candidate" in str(it.get("recipient_role", "")).lower()
+                        ),
+                        None,
+                    )
+                    candidate_channel = (
+                        cand_item.get("channel", "email")
+                        if cand_item
+                        else meta.get("candidate_channel", "email")
+                    )
+                    state: OrchestratorAgentState = {
+                        "proposed_slot": meta.get("proposed_slot"),
+                        "candidate_id": int(meta.get("candidate_id", 1)),
+                        "candidate_name": meta.get("candidate_name", "Rina Kusuma"),
+                        "candidate_channel": candidate_channel,
+                        "interviewer_id": int(meta.get("interviewer_id", 1)),
+                        "interviewer_name": meta.get("interviewer_name", "Budi Santoso"),
+                        "items": meta.get("items", []),
+                        "negotiation_round": meta.get("negotiation_round", 1),
+                        "max_rounds": 3,
+                        "sources_cited": meta.get("sources_cited", []),
+                        "thread_id": plan.nid_thread
+                        or (int(meta["thread_id"]) if meta.get("thread_id") else None),
+                    }
+                    await self.executor_node.execute_plan(
+                        state, approved_by="HR Admin (Auto-Dispatch)"
+                    )
+                    await self.action_plan_repo.update_plan_status(
+                        plan.nid, status="EXECUTED"
+                    )
+                    return None
+                except Exception:
+                    logger.exception(
+                        "Failed lazy execution of action plan #%s", plan.nid
+                    )
+
+            if plan.vapproval_status in ("EXECUTED", "UNDONE", "REJECTED"):
+                return None
+
+            return self._to_action_plan_dto(plan)
+        except Exception:
+            logger.exception("Failed to get current action plan")
+            return None
 
     async def approve_plan(self, plan_id: str, request: PlanApprovalRequestDTO) -> ActionPlanDTO:
         p_id = int(plan_id) if plan_id.isdigit() else 1

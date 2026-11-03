@@ -43,9 +43,34 @@ class NotificationService:
                         title="Action Plan Awaiting Approval",
                         message=f"AI Orchestrator drafted a schedule for {cand_name} ({position}). Requires your full review.",
                         timestamp=plan.dcrea.isoformat(),
-                        link="/orchestration/scheduling",
+                        link=f"/orchestration/scheduling?planId={plan.nid}",
                         badge_variant="warning",
                         metadata={"plan_id": plan.nid, "candidate_name": cand_name},
+                    )
+                )
+
+            # Surface recently rejected/canceled action plans for HR accountability
+            rejected_stmt = (
+                select(FollowupPlan)
+                .where(FollowupPlan.vapproval_status == "REJECTED")
+                .order_by(FollowupPlan.dmodi.desc().nullslast(), FollowupPlan.nid.desc())
+                .limit(5)
+            )
+            rejected_plans = (await self.session.execute(rejected_stmt)).scalars().all()
+            for r_plan in rejected_plans:
+                meta_r: dict[str, Any] = r_plan.vagent_metadata or {}
+                cand_name = meta_r.get("candidate_name", "Candidate")
+                position = meta_r.get("candidate_position", "Position")
+                notifications.append(
+                    NotificationDTO(
+                        id=f"plan-rejected-{r_plan.nid}",
+                        category="APPROVAL",
+                        title="Action Plan Rejected",
+                        message=f"Interview scheduling for {cand_name} ({position}) was rejected/canceled. No external actions taken.",
+                        timestamp=(r_plan.dmodi or r_plan.dcrea).isoformat(),
+                        link=f"/orchestration/scheduling?planId={r_plan.nid}",
+                        badge_variant="error",
+                        metadata={"plan_id": r_plan.nid, "candidate_name": cand_name, "status": "REJECTED"},
                     )
                 )
 

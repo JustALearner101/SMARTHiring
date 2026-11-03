@@ -28,7 +28,7 @@ export function PendingApprovals({ items }: PendingApprovalsProps) {
           </div>
         </div>
         <Link
-          href="/orchestration/scheduling"
+          href={items.length > 0 ? `/orchestration/scheduling?planId=${items[0].id}` : "/orchestration/scheduling"}
           className="inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400"
         >
           Review All
@@ -69,10 +69,11 @@ export function PendingApprovals({ items }: PendingApprovalsProps) {
               </div>
 
               <Link
-                href="/orchestration/scheduling"
+                href={`/orchestration/scheduling?planId=${item.id}`}
                 className="shrink-0 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-brand-600 transition-colors"
+                title="Review proposed schedule and action items for approval"
               >
-                Approve
+                Review &amp; Approve
               </Link>
             </div>
           ))}

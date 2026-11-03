@@ -4,7 +4,9 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.model.CandidateModel import Candidate
 from app.model.FollowupModel import ActionRecipient, FollowupPlan
+from app.model.UserModel import User
 from app.repository.BaseRepository import BaseRepository
 
 
@@ -31,6 +33,21 @@ class ActionPlanRepository(BaseRepository[FollowupPlan]):
                 selectinload(FollowupPlan.recipients).selectinload(ActionRecipient.candidate),
                 selectinload(FollowupPlan.recipients).selectinload(ActionRecipient.user),
             )
+            .order_by(FollowupPlan.nid.desc())
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_latest_active_plan(self) -> FollowupPlan | None:
+        """Get latest plan currently awaiting approval or in undo window."""
+        stmt = (
+            select(FollowupPlan)
+            .options(
+                selectinload(FollowupPlan.recipients).selectinload(ActionRecipient.candidate),
+                selectinload(FollowupPlan.recipients).selectinload(ActionRecipient.user),
+            )
+            .where(FollowupPlan.vapproval_status.in_(["AWAITING_APPROVAL", "APPROVED"]))
             .order_by(FollowupPlan.nid.desc())
             .limit(1)
         )

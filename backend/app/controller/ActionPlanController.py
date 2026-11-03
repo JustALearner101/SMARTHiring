@@ -28,6 +28,18 @@ async def get_current_plan(
     return ApiResponse(data=plan, message="Active action plan retrieved successfully")
 
 
+@router.get("/{plan_id}", response_model=ApiResponse[ActionPlanDTO])
+async def get_plan_by_id(
+    plan_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> ApiResponse[ActionPlanDTO]:
+    service = ActionPlanService(db)
+    plan = await service.get_plan_by_id(plan_id)
+    if not plan:
+        raise NotFoundException(f"Action plan #{plan_id} not found")
+    return ApiResponse(data=plan, message=f"Action plan #{plan_id} retrieved successfully")
+
+
 @router.post("/{plan_id}/approve", response_model=ApiResponse[ActionPlanDTO])
 async def approve_plan(
     plan_id: str,

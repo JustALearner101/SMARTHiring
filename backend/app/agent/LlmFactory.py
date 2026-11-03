@@ -13,15 +13,8 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class LlmFactory:
-    """Multi-Provider LLM Factory with Transparent Hybrid Deterministic Fallback.
-
-    Ensures that when external API keys are missing, network is offline,
-    or during fast CI/CD unit tests, the system operates deterministically.
-    """
-
     @staticmethod
     def get_chat_model(temperature: float = 0.0) -> Any | None:
-        """Returns the appropriate LangChain BaseChatModel based on available API keys."""
         # 1. Google Gemini
         if settings.GOOGLE_API_KEY:
             try:
@@ -104,7 +97,6 @@ class LlmFactory:
         fallback_fn: Callable[[], T],
         temperature: float = 0.0,
     ) -> T:
-        """Invokes structured output from ChatModel; falls back to deterministic synthesizer if offline."""
         model = cls.get_chat_model(temperature=temperature)
         if model is None:
             return fallback_fn()
