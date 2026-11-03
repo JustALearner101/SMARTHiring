@@ -712,7 +712,7 @@ export default function ConfirmationCard({
       </div>
 
       {/* Human Approval Action Bar */}
-      <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pt-4 border-t border-gray-100 dark:border-gray-800">
+      <div className="mt-6 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between pt-4 border-t border-gray-100 dark:border-gray-800">
         <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
           <AlertIcon className="text-warning-500 shrink-0" />
           <span>
@@ -720,8 +720,14 @@ export default function ConfirmationCard({
           </span>
         </div>
 
-        <div className="flex items-center gap-2.5 justify-end">
-          <Button variant="outline" size="md" onClick={onReject} disabled={!isHr || isApproving}>
+        <div className="flex items-center gap-2.5 justify-end shrink-0 flex-wrap sm:flex-nowrap">
+          <Button
+            variant="outline"
+            size="md"
+            onClick={onReject}
+            disabled={!isHr || isApproving}
+            className="shrink-0 whitespace-nowrap"
+          >
             Reject Plan
           </Button>
 
@@ -730,13 +736,14 @@ export default function ConfirmationCard({
             size="md"
             onClick={() => setIsEditSlotModalOpen(true)}
             disabled={!isHr || isApproving}
+            className="shrink-0 whitespace-nowrap"
           >
             Edit Slot
           </Button>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             {!isHr && (
-              <span className="text-[11px] font-semibold text-warning-600 dark:text-warning-400 flex items-center gap-1">
+              <span className="text-[11px] font-semibold text-warning-600 dark:text-warning-400 flex items-center gap-1 whitespace-nowrap">
                 <LockIcon />
                 HR Approval Only
               </span>
@@ -747,7 +754,8 @@ export default function ConfirmationCard({
               isLoading={isApproving}
               disabled={!isHr || isApproving || Boolean(validationError)}
               onClick={handleApproveClick}
-              startIcon={<BoltIcon className="text-white" />}
+              startIcon={<BoltIcon className="text-white shrink-0" />}
+              className="shrink-0 whitespace-nowrap"
             >
               {isHr ? "Approve (+60s Undo)" : "HR Approval Required"}
             </Button>

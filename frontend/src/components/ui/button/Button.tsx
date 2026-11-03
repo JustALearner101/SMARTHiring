@@ -51,7 +51,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       <button
         ref={ref}
         disabled={disabled || isLoading}
-        className={`inline-flex items-center justify-center transition-all duration-200 focus:outline-hidden focus:ring-3 focus:ring-brand-500/20 disabled:cursor-not-allowed disabled:opacity-60 ${sizeClasses[size]} ${variantClasses[variant]} ${className}`}
+        className={`inline-flex items-center justify-center whitespace-nowrap transition-all duration-200 focus:outline-hidden focus:ring-3 focus:ring-brand-500/20 disabled:cursor-not-allowed disabled:opacity-60 ${sizeClasses[size]} ${variantClasses[variant]} ${className}`}
         {...props}
       >
         {isLoading ? (
@@ -64,10 +64,10 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
             />
           </svg>
         ) : (
-          startIcon && <span className="flex items-center">{startIcon}</span>
+          startIcon && <span className="flex items-center shrink-0">{startIcon}</span>
         )}
-        <span>{children}</span>
-        {!isLoading && endIcon && <span className="flex items-center">{endIcon}</span>}
+        <span className="whitespace-nowrap">{children}</span>
+        {!isLoading && endIcon && <span className="flex items-center shrink-0">{endIcon}</span>}
       </button>
     );
   }
