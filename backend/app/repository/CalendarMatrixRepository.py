@@ -101,12 +101,14 @@ class CalendarMatrixRepository(BaseRepository[CalendarEvent]):
             if not conflicts:
                 wib_dt = slot_start_utc + timedelta(hours=7)
                 wita_dt = slot_start_utc + timedelta(hours=8)
+                wit_dt = slot_start_utc + timedelta(hours=9)
                 available_slots.append({
                     "start_utc": slot_start_utc.isoformat(),
                     "end_utc": slot_end_utc.isoformat(),
                     "time_str": c_time.strftime("%H:%M"),
                     "formatted_wib": f"{wib_dt.strftime('%A, %d %b %Y, %H:%M')} WIB",
                     "formatted_wita": f"{wita_dt.strftime('%A, %d %b %Y, %H:%M')} WITA",
+                    "formatted_wit": f"{wit_dt.strftime('%A, %d %b %Y, %H:%M')} WIT",
                 })
 
         return available_slots

@@ -105,6 +105,25 @@ class ActionPlanRepository(BaseRepository[FollowupPlan]):
         await self.session.commit()
         return result.scalar_one_or_none()
 
+    async def atomic_reject_plan(self, plan_id: int) -> FollowupPlan | None:
+        """Atomically reject an ActionPlan if and only if it is currently AWAITING_APPROVAL."""
+        stmt = (
+            update(FollowupPlan)
+            .where(
+                FollowupPlan.nid == plan_id,
+                FollowupPlan.vapproval_status == "AWAITING_APPROVAL",
+            )
+            .values(
+                vapproval_status="REJECTED",
+                dmodi=func.now(),
+            )
+            .returning(FollowupPlan)
+        )
+        result = await self.session.execute(stmt)
+        await self.session.commit()
+        return result.scalar_one_or_none()
+
+
     async def update_plan_status(
         self,
         plan_id: int,

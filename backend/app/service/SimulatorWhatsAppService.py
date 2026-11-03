@@ -82,7 +82,7 @@ class SimulatorWhatsAppService:
         now_str = datetime.now(UTC).isoformat()
 
         # 1. Guardrail Scan
-        is_safe, guardrail_note = GuardrailNode.scan_text(text)
+        is_safe, sanitized_text, guardrail_note, stripped = GuardrailNode.sanitize_and_scan(text)
         is_flagged = not is_safe
 
         # Find or use active thread
@@ -104,23 +104,30 @@ class SimulatorWhatsAppService:
                 actor_type="AGENT",
                 title="WhatsApp Injection Intercepted",
                 description=f"Adversarial instruction in WhatsApp blocked: {guardrail_note}",
-                metadata={"text": text, "thread_id": th_nid},
+                metadata={"text": text, "thread_id": th_nid, "stripped_instructions": stripped},
             )
-            return SimulatedWhatsAppMessageDTO(
-                id=f"wa-{int(datetime.now().timestamp())}",
-                thread_id=str(th_nid),
-                sender=sender,  # type: ignore[arg-type]
-                sender_name="Rina Kusuma" if sender == "candidate" else "SmartHiring Bot",
-                text=text,
-                timestamp=now_str,
-                status="delivered",
-                is_guardrail_flagged=True,
-                guardrail_reason=guardrail_note,
-                action_trigger="SECURITY_ALERT",
-            )
+            # If purely malicious without legitimate content, return security alert
+            if not sanitized_text or len(sanitized_text.strip()) <= 3:
+                return SimulatedWhatsAppMessageDTO(
+                    id=f"wa-{int(datetime.now().timestamp())}",
+                    thread_id=str(th_nid),
+                    sender=sender,  # type: ignore[arg-type]
+                    sender_name="Rina Kusuma" if sender == "candidate" else "SmartHiring Bot",
+                    text=text,
+                    timestamp=now_str,
+                    status="delivered",
+                    is_guardrail_flagged=True,
+                    guardrail_reason=guardrail_note,
+                    action_trigger="SECURITY_ALERT",
+                )
+            text_for_triage = sanitized_text
+            source_citation_tag = "[security-injection-disregarded]"
+        else:
+            text_for_triage = text
+            source_citation_tag = None
 
-        # 2. Persist safe message to tblt_thread_message
-        is_rejection = any(kw in text.lower() for kw in ["maaf", "tidak bisa", "reschedule", "geser", "ganti", "sidang", "undur", "sorry", "cannot", "can't", "postpone"])
+        # 2. Persist message to tblt_thread_message
+        is_rejection = any(kw in text_for_triage.lower() for kw in ["maaf", "tidak bisa", "reschedule", "geser", "ganti", "sidang", "undur", "sorry", "cannot", "can't", "postpone"])
         new_msg = ThreadMessage(
             nid_thread=th_nid,
             nround_number=thread.ncurrent_round if thread else 1,
@@ -128,6 +135,7 @@ class SimulatorWhatsAppService:
             vsender_name="Rina Kusuma" if sender == "candidate" else "HR Admin",
             vchannel="whatsapp",
             vcontent=text,
+            vsource_citation=source_citation_tag,
             bis_rejection=is_rejection,
         )
         self.session.add(new_msg)
@@ -151,6 +159,11 @@ class SimulatorWhatsAppService:
                     )
                 else:
                     thread.ncurrent_round += 1
+            else:
+                # Legitimate agreement (TC-CHB-16)
+                is_confirm = any(kw in text_for_triage.lower() for kw in ["oke", "bisa", "siap", "setuju", "deal", "confirm", "available"])
+                if is_confirm:
+                    thread.vstatus = "SCHEDULED"
             self.session.add(thread)
 
         await self.session.commit()

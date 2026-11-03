@@ -4,6 +4,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.AgentState import TriageEvaluationSchema
+from app.agent.GuardrailNode import GuardrailNode
 from app.agent.LlmFactory import LlmFactory
 from app.agent.OrchestratorGraph import run_orchestrator_pipeline
 from app.dto.ActionPlanDTO import (
@@ -98,13 +99,72 @@ class OrchestratorCommandService:
                 ],
             }
 
-        # 2. Deadlock Escalation Gate
+        # 2. Out-of-Scope Refusal Gate (Pillar LIMITS, TC-CHB-11)
+        if agent_state.get("status") == "OUT_OF_SCOPE_REFUSED":
+            escalation_reason = agent_state.get(
+                "escalation_reason",
+                "Permintaan berada di luar cakupan wewenang AI Orchestrator HR & Office Ops.",
+            )
+            await self.audit_service.log_event(
+                event_type="OUT_OF_SCOPE_REFUSED",
+                actor="AI_ORCHESTRATOR",
+                actor_type="AGENT",
+                title="Out-of-Scope Request Refused (Pillar LIMITS)",
+                description=escalation_reason,
+                metadata={"raw_command": cmd, "topic": "financial_or_unauthorized"},
+            )
+            return {
+                "status": "OUT_OF_SCOPE_REFUSED",
+                "escalation_reason": escalation_reason,
+                "human_owner": "Finance & Accounting Team (Budi Hartono - Finance Manager, budi.hartono@company.com)",
+                "message": escalation_reason,
+            }
+
+        # 3. Deadlock Escalation Gate
         if agent_state.get("status") == "DEADLOCK_ESCALATED":
+            reason = agent_state.get("escalation_reason", "Negotiation limit exceeded or out of scope.")
+            await self.audit_service.log_event(
+                event_type="DEADLOCK_ESCALATED",
+                actor="AI_ORCHESTRATOR",
+                actor_type="AGENT",
+                title="Negotiation Deadlock Escalated to HR",
+                description=reason,
+                metadata={"raw_command": cmd, "thread_id": thread_id},
+            )
             return {
                 "status": "DEADLOCK_ESCALATED",
-                "escalation_reason": agent_state.get("escalation_reason", "Negotiation limit exceeded or out of scope."),
+                "escalation_reason": reason,
                 "message": "Autonomous orchestration stopped and escalated to HR.",
             }
+
+        # 4. Pure Prompt Injection Block Gate
+        if agent_state.get("injection_detected") and not agent_state.get("sanitized_command"):
+            guardrail_note = agent_state.get("guardrail_notes", "Adversarial prompt injection detected.")
+            await self.audit_service.log_event(
+                event_type="INJECTION_BLOCKED",
+                actor="AI_ORCHESTRATOR",
+                actor_type="AGENT",
+                title="Adversarial Prompt Injection Blocked",
+                description=guardrail_note,
+                metadata={"raw_command": cmd},
+            )
+            return {
+                "status": "GUARDRAIL_BLOCKED",
+                "message": f"Instruksi ditolak oleh security guardrail: {guardrail_note}",
+                "guardrail_notes": guardrail_note,
+            }
+
+        # If injection was detected but legitimate command was sanitized, log audit event
+        if agent_state.get("injection_detected"):
+            await self.audit_service.log_event(
+                event_type="INJECTION_BLOCKED",
+                actor="AI_ORCHESTRATOR",
+                actor_type="AGENT",
+                title="Embedded Injection Disregarded (Pillar PERMISSIONS)",
+                description=agent_state.get("guardrail_notes", ""),
+                metadata={"raw_command": cmd, "sanitized_command": agent_state.get("sanitized_command")},
+            )
+
 
         # 3. Extract Agent Output
         slot_dict = agent_state.get("proposed_slot") or {}
@@ -208,30 +268,53 @@ class OrchestratorCommandService:
 
     async def handle_inbound_reply(self, request: InboundReplyRequestDTO) -> ActionPlanDTO | dict[str, Any]:
         reply = request.reply_text.strip()
-        reply_lower = reply.lower()
         thread_id = request.thread_id or 1
 
         # Check existing thread
         thread = await self.thread_repo.get_thread(thread_id)
         current_round = thread.ncurrent_round if thread else 1
 
+        # 0. Scan inbound reply with GuardrailNode (TC-CHB-16)
+        is_safe, sanitized_reply, guardrail_note, stripped = GuardrailNode.sanitize_and_scan(reply)
+        source_citation_tag = None
+        if not is_safe:
+            source_citation_tag = "[security-injection-disregarded]"
+            await self.audit_service.log_event(
+                event_type="INJECTION_BLOCKED",
+                actor=request.sender_role,
+                actor_type="AGENT",
+                title="Inbound Injection Blocked (Pillar PERMISSIONS)",
+                description=f"Inbound adversarial instruction disregarded: {guardrail_note}",
+                metadata={"raw_reply": reply, "stripped": stripped, "thread_id": thread_id},
+            )
+            if not sanitized_reply or len(sanitized_reply.strip()) <= 3:
+                return {
+                    "status": "GUARDRAIL_BLOCKED",
+                    "message": f"Inbound reply rejected by guardrail: {guardrail_note}",
+                }
+            effective_reply = sanitized_reply
+        else:
+            effective_reply = reply
+
+        effective_lower = effective_reply.lower()
+
         # Fallback triage evaluation
         def fallback_triage() -> TriageEvaluationSchema:
             out_of_scope = ["gaji", "salary", "bonus", "benefit", "kontrak", "contract"]
-            if any(kw in reply_lower for kw in out_of_scope):
+            if any(kw in effective_lower for kw in out_of_scope):
                 return TriageEvaluationSchema(
                     intent="OUT_OF_SCOPE",
                     triage_reason="Discussing compensation topics outside the agent's authority (out of scope).",
                 )
             confirm_words = ["bisa", "siap", "oke", "setuju", "deal", "confirm", "available", "yes", "sure"]
-            if any(kw in reply_lower for kw in confirm_words) and not any(w in reply_lower for w in ["tidak", "ga bisa", "gabisa", "not", "cannot", "can't"]):
+            if any(kw in effective_lower for kw in confirm_words) and not any(w in effective_lower for w in ["tidak", "ga bisa", "gabisa", "not", "cannot", "can't"]):
                 return TriageEvaluationSchema(
                     intent="CONFIRM",
                     triage_reason="Relevant party agreed to the proposed schedule.",
                 )
             return TriageEvaluationSchema(
                 intent="RESCHEDULE",
-                requested_slot_text=reply,
+                requested_slot_text=effective_reply,
                 triage_reason="Request to reschedule interview.",
             )
 
@@ -244,7 +327,7 @@ class OrchestratorCommandService:
         triage_res = await LlmFactory.invoke_structured_or_fallback(
             schema=TriageEvaluationSchema,
             system_instruction=system_instruction,
-            user_content=f"Inbound reply from {request.sender_role} via {request.channel}: '{reply}'",
+            user_content=f"Inbound reply from {request.sender_role} via {request.channel}: '{effective_reply}'",
             fallback_fn=fallback_triage,
         )
 
@@ -258,8 +341,10 @@ class OrchestratorCommandService:
                     "vsender_name": "Candidate" if request.sender_role == "CANDIDATE" else "Interviewer",
                     "vchannel": request.channel,
                     "vcontent": reply,
+                    "vsource_citation": source_citation_tag,
                 },
             )
+
 
         # 1. OUT OF SCOPE Discussion -> Escalate to HR
         if triage_res.intent == "OUT_OF_SCOPE":

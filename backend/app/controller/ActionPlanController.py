@@ -6,6 +6,7 @@ from app.db.DatabaseSession import get_db
 from app.dto.ActionPlanDTO import (
     ActionPlanDTO,
     PlanApprovalRequestDTO,
+    PlanRejectRequestDTO,
     PlanUndoRequestDTO,
 )
 from app.dto.BaseDTO import ApiResponse
@@ -55,4 +56,20 @@ async def undo_plan(
         return ApiResponse(data=plan, message="Action successfully undone by HR within undo window")
     except ValueError as e:
         raise NotFoundException(str(e)) from e
+
+
+@router.post("/{plan_id}/reject", response_model=ApiResponse[ActionPlanDTO])
+async def reject_plan(
+    plan_id: str,
+    request: PlanRejectRequestDTO,
+    current_user: User = Depends(require_roles(["HR", "ADMIN"])),
+    db: AsyncSession = Depends(get_db),
+) -> ApiResponse[ActionPlanDTO]:
+    service = ActionPlanService(db)
+    try:
+        plan = await service.reject_plan(plan_id, request)
+        return ApiResponse(data=plan, message="Action plan rejected by HR, no external actions executed")
+    except ValueError as e:
+        raise NotFoundException(str(e)) from e
+
 

@@ -155,6 +155,13 @@ export default function ThreadDetailModal({
                       Declined / Reschedule Requested
                     </span>
                   )}
+
+                  {msg.source_citation?.includes("security-injection") && (
+                    <div className="mt-2 flex items-center gap-1.5 rounded-lg border border-error-300 bg-error-50 px-2 py-1 text-[11px] font-medium text-error-800 dark:border-error-700 dark:bg-error-950/60 dark:text-error-300">
+                      <LockIcon className="h-3.5 w-3.5 shrink-0" />
+                      <span>Security Guardrail: Embedded injection instruction detected and disregarded. Legitimate response processed.</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

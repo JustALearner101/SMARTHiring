@@ -138,8 +138,11 @@ class ContextRetrieverNode:
             })
 
         # 4. Resolve Target Date & Query Available Slots from Calendar DB
-        now = datetime.now(UTC)
-        target_date = (now + timedelta(days=2)).date()
+        # Reference local Indonesian time (WIB = UTC+7) to avoid off-by-one day calculation
+        now_utc = datetime.now(UTC)
+        now_wib = now_utc + timedelta(hours=7)
+        target_date = (now_wib + timedelta(days=2)).date()
+        day_explicitly_requested = False
 
         day_keywords = {
             "monday": 0, "senin": 0, "tuesday": 1, "selasa": 1,
@@ -149,16 +152,27 @@ class ContextRetrieverNode:
         }
         for kw, target_wd in day_keywords.items():
             if kw in cmd_lower:
-                days_ahead = (target_wd - now.weekday() + 7) % 7
-                if days_ahead == 0:
+                day_explicitly_requested = True
+                days_ahead = (target_wd - now_wib.weekday() + 7) % 7
+                if days_ahead == 0 and not any(h in cmd_lower for h in ["hari ini", "today"]):
                     days_ahead = 7
-                target_date = (now + timedelta(days=days_ahead)).date()
+                target_date = (now_wib + timedelta(days=days_ahead)).date()
                 break
 
         if "besok" in cmd_lower or "tomorrow" in cmd_lower:
-            target_date = (now + timedelta(days=1)).date()
+            day_explicitly_requested = True
+            target_date = (now_wib + timedelta(days=1)).date()
         elif "lusa" in cmd_lower or "day after tomorrow" in cmd_lower:
-            target_date = (now + timedelta(days=2)).date()
+            day_explicitly_requested = True
+            target_date = (now_wib + timedelta(days=2)).date()
+
+        # Check candidate timezone from command
+        if any(kw in cmd_lower for kw in ["candidate in wit", "kandidat di wit", "di wit", "zona wit", "= 18:00 wit"]):
+            updates["candidate_timezone"] = "WIT"
+        elif any(kw in cmd_lower for kw in ["candidate in wita", "kandidat di wita", "di wita", "zona wita"]):
+            updates["candidate_timezone"] = "WITA"
+        elif any(kw in cmd_lower for kw in ["candidate in wib", "kandidat di wib", "di wib", "zona wib"]):
+            updates["candidate_timezone"] = "WIB"
 
         available_slots = []
         if selected_interviewer:
@@ -168,8 +182,8 @@ class ContextRetrieverNode:
                 duration_minutes=60,
                 timezone_str=selected_interviewer.vtimezone or "WIB",
             )
-            # If no slots found on that day, search next day
-            if not available_slots:
+            # Only search next day if day was NOT explicitly requested and no slots found
+            if not available_slots and not day_explicitly_requested:
                 next_day = target_date + timedelta(days=1)
                 available_slots = await self.cal_repo.find_available_slots(
                     user_id=selected_interviewer.nid,

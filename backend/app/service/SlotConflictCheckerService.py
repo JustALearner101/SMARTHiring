@@ -1,11 +1,13 @@
 from datetime import UTC, date, datetime, time, timedelta
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dto.SlotConflictCheckerDTO import (
     SlotConflictCheckRequestDTO,
     SlotConflictCheckResultDTO,
 )
+from app.model.CandidateModel import Candidate
 from app.repository.CalendarMatrixRepository import CalendarMatrixRepository
 from app.repository.HolidayRepository import HolidayRepository
 from app.repository.OperationalPolicyRepository import OperationalPolicyRepository
@@ -63,6 +65,31 @@ class SlotConflictCheckerService:
                     f"{request.date} 14:00 {request.timezone}",
                 ],
             )
+
+        # Check Candidate Local Working Hours if candidate timezone is different (e.g. WIT)
+        if request.candidate_id:
+            cand_id_int = int(request.candidate_id) if request.candidate_id.isdigit() else None
+            if cand_id_int:
+                cand_stmt = select(Candidate).where(Candidate.nid == cand_id_int)
+                cand = (await self.session.execute(cand_stmt)).scalars().first()
+                if cand and cand.vtimezone and cand.vtimezone != request.timezone:
+                    c_offset = TZ_OFFSETS.get(cand.vtimezone, TZ_OFFSETS["WIB"])
+                    c_start = start_utc + c_offset
+                    c_end = end_utc + c_offset
+                    if c_start.time() < w_start or c_end.time() > w_end:
+                        return SlotConflictCheckResultDTO(
+                            is_available=False,
+                            status="OUTSIDE_WORKING_HOURS",
+                            message=(
+                                f"Slot {request.time} {request.timezone} corresponds to {c_start.strftime('%H:%M')} - {c_end.strftime('%H:%M')} {cand.vtimezone}, "
+                                f"which is outside candidate's local working hours ({w_start.strftime('%H:%M')} - {w_end.strftime('%H:%M')} {cand.vtimezone})."
+                            ),
+                            rule_code="[rule-working-hours]",
+                            suggested_alternatives=[
+                                f"{request.date} 10:00 {request.timezone} (12:00 {cand.vtimezone})",
+                                f"{request.date} 14:00 {request.timezone} (16:00 {cand.vtimezone})",
+                            ],
+                        )
 
         # 2. Check Friday Prayer Blackout (11:30 - 13:00 every Friday)
         if req_date.weekday() == 4:

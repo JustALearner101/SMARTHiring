@@ -7,7 +7,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.DatabaseSession import AsyncSessionLocal
-from app.dto.ActionPlanDTO import PlanApprovalRequestDTO
+from app.dto.ActionPlanDTO import PlanApprovalRequestDTO, PlanRejectRequestDTO
 from app.exception.CustomException import (
     ConflictException,
     PayloadTooLargeException,
@@ -248,3 +248,67 @@ async def test_upload_file_endpoint_accepts_valid_audio(client: AsyncClient):
     assert res.status_code == 201
     assert res.json()["success"] is True
     assert res.json()["data"]["id"] is not None
+
+
+# =====================================================================
+# 5. Action Plan Reject & Pre-Execution Secondary Validator Tests
+# =====================================================================
+
+async def test_action_plan_reject_gate():
+    """Verifies atomic rejection updates status to REJECTED and prevents double-rejection/approval."""
+    now = datetime.now(UTC)
+    async with AsyncSessionLocal() as session:
+        plan_repo = ActionPlanRepository(session)
+        plan = await plan_repo.create_action_plan({
+            "vplan": "Test Rejection Plan",
+            "vaction_type": "CALENDAR",
+            "dscheduled_start_utc": now,
+            "dscheduled_end_utc": now + timedelta(hours=1),
+            "vapproval_status": "AWAITING_APPROVAL",
+            "vimpact_level": "NORMAL",
+            "vagent_metadata": {"candidate_id": "1", "interviewer_id": "1"},
+        })
+        plan_id = str(plan.nid)
+
+    async with AsyncSessionLocal() as session:
+        service = ActionPlanService(session)
+        reject_req = PlanRejectRequestDTO(rejected_by="HR Lead", reason="Not a good fit for interviewer")
+        rejected_dto = await service.reject_plan(plan_id, reject_req)
+        assert rejected_dto.status == "REJECTED"
+
+        # Subsequent attempt to reject must raise ConflictException
+        with pytest.raises(ConflictException):
+            await service.reject_plan(plan_id, reject_req)
+
+
+async def test_secondary_validator_blocks_friday_prayer_at_approval():
+    """Verifies that Secondary Validator blocks approval if slot is on Friday 11:30 - 13:00 WIB (TC-CHB-21)."""
+    # 2026-10-30 is a Friday. 04:45 UTC = 11:45 WIB (inside blackout)
+    friday_blackout_utc = datetime(2026, 10, 30, 4, 45, tzinfo=UTC)
+    async with AsyncSessionLocal() as session:
+        plan_repo = ActionPlanRepository(session)
+        plan = await plan_repo.create_action_plan({
+            "vplan": "Test Friday Blackout Slot",
+            "vaction_type": "CALENDAR",
+            "dscheduled_start_utc": friday_blackout_utc,
+            "dscheduled_end_utc": friday_blackout_utc + timedelta(hours=1),
+            "vapproval_status": "AWAITING_APPROVAL",
+            "vimpact_level": "NORMAL",
+            "vagent_metadata": {
+                "candidate_id": "1",
+                "interviewer_id": "1",
+                "proposed_slot": {
+                    "start_utc": friday_blackout_utc.isoformat(),
+                    "duration_minutes": 60,
+                },
+            },
+        })
+        plan_id = str(plan.nid)
+
+    async with AsyncSessionLocal() as session:
+        service = ActionPlanService(session)
+        approval_req = PlanApprovalRequestDTO(approved_by="HR Admin", send_immediately=True)
+        with pytest.raises(ConflictException) as exc_info:
+            await service.approve_plan(plan_id, approval_req)
+        assert "sholat Jumat" in str(exc_info.value) or "rule-jumatan" in str(exc_info.value)
+

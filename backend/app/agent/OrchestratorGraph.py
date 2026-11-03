@@ -29,6 +29,9 @@ def build_orchestrator_graph(session: AsyncSession) -> Any:
     # 2. Routing Logic
     def route_after_guardrail(state: OrchestratorAgentState) -> str:
         if state.get("injection_detected", False):
+            # If sanitized command still carries legitimate factual content (e.g. TC-CHB-02 meeting note), continue
+            if state.get("sanitized_command") and len(state.get("sanitized_command", "").strip()) > 5:
+                return "retriever"
             return END
         return "retriever"
 
@@ -38,7 +41,7 @@ def build_orchestrator_graph(session: AsyncSession) -> Any:
         return "planner"
 
     def route_after_planner(state: OrchestratorAgentState) -> str:
-        if state.get("status") == "DEADLOCK_ESCALATED":
+        if state.get("status") in ("DEADLOCK_ESCALATED", "OUT_OF_SCOPE_REFUSED"):
             return END
         return "validator"
 

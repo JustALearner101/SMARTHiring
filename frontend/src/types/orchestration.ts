@@ -12,7 +12,10 @@ export type PlanStatus =
   | "UNDO_WINDOW"
   | "EXECUTED"
   | "UNDONE"
-  | "REJECTED";
+  | "REJECTED"
+  | "OUT_OF_SCOPE"
+  | "DEADLOCK"
+  | "GUARDRAIL_BLOCKED";
 
 export interface SourceCitation {
   id: string;
@@ -40,8 +43,9 @@ export interface ProposedSlot {
   end_utc: string;
   formatted_wib: string;
   formatted_wita: string;
+  formatted_wit?: string;
   duration_minutes: number;
-  location_type: "Google Meet" | "Tencent Meeting" | "On-Site Room";
+  location_type: string;
   meeting_link: string;
 }
 

@@ -9,6 +9,7 @@ from app.dto.ActionPlanDTO import (
     ActionItemDraftDTO,
     ActionPlanDTO,
     PlanApprovalRequestDTO,
+    PlanRejectRequestDTO,
     PlanUndoRequestDTO,
     ProposedSlotDTO,
     SourceCitationDTO,
@@ -39,10 +40,18 @@ class ActionPlanService:
             "end_utc": plan.dscheduled_end_utc.isoformat() if plan.dscheduled_end_utc else (now + timedelta(hours=1)).isoformat(),
             "formatted_wib": "Rabu, 28 Okt 2026, 10:00 WIB",
             "formatted_wita": "Rabu, 28 Okt 2026, 11:00 WITA",
+            "formatted_wit": "Rabu, 28 Okt 2026, 12:00 WIT",
             "duration_minutes": 60,
             "location_type": "Google Meet",
             "meeting_link": "https://meet.google.com/hkt-ops-2026",
         }
+        if "formatted_wit" not in slot_data:
+            try:
+                st = datetime.fromisoformat(slot_data["start_utc"])
+                wit_dt = st + timedelta(hours=9)
+                slot_data["formatted_wit"] = f"{wit_dt.strftime('%A, %d %b %Y, %H:%M')} WIT"
+            except Exception:
+                slot_data["formatted_wit"] = ""
 
         sources_data = meta.get("sources_cited") or [
             {
@@ -168,6 +177,50 @@ class ActionPlanService:
             self.session.add(plan)
             await self.session.commit()
 
+        # Pre-Execution Secondary Validator Guard (TC-CHB-21)
+        slot_to_verify = meta.get("proposed_slot") or {}
+        start_utc_str = slot_to_verify.get("start_utc")
+        if start_utc_str:
+            try:
+                st_utc = datetime.fromisoformat(start_utc_str)
+                st_wib = st_utc + timedelta(hours=7)
+                # Friday prayer blackout (11:30 - 13:00 WIB)
+                if st_wib.weekday() == 4:
+                    minute_of_day = st_wib.hour * 60 + st_wib.minute
+                    if 11 * 60 + 30 <= minute_of_day < 13 * 60:
+                        err_msg = (
+                            "Secondary Validator Rejection: Slot yang diajukan (Jumat 11:30 - 13:00 WIB) "
+                            "melanggar aturan operasional waktu ibadah sholat Jumat [rule-jumatan]."
+                        )
+                        await self.audit_service.log_event(
+                            event_type="VALIDATION_VIOLATION_BLOCKED",
+                            actor=request.approved_by,
+                            actor_type="AGENT",
+                            title="Approval Blocked by Secondary Validator",
+                            description=err_msg,
+                            metadata={"plan_id": p_id, "slot": slot_to_verify},
+                        )
+                        raise ConflictException(err_msg)
+                # Indonesian working hours (09:00 - 17:00 WIB)
+                if st_wib.hour < 9 or st_wib.hour >= 17:
+                    err_msg = (
+                        f"Secondary Validator Rejection: Slot pukul {st_wib.strftime('%H:%M')} WIB "
+                        "berada di luar jam kerja operasional (09:00 - 17:00 WIB) [rule-jam-kerja]."
+                    )
+                    await self.audit_service.log_event(
+                        event_type="VALIDATION_VIOLATION_BLOCKED",
+                        actor=request.approved_by,
+                        actor_type="AGENT",
+                        title="Approval Blocked by Secondary Validator",
+                        description=err_msg,
+                        metadata={"plan_id": p_id, "slot": slot_to_verify},
+                    )
+                    raise ConflictException(err_msg)
+            except ConflictException:
+                raise
+            except Exception as e:
+                logger.warning("Slot validation check encountered an error: %s", e)
+
         # Atomic conditional update prevents concurrent double approval race condition
         undo_deadline = None if request.send_immediately else now + timedelta(seconds=60)
         approved_plan = await self.action_plan_repo.atomic_approve_plan(
@@ -262,3 +315,35 @@ class ActionPlanService:
         dto.status = "UNDONE"
         dto.undo_expires_at = None
         return dto
+
+    async def reject_plan(self, plan_id: str, request: PlanRejectRequestDTO) -> ActionPlanDTO:
+        p_id = int(plan_id) if plan_id.isdigit() else 1
+        plan = await self.action_plan_repo.get_action_plan(p_id)
+        if not plan:
+            raise NotFoundException(f"Plan ID {plan_id} not found.")
+
+        rejected_plan = await self.action_plan_repo.atomic_reject_plan(p_id)
+        if not rejected_plan:
+            existing = await self.action_plan_repo.get_action_plan(p_id)
+            status_desc = existing.vapproval_status if existing else "NOT_FOUND"
+            raise ConflictException(
+                f"Plan #{plan_id} cannot be rejected (Current status: {status_desc})."
+            )
+
+        await self.audit_service.log_event(
+            event_type="PLAN_REJECTED",
+            actor=request.rejected_by,
+            actor_type="HUMAN",
+            title="Action Plan Rejected by HR (Approval Gate)",
+            description=f"Action plan #{p_id} rejected by HR: {request.reason}. No external messages dispatched.",
+            metadata={"plan_id": p_id, "reason": request.reason},
+        )
+
+        updated = await self.action_plan_repo.get_action_plan(p_id)
+        if not updated:
+            raise ValueError("Failed to update plan status to REJECTED.")
+        dto = self._to_action_plan_dto(updated)
+        dto.status = "REJECTED"
+        dto.undo_expires_at = None
+        return dto
+

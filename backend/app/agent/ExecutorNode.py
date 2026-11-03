@@ -94,6 +94,7 @@ class ExecutorNode:
 
         # 3. Append Outbound Dialogue Messages & Dispatch Real Email
         dispatched_emails: list[dict[str, Any]] = []
+        dispatched_whatsapps: list[dict[str, Any]] = []
 
         for item in items:
             channel = item.get("channel", "email")
@@ -119,6 +120,13 @@ class ExecutorNode:
                         "recipient": recipient_contact,
                         "name": recipient_name,
                         "res": email_res,
+                    })
+
+                if channel == "whatsapp":
+                    dispatched_whatsapps.append({
+                        "recipient": recipient_contact,
+                        "name": recipient_name,
+                        "content": content,
                     })
 
                 msg = ThreadMessage(
@@ -216,9 +224,36 @@ class ExecutorNode:
                     "hash": fail_audit.metadata.get("hash"),
                 })
 
+        # 7. Append SHA-256 Audit Logs for Dispatched WhatsApp Messages (TC-CHB-12)
+        for wa in dispatched_whatsapps:
+            wa_audit = await self.audit_service.log_event(
+                event_type="WHATSAPP_DISPATCHED",
+                actor="AI_ORCHESTRATOR",
+                actor_type="AGENT",
+                title=f"WhatsApp Message Dispatched: {wa['name']}",
+                description=(
+                    f"Successfully dispatched WhatsApp invitation message to {wa['name']} ({wa['recipient']}): "
+                    f"{wa['content'][:120]}..."
+                ),
+                metadata={
+                    "recipient": wa["recipient"],
+                    "recipient_name": wa["name"],
+                    "channel": "whatsapp",
+                    "slot": agreed_slot_desc,
+                    "thread_id": thread.nid,
+                },
+            )
+            audit_entries.append({
+                "event_type": "WHATSAPP_DISPATCHED",
+                "id": wa_audit.id,
+                "hash": wa_audit.metadata.get("hash"),
+            })
+
         return {
             "status": "EXECUTED",
             "thread_id": thread.nid,
             "dispatched_emails": dispatched_emails,
+            "dispatched_whatsapps": dispatched_whatsapps,
             "audit_entries": audit_entries,
         }
+

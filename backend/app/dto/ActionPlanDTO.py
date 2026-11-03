@@ -42,8 +42,9 @@ class ProposedSlotDTO(BaseDTO):
     end_utc: str
     formatted_wib: str
     formatted_wita: str
+    formatted_wit: str = ""
     duration_minutes: int
-    location_type: Literal["Google Meet", "Tencent Meeting", "On-Site Room"]
+    location_type: str = "Google Meet"
     meeting_link: str
 
 
@@ -84,3 +85,9 @@ class PlanApprovalRequestDTO(BaseDTO):
 
 class PlanUndoRequestDTO(BaseDTO):
     reason: str | None = "Manual cancellation by HR"
+
+
+class PlanRejectRequestDTO(BaseDTO):
+    rejected_by: str = "HR Admin"
+    reason: str = "Plan rejected by HR at approval gate."
+

@@ -25,9 +25,15 @@ import {
   approveActionPlan,
   executeCommand,
   getCurrentActionPlan,
+  isDeadlockResult,
   isDisambiguationResult,
+  isGuardrailBlockedResult,
+  isOutOfScopeResult,
   listPresetScenarios,
+  rejectActionPlan,
   undoActionPlan,
+  type DeadlockEscalatedResult,
+  type OutOfScopeResult,
 } from "@/services/orchestrationService";
 import { Candidate } from "@/types/master";
 import {
@@ -114,6 +120,8 @@ function SchedulingContent() {
   const [undoSeconds, setUndoSeconds] = useState(60);
   const [scenarioList, setScenarioList] = useState<PresetScenario[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditEvent[]>([]);
+  const [outOfScopeData, setOutOfScopeData] = useState<OutOfScopeResult | null>(null);
+  const [deadlockData, setDeadlockData] = useState<DeadlockEscalatedResult | null>(null);
 
   // Prevents the 60s countdown and the "Send Now" button from double-dispatching.
   const finalizedRef = useRef(false);
@@ -287,7 +295,51 @@ function SchedulingContent() {
         return;
       }
 
-      applyPlan(result);
+      if (isOutOfScopeResult(result)) {
+        setOutOfScopeData(result);
+        setIsProcessing(false);
+        setStatus("OUT_OF_SCOPE");
+
+        pushAudit(
+          "OUT_OF_SCOPE_REFUSED",
+          "Out-of-Scope Request Refused (Pillar LIMITS)",
+          result.escalation_reason || result.message,
+          "Planner & Triage Agent",
+          "danger"
+        );
+        return;
+      }
+
+      if (isDeadlockResult(result)) {
+        setDeadlockData(result);
+        setIsProcessing(false);
+        setStatus("DEADLOCK");
+
+        pushAudit(
+          "DEADLOCK_ESCALATED",
+          "Negotiation Limit Exceeded — Escalated to HR",
+          result.escalation_reason || result.message,
+          "Planner & Triage Agent",
+          "danger"
+        );
+        return;
+      }
+
+      if (isGuardrailBlockedResult(result)) {
+        setIsProcessing(false);
+        setStatus("GUARDRAIL_BLOCKED");
+
+        pushAudit(
+          "INJECTION_BLOCKED",
+          "Adversarial Prompt Injection Blocked (Pillar PERMISSIONS)",
+          result.message || "Command contained adversarial prompt injection.",
+          "Guardrail Node",
+          "danger"
+        );
+        return;
+      }
+
+      applyPlan(result as ActionPlan);
     } catch (error) {
       console.error("Failed to execute scheduling command:", error);
       const errMsg =
@@ -475,16 +527,25 @@ function SchedulingContent() {
     }
   };
 
-  // 6. Reject Plan (Client-side state — no /reject endpoint on backend, Ledger U-08)
-  const handleReject = () => {
+  // 6. Reject Plan (TC-CHB-20: calls POST /api/v1/actionPlans/{plan_id}/reject)
+  const handleReject = async () => {
     finalizedRef.current = true;
+    const plan = activePlan;
+    if (plan?.id) {
+      try {
+        const rejected = await rejectActionPlan(plan.id, "Rejected by HR at approval gate");
+        setActivePlan(rejected);
+      } catch (err) {
+        console.error("Failed to reject action plan on backend:", err);
+      }
+    }
     setStatus("REJECTED");
     pushAudit(
-      "ACTION_UNDONE",
-      "Action Plan Rejected by HR",
-      "The plan was canceled from the approval gate.",
+      "PLAN_REJECTED",
+      "Action Plan Rejected by HR (Approval Gate)",
+      "The plan was rejected at the approval gate. No external messages or calendar events dispatched.",
       "HR Admin (You)",
-      "warning"
+      "danger"
     );
   };
 
@@ -496,6 +557,8 @@ function SchedulingContent() {
     setAuditLogs([]);
     setIsApprovingPlan(false);
     setIsDisambiguationOpen(false);
+    setOutOfScopeData(null);
+    setDeadlockData(null);
   };
 
   return (
@@ -705,22 +768,127 @@ function SchedulingContent() {
               </div>
             )}
 
-            {/* Status: REJECTED */}
+            {/* Status: REJECTED (Pillar 3: APPROVAL, TC-CHB-20) */}
             {status === "REJECTED" && (
-              <div className="rounded-2xl border border-gray-200 bg-gray-50 p-6 dark:border-gray-800 dark:bg-gray-800/40 text-center">
+              <div className="rounded-2xl border-2 border-gray-200 bg-gray-50/70 p-6 dark:border-gray-800 dark:bg-gray-800/40 text-center shadow-theme-xs">
                 <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-error-50 text-error-500 dark:bg-error-500/10 mb-2">
-                  <CloseLineIcon/>
+                  <CloseLineIcon />
                 </div>
-                <h3 className="mt-2 text-sm font-semibold text-gray-800 dark:text-white">
-                  Action Plan Rejected by HR
+                <h3 className="mt-2 text-sm font-bold text-gray-900 dark:text-white">
+                  Action Plan Rejected by HR (Approval Gate)
                 </h3>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  This action plan will not be processed further.
+                <p className="mt-1 text-xs text-gray-600 dark:text-gray-300 max-w-md mx-auto leading-relaxed">
+                  Rencana aksi ditolak pada gerbang persetujuan HR. Tercatat secara permanen di AuditLog (PLAN_REJECTED). Tidak ada event Calendar, email, atau pesan WhatsApp yang dikirimkan.
                 </p>
-                <div className="mt-3">
+                <div className="mt-4">
                   <Button variant="primary" size="sm" onClick={handleReset}>
                     Create New Action Plan
                   </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Status: OUT_OF_SCOPE (Pillar 4: LIMITS, TC-CHB-11) */}
+            {status === "OUT_OF_SCOPE" && (
+              <div className="rounded-2xl border-2 border-warning-300 bg-warning-50/60 p-6 dark:border-warning-500/40 dark:bg-warning-500/10 shadow-theme-xs">
+                <div className="flex items-start gap-3.5">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-warning-500 text-white shadow-theme-xs">
+                    <BoltIcon />
+                  </div>
+                  <div className="flex-1 text-start">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-base font-bold text-warning-900 dark:text-warning-300">
+                        Out-of-Scope Request Refused (Pillar LIMITS)
+                      </h3>
+                      <span className="rounded-full bg-warning-100 px-2.5 py-0.5 text-[10px] font-mono font-bold text-warning-800 dark:bg-warning-500/20 dark:text-warning-300">
+                        LIMITS_ENFORCED
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs text-warning-800 dark:text-warning-300 leading-relaxed">
+                      {outOfScopeData?.escalation_reason ||
+                        "Permintaan berada di luar wewenang AI Orchestrator HR & Office Ops. Sistem menolak membuat jadwal atau memproses transaksi di luar domain interview."}
+                    </p>
+                    {outOfScopeData?.human_owner && (
+                      <div className="mt-3.5 rounded-xl border border-warning-200 bg-white p-3 dark:border-warning-800 dark:bg-gray-800 shadow-2xs">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-warning-700 dark:text-warning-400 block mb-1">
+                          Designated Human Process Owner
+                        </span>
+                        <p className="text-xs font-semibold text-gray-900 dark:text-white">
+                          {outOfScopeData.human_owner}
+                        </p>
+                      </div>
+                    )}
+                    <div className="mt-4">
+                      <Button variant="primary" size="sm" onClick={handleReset}>
+                        New Orchestration Request
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Status: DEADLOCK (Pillar 4: LIMITS, TC-CHB-06) */}
+            {status === "DEADLOCK" && (
+              <div className="rounded-2xl border-2 border-error-300 bg-error-50/60 p-6 dark:border-error-500/40 dark:bg-error-500/10 shadow-theme-xs">
+                <div className="flex items-start gap-3.5">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-error-500 text-white shadow-theme-xs">
+                    <CloseIcon />
+                  </div>
+                  <div className="flex-1 text-start">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-base font-bold text-error-900 dark:text-error-300">
+                        Negotiation Limit Exceeded — Escalated to HR
+                      </h3>
+                      <span className="rounded-full bg-error-100 px-2.5 py-0.5 text-[10px] font-mono font-bold text-error-800 dark:bg-error-500/20 dark:text-error-300">
+                        DEADLOCK_ESCALATED
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs text-error-800 dark:text-error-300 leading-relaxed">
+                      {deadlockData?.escalation_reason ||
+                        "Batas otonomi 3 putaran negosiasi telah tercapai. Sistem menghentikan auto-triage dan meneruskan ke HR untuk penanganan manual."}
+                    </p>
+                    <div className="mt-4 flex items-center gap-2">
+                      <Button variant="primary" size="sm" onClick={handleReset}>
+                        Back to Command Bar
+                      </Button>
+                      <Link
+                        href="/orchestration/threads"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-warning-300 bg-warning-50 px-3 py-1.5 text-xs font-semibold text-warning-800 transition-colors hover:bg-warning-100 dark:border-warning-500/30 dark:bg-warning-500/10 dark:text-warning-300 shadow-2xs"
+                      >
+                        Open Triage Threads
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Status: GUARDRAIL_BLOCKED (Pillar 2: PERMISSIONS, TC-CHB-02) */}
+            {status === "GUARDRAIL_BLOCKED" && (
+              <div className="rounded-2xl border-2 border-error-400 bg-error-50/70 p-6 dark:border-error-500/40 dark:bg-error-500/15 shadow-theme-xs">
+                <div className="flex items-start gap-3.5">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-error-600 text-white shadow-theme-xs">
+                    <CloseLineIcon />
+                  </div>
+                  <div className="flex-1 text-start">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-base font-bold text-error-900 dark:text-error-200">
+                        Prompt Injection Blocked (Pillar PERMISSIONS)
+                      </h3>
+                      <span className="rounded-full bg-error-100 px-2.5 py-0.5 text-[10px] font-mono font-bold text-error-800 dark:bg-error-500/30 dark:text-error-300">
+                        GUARDRAIL_BLOCKED
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs text-error-800 dark:text-error-300 leading-relaxed">
+                      Instruksi masukan mengandung indikasi prompt injection atau instruksi terselubung untuk memotong batasan sistem. Sistem telah mengisolasi masukan dan mencatat insiden keamanan ke Audit Log.
+                    </p>
+                    <div className="mt-4">
+                      <Button variant="primary" size="sm" onClick={handleReset}>
+                        Try Another Request
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

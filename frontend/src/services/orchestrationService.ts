@@ -24,15 +24,57 @@ export interface DisambiguationResult {
   profiles: DisambiguationProfile[];
 }
 
-export type OrchestratorCommandResult = ActionPlan | DisambiguationResult;
+export interface OutOfScopeResult {
+  status: "OUT_OF_SCOPE_REFUSED";
+  escalation_reason: string;
+  human_owner?: string;
+  message: string;
+}
+
+export interface DeadlockEscalatedResult {
+  status: "DEADLOCK_ESCALATED";
+  escalation_reason: string;
+  message: string;
+}
+
+export interface GuardrailBlockedResult {
+  status: "GUARDRAIL_BLOCKED";
+  message: string;
+  guardrail_notes?: string;
+}
+
+export type OrchestratorCommandResult =
+  | ActionPlan
+  | DisambiguationResult
+  | OutOfScopeResult
+  | DeadlockEscalatedResult
+  | GuardrailBlockedResult;
 
 export function isDisambiguationResult(
   result: OrchestratorCommandResult
 ): result is DisambiguationResult {
-  const candidate = result as DisambiguationResult;
   return (
-    candidate.status === "CLARIFICATION_NEEDED" && Array.isArray(candidate.profiles)
+    (result as DisambiguationResult)?.status === "CLARIFICATION_NEEDED" &&
+    Array.isArray((result as DisambiguationResult)?.profiles)
   );
+}
+
+export function isOutOfScopeResult(
+  result: OrchestratorCommandResult
+): result is OutOfScopeResult {
+  return (result as OutOfScopeResult)?.status === "OUT_OF_SCOPE_REFUSED";
+}
+
+export function isDeadlockResult(
+  result: OrchestratorCommandResult
+): result is DeadlockEscalatedResult {
+  return (result as DeadlockEscalatedResult)?.status === "DEADLOCK_ESCALATED";
+}
+
+export function isGuardrailBlockedResult(
+  result: OrchestratorCommandResult
+): result is GuardrailBlockedResult {
+  return (result as GuardrailBlockedResult)?.status === "GUARDRAIL_BLOCKED";
 }
 
 /**
@@ -62,8 +104,15 @@ export async function executeCommand(
     API_ENDPOINTS.ORCHESTRATOR_COMMAND,
     jsonPost(input)
   );
-  if (isDisambiguationResult(result)) return result;
-  return normalizePlan(result);
+  if (
+    isDisambiguationResult(result) ||
+    isOutOfScopeResult(result) ||
+    isDeadlockResult(result) ||
+    isGuardrailBlockedResult(result)
+  ) {
+    return result;
+  }
+  return normalizePlan(result as ActionPlan);
 }
 
 /** Returns null when the backend has no active plan (HTTP 404). */
@@ -105,6 +154,17 @@ export async function undoActionPlan(
   const plan = await request<ActionPlan>(
     `${API_ENDPOINTS.ACTION_PLANS}/${encodeURIComponent(planId)}/undo`,
     jsonPost({ reason })
+  );
+  return normalizePlan(plan);
+}
+
+export async function rejectActionPlan(
+  planId: string,
+  reason = "Plan rejected by HR at approval gate"
+): Promise<ActionPlan> {
+  const plan = await request<ActionPlan>(
+    `${API_ENDPOINTS.ACTION_PLANS}/${encodeURIComponent(planId)}/reject`,
+    jsonPost({ reason, rejected_by: "HR Admin (You)" })
   );
   return normalizePlan(plan);
 }
