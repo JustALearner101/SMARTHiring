@@ -57,10 +57,13 @@ class ContextRetrieverNode:
         # 2. Dynamic Interviewer Resolution (with Ground-Truth Support)
         # ---------------------------------------------------------------------
         selected_interviewer = None
+        interviewer_matched = False
         explicit_interviewer_id = state.get("interviewer_id")
         if explicit_interviewer_id:
             try:
                 selected_interviewer = await self.contact_repo.get_by_id(int(explicit_interviewer_id))
+                if selected_interviewer:
+                    interviewer_matched = True
             except Exception:
                 selected_interviewer = None
 
@@ -70,11 +73,13 @@ class ContextRetrieverNode:
                 u_name_lower = user.vname.lower().strip()
                 if u_name_lower in cmd_lower:
                     selected_interviewer = user
+                    interviewer_matched = True
                     break
                 # Check for first name match if unambiguous
                 name_tokens = u_name_lower.split()
-                if name_tokens and name_tokens[0] in cmd_lower:
+                if name_tokens and re.search(rf"\b{re.escape(name_tokens[0])}\b", cmd_lower):
                     selected_interviewer = user
+                    interviewer_matched = True
                     break
 
             if not selected_interviewer and active_interviewers:
@@ -84,59 +89,97 @@ class ContextRetrieverNode:
         # ---------------------------------------------------------------------
         # 3. Dynamic Candidate Resolution (Anti-Silent-Substitution)
         # ---------------------------------------------------------------------
+        is_notulen_cmd = any(
+            kw in cmd_lower for kw in ["notulen", "catatan rapat", "meeting minutes", "minutes"]
+        )
         all_candidates, _ = await self.candidate_repo.search(limit=100)
         target_candidate = None
+        candidate_matched = False
         explicit_candidate_id = state.get("candidate_id")
 
         if explicit_candidate_id:
             try:
                 cand_int = int(explicit_candidate_id)
                 target_candidate = next((c for c in all_candidates if c.nid == cand_int), None)
+                if target_candidate:
+                    candidate_matched = True
             except Exception:
                 target_candidate = None
 
-        # Check if candidate name was mentioned in command
+        # Check if candidate name was mentioned in command after 'kandidat' or 'candidate'
         cand_kw_match = re.search(
-            r"(?:kandidat|candidate)\s+([A-Za-z\s]+?)(?:\s+posisi|\s+untuk|\s+minggu|\s+pada|\s+dengan|\s+hari|$)",
+            r"(?:kandidat|candidate)\s+(?!requested\b|meminta\b|minta\b|ingin\b|in\b|di\b|schedule\b|interview\b)([A-Za-z]+(?:\s+[A-Za-z]+){0,2}?)(?:\s+posisi|\s+untuk|\s+minggu|\s+pada|\s+dengan|\s+with|\s+hari|\s+jam|\s+pukul|\s+besok|\s+lusa|\s+ke|\s+via|\s+di|\s+in|[.,]|$)",
             cmd,
             re.IGNORECASE,
         )
         extracted_cand_name = cand_kw_match.group(1).strip() if cand_kw_match else None
+        non_name_tokens = {
+            "requested", "meminta", "minta", "ingin", "di", "in", "wib", "wita", "wit",
+            "schedule", "interview", "wawancara", "reschedule", "moved", "adjustment",
+        }
+        if extracted_cand_name and extracted_cand_name.lower().split()[0] in non_name_tokens:
+            extracted_cand_name = None
 
-        if not target_candidate:
+        user_specified_candidate = bool(extracted_cand_name)
+
+        # Strip matched interviewer name and parenthetical metadata e.g. "(Engineering, WIB)"
+        # so interviewer names/departments never falsely match candidate tokens
+        cmd_for_cand_search = re.sub(r"\([^)]*\)", " ", cmd_lower)
+        if selected_interviewer and selected_interviewer.vname:
+            inter_name_lower = selected_interviewer.vname.lower().strip()
+            cmd_for_cand_search = cmd_for_cand_search.replace(inter_name_lower, " ")
+            for inter_tok in inter_name_lower.split():
+                if len(inter_tok) >= 3:
+                    cmd_for_cand_search = re.sub(
+                        rf"\b{re.escape(inter_tok)}\b", " ", cmd_for_cand_search
+                    )
+
+        ignored_cand_tokens = {
+            "test", "cand", "sort", "user", "pak", "ibu", "bapak", "mr", "mrs", "ms",
+            "notulen", "catatan", "rapat", "meeting", "minutes", "jadwal", "jadwalin",
+            "jadwalkan", "schedule", "follow", "interview", "wawancara", "technical",
+            "teknis", "posisi", "untuk", "dengan", "with", "for", "and", "dan", "atau",
+            "jumat", "senin", "selasa", "rabu", "kamis", "sabtu", "minggu",
+            "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+            "pagi", "siang", "sore", "malam", "besok", "lusa", "wib", "wita", "wit",
+            "engineering", "finance", "product", "design", "general", "budi", "santoso", "hartono",
+        }
+
+        if not target_candidate and (not is_notulen_cmd or user_specified_candidate):
             scored_candidates: list[tuple[Any, int]] = []
             for cand in all_candidates:
                 c_name_lower = cand.vname.lower().strip()
                 score = 0
 
                 # Exact full name match in command
-                if c_name_lower in cmd_lower:
+                if c_name_lower and c_name_lower in cmd_for_cand_search:
                     score += 1000 + len(c_name_lower)
                 elif extracted_cand_name and c_name_lower in extracted_cand_name.lower():
                     score += 900 + len(c_name_lower)
                 else:
-                    name_tokens = [t for t in re.findall(r"\b\w+\b", c_name_lower) if len(t) >= 3]
+                    name_tokens = [
+                        t
+                        for t in re.findall(r"\b\w+\b", c_name_lower)
+                        if len(t) >= 3
+                        and t not in ignored_cand_tokens
+                        and not re.fullmatch(r"[0-9a-f]{6}", t)
+                    ]
                     matched_count = 0
                     for token in name_tokens:
-                        if re.search(rf"\b{re.escape(token)}\b", cmd_lower):
-                            score += len(token) * 10
+                        if re.search(rf"\b{re.escape(token)}\b", cmd_for_cand_search):
+                            score += 100 + len(token) * 10
                             matched_count += 1
                     # Bonus if job position also matches, BUT ONLY if name also partially matched
                     if matched_count > 0:
-                        if cand.vjob_position and cand.vjob_position.lower() in cmd_lower:
+                        if cand.vjob_position and cand.vjob_position.lower() in cmd_for_cand_search:
                             score += 50
                         if matched_count > 1:
                             score += matched_count * 50
 
-                if score >= 50:
+                if score >= 80:
                     scored_candidates.append((cand, score))
 
             scored_candidates.sort(key=lambda x: x[1], reverse=True)
-
-            # Did the user explicitly ask for a candidate?
-            user_specified_candidate = extracted_cand_name or any(
-                kw in cmd_lower for kw in ["kandidat", "candidate"]
-            )
 
             if scored_candidates:
                 top_cand, top_score = scored_candidates[0]
@@ -157,9 +200,9 @@ class ContextRetrieverNode:
                         ],
                     }
 
-                # If score is strong enough (exact match or multiple tokens matched)
                 if top_score >= 80:
                     target_candidate = top_cand
+                    candidate_matched = True
 
             # If user explicitly asked for a candidate but NO match was found, or match was too weak:
             # STOP and halt with NEEDS_CLARIFICATION — NEVER silently substitute!
@@ -180,18 +223,65 @@ class ContextRetrieverNode:
                     "similar_candidates": similar,
                 }
 
+        # ---------------------------------------------------------------------
+        # 3b. Ambiguous / Vague Command Gate (TC-CHB-09: e.g. "Tolong jadwalin itu ya.")
+        # ---------------------------------------------------------------------
+        vague_pronoun_patterns = [
+            r"\bjadwal(?:in|kan)\s+itu\b",
+            r"\batur\s+(?:jadwal\s+)?itu\b",
+            r"\btolong\s+itu\b",
+            r"\bproses\s+itu\b",
+            r"\bschedule\s+(?:that|it)\b",
+            r"\byang\s+tadi\b",
+        ]
+        has_vague_pronoun = any(re.search(pat, cmd_lower) for pat in vague_pronoun_patterns)
+        has_concrete_subject = any(
+            kw in cmd_lower
+            for kw in [
+                "interview", "wawancara", "notulen", "catatan rapat", "meeting minutes",
+                "plan", "candidate", "kandidat", "reschedule", "technical", "teknis",
+                "transfer", "bayar", "pembayaran", "invoice", "katering", "gaji", "salary",
+            ]
+        )
+
+        if (
+            not candidate_matched
+            and not interviewer_matched
+            and not is_notulen_cmd
+            and (has_vague_pronoun or not has_concrete_subject)
+        ):
+            similar = [
+                {"id": c.nid, "name": c.vname, "position": c.vjob_position}
+                for c in all_candidates[:3]
+            ]
+            return {
+                "status": "NEEDS_CLARIFICATION",
+                "is_ambiguous": True,
+                "clarification_message": (
+                    f"Instruksi '{cmd}' masih terlalu ambigu atau belum memuat konteks yang cukup. "
+                    "Mohon sebutkan secara spesifik: (1) Nama kandidat atau agenda rapat yang dimaksud, "
+                    "(2) Nama interviewer/pihak terkait, serta (3) Hari dan jam yang diinginkan."
+                ),
+                "similar_candidates": similar,
+            }
+
         # If still no candidate and no candidate was specified in command at all, only then default to first
         if not target_candidate and all_candidates and not user_specified_candidate:
             target_candidate = all_candidates[0]
 
+        has_candidate = bool(candidate_matched or explicit_candidate_id or not is_notulen_cmd)
+
         updates: dict[str, Any] = {
             "is_disambiguation_needed": False,
+            "has_candidate": has_candidate,
+            "office_code": "HQ-JKT",
             "status": "ANALYZING",
         }
 
         if selected_interviewer:
             updates.update({
                 "interviewer_id": selected_interviewer.nid,
+                "interviewer_userid": getattr(selected_interviewer, "vuserid", None) or f"USR-00{selected_interviewer.nid}",
                 "interviewer_name": selected_interviewer.vname,
                 "interviewer_email": selected_interviewer.vemail,
                 "interviewer_phone": selected_interviewer.vphone_number or "+6281198765432",
@@ -215,6 +305,7 @@ class ContextRetrieverNode:
             }
             updates.update({
                 "candidate_id": target_candidate.nid,
+                "candidate_code": getattr(target_candidate, "vcandidate_code", None) or f"CAND-2026-00{target_candidate.nid}",
                 "candidate_name": target_candidate.vname,
                 "candidate_email": target_candidate.vemail,
                 "candidate_phone": target_candidate.vphone_number or "+6281234567890",

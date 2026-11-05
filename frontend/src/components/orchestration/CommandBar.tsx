@@ -90,6 +90,7 @@ export default function CommandBar({
               variant="primary"
               size="sm"
               isLoading={isProcessing}
+              disabled={!commandText.trim() || isProcessing}
               startIcon={<ShootingStarIcon className="text-white" />}
             >
               AI Orchestration

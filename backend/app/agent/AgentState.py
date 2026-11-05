@@ -17,7 +17,9 @@ class OrchestratorAgentState(TypedDict, total=False):
     max_rounds: int
 
     # Resolved Context
+    has_candidate: bool
     candidate_id: int | None
+    candidate_code: str | None
     candidate_name: str | None
     candidate_position: str | None
     candidate_email: str | None
@@ -25,13 +27,18 @@ class OrchestratorAgentState(TypedDict, total=False):
     candidate_channel: str | None  # "whatsapp" | "email"
     candidate_timezone: str | None
     interviewer_id: int | None
+    interviewer_userid: str | None
     interviewer_name: str | None
     interviewer_role: str | None
     interviewer_dept: str | None
     interviewer_email: str | None
     interviewer_phone: str | None
     interviewer_timezone: str | None
+    office_code: str | None
     target_date: str | None
+    available_slots: list[dict[str, Any]]
+    slot_conflict_detected: bool
+    conflicting_slot_wib: str | None
 
     # Disambiguation & Clarification Gate
     is_disambiguation_needed: bool
@@ -46,6 +53,7 @@ class OrchestratorAgentState(TypedDict, total=False):
     guardrail_passed: bool
     guardrail_notes: str
     injection_detected: bool
+    sanitized_command: str | None
 
     # Planner & Citations 
     proposed_slot: dict[str, Any] | None
@@ -59,7 +67,7 @@ class OrchestratorAgentState(TypedDict, total=False):
 
     # Execution & Outcomes
     action_plan_id: int | None
-    status: str  # "CLARIFICATION_NEEDED" | "PENDING_APPROVAL" | "DEADLOCK_ESCALATED" | "EXECUTED" | "UNDONE"
+    status: str  # "CLARIFICATION_NEEDED" | "PENDING APPROVAL" | "DEADLOCK_ESCALATED" | "EXECUTED" | "UNDONE"
     escalation_reason: str | None
     audit_entries: list[dict[str, Any]]
 

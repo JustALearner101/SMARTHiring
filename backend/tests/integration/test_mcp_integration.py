@@ -76,7 +76,7 @@ class TestMcpIntegrationE2E:
         plan_id = str(plan["id"])
         approval_ticket = plan.get("approval_ticket", f"TKT-TEST-{plan_id}")
 
-        assert plan["status"] == "PENDING_APPROVAL"
+        assert plan["status"] == "PENDING APPROVAL"
         assert len(plan["sources_cited"]) >= 1
         assert plan.get("confirmation_card_ready") is True
 
@@ -95,7 +95,7 @@ class TestMcpIntegrationE2E:
             "409_AUTO_CHAIN_BLOCKED",
             "409_COOLDOWN_VIOLATION",
         )
-        assert "Pelanggaran Pilar APPROVAL dicegah" in early_approval.get("message", "")
+        assert "Pelanggaran dicegah" in early_approval.get("message", "")
 
         # Step 3: Advance clock / simulate human review cooldown (> 2000 ms)
         _PLAN_DRAFT_TIMESTAMPS_MS[plan_id] -= MIN_APPROVAL_COOLDOWN_MS + 200
@@ -140,7 +140,7 @@ class TestMcpIntegrationE2E:
             },
         )
         vn_data = _unwrap(vn_res)
-        assert vn_data["status"] == "PENDING_APPROVAL"
+        assert vn_data["status"] == "PENDING APPROVAL"
         assert "approval_ticket" in vn_data
 
         # Verify audit log cryptographic integrity

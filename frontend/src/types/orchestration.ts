@@ -8,7 +8,8 @@ export type PlanStatus =
   | "IDLE"
   | "ANALYZING"
   | "CLARIFICATION_NEEDED"
-  | "PENDING_APPROVAL"
+  | "NEEDS_CLARIFICATION"
+  | "PENDING APPROVAL"
   | "UNDO_WINDOW"
   | "EXECUTED"
   | "UNDONE"
@@ -56,12 +57,14 @@ export interface ActionPlan {
   candidate_position: string;
   candidate_email?: string;
   candidate_phone?: string;
+  candidate_timezone?: string;
   interviewer_id: string;
   interviewer_name: string;
   interviewer_role: string;
   interviewer_dept: string;
   interviewer_email?: string;
   interviewer_phone?: string;
+  interviewer_timezone?: string;
   raw_command: string;
   negotiation_round: number; // 1 to 3
   max_rounds: number;
@@ -113,7 +116,7 @@ export interface PresetScenario {
 }
 
 /**
- * Triage Threads & Rescheduling Negotiation (Pillar LIMITS)
+ * Triage Threads & Rescheduling Negotiation
  */
 export type ThreadStatus =
   | "NEGOTIATING"
@@ -159,7 +162,7 @@ export interface NegotiationThread {
 }
 
 /**
- * Calendar Matrix & Operational Rules (Pillar PERMISSIONS & SOURCES)
+ * Calendar Matrix & Operational Rules
  */
 export type CalendarEventType =
   | "SCHEDULED_INTERVIEW"

@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING
+
 from sqlalchemy import (
     BigInteger,
     CheckConstraint,
@@ -11,6 +13,11 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.model.BaseModel import TableBaseModel
+
+if TYPE_CHECKING:
+    from app.model.FollowupModel import FollowupPlan
+    from app.model.InterviewModel import SourceFile
+    from app.model.SummaryModel import Flag, HrDecision, SummaryPoint
 
 
 class Job(TableBaseModel):
@@ -35,20 +42,20 @@ class Job(TableBaseModel):
         index=True,
     )
 
-    source_file: Mapped["SourceFile"] = relationship("SourceFile", back_populates="jobs")  # noqa: F821
+    source_file: Mapped["SourceFile"] = relationship("SourceFile", back_populates="jobs")
     transcript_segments: Mapped[list["TranscriptSegment"]] = relationship(
         "TranscriptSegment",
         back_populates="job",
         cascade="all, delete-orphan",
     )
-    summary_points: Mapped[list["SummaryPoint"]] = relationship(  # noqa: F821
+    summary_points: Mapped[list["SummaryPoint"]] = relationship(
         "SummaryPoint",
         back_populates="job",
         cascade="all, delete-orphan",
     )
-    flags: Mapped[list["Flag"]] = relationship("Flag", back_populates="job")  # noqa: F821
-    hr_decisions: Mapped[list["HrDecision"]] = relationship("HrDecision", back_populates="job")  # noqa: F821
-    followup_plans: Mapped[list["FollowupPlan"]] = relationship("FollowupPlan", back_populates="job")  # noqa: F821
+    flags: Mapped[list["Flag"]] = relationship("Flag", back_populates="job")
+    hr_decisions: Mapped[list["HrDecision"]] = relationship("HrDecision", back_populates="job")
+    followup_plans: Mapped[list["FollowupPlan"]] = relationship("FollowupPlan", back_populates="job")
 
 
 class TranscriptSegment(TableBaseModel):

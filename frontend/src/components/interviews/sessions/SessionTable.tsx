@@ -434,7 +434,7 @@ export default function SessionTable({
  title="Jadwalkan ronde interview berikutnya"
  >
  <BoltIcon />
- <span>Next Round</span>
+ <span>Next</span>
  </Link>
  )}
 

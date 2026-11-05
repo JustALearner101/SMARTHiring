@@ -208,7 +208,7 @@ async def test_orchestrator_command_endpoints(client: AsyncClient):
     cmd_res = await client.post("/api/v1/orchestrator/command", json=cmd_payload)
     assert cmd_res.status_code == 200
     plan_data = cmd_res.json()["data"]
-    assert plan_data["status"] == "PENDING_APPROVAL"
+    assert plan_data["status"] == "PENDING APPROVAL"
     assert len(plan_data["items"]) == 3
 
 
