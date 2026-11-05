@@ -26,8 +26,8 @@ from app.mcp.McpAuthGuard import (
     check_anti_auto_chain_cooldown,
     record_draft_timestamp,
     register_plan_approval_ticket,
-    verify_plan_approval_ticket,
     verify_caller_rbac,
+    verify_plan_approval_ticket,
 )
 from app.model.RubricModel import Profile
 from app.model.UserModel import User
@@ -318,7 +318,7 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
         description=(
             "[TIER-2 DRAFT] Execute LangGraph Orchestrator for natural language HR scheduling requests. "
             "Evaluates prompt injection guardrails, checks contacts, resolves prayer blackout, "
-            "and generates an ActionPlan in status PENDING_APPROVAL with an approval ticket. "
+            "and generates an ActionPlan in status PENDING APPROVAL with an approval ticket. "
             "IMPORTANT: You MUST display the confirmation card and wait for human approval before executing!"
         ),
     )
@@ -372,7 +372,7 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
             plan_id = str(payload.get("id", ""))
             ticket = payload.get("approval_ticket") or f"TKT-HEK-{secrets.token_hex(4).upper()}"
 
-            if payload.get("status") == "PENDING_APPROVAL":
+            if payload.get("status") == "PENDING APPROVAL":
                 if plan_id:
                     record_draft_timestamp(plan_id)
                     register_plan_approval_ticket(plan_id, ticket)
@@ -451,7 +451,7 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
             }
 
         clean_text = reply_text.strip().lower()
-        # Out-of-scope salary detection (Pilar LIMITS)
+        # Out-of-scope salary detection 
         if "gaji" in clean_text or "salary" in clean_text or "kompensasi" in clean_text:
             async with AsyncSessionLocal() as db:
                 thread_svc = NegotiationThreadService(db)
@@ -474,7 +474,7 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
                 "thread_status": "DEADLOCK_ESCALATED",
                 "is_escalated": True,
                 "escalation_reason": "OUT_OF_SCOPE_SALARY_NEGOTIATION",
-                "message": "Pilar LIMITS: Topik negosiasi gaji berada di luar wewenang penjadwalan. Thread dieskalasi ke HR.",
+                "message": "Topik negosiasi gaji berada di luar wewenang penjadwalan. Thread dieskalasi ke HR.",
             }
 
         # Fetch thread details so we never mistake reply text for candidate name ([F-04])
@@ -520,7 +520,7 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
                 "message": "Role 'INTERVIEWER' tidak berwenang memicu analisis sesi wawancara.",
             }
 
-        # 1. Strict Consent Gate (Pilar PERMISSIONS & PP No. 33/2026)
+        # 1. Strict Consent Gate
         if consent_status.strip().upper() != "GRANTED":
             async with AsyncSessionLocal() as db:
                 audit_svc = AuditLogService(db)
@@ -617,7 +617,7 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
                     "message": f"ActionPlan #{clean_id} tidak ditemukan.",
                 }
 
-            # 2b. Ticket Verification Gate (Pilar APPROVAL, [F-01])
+            # 2b. Ticket Verification Gate 
             plan_token = getattr(plan, "approval_ticket", None)
             ticket_valid, err_msg = verify_plan_approval_ticket(
                 clean_id, approval_ticket, db_plan_token=plan_token

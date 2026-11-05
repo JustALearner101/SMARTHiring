@@ -17,12 +17,12 @@ from mcp.server.transport_security import TransportSecuritySettings
 from app.mcp.McpResources import register_heketon_mcp_resources_and_prompts
 from app.mcp.McpTools import register_heketon_mcp_tools
 
-# Inisialisasi FastMCP server dengan instruksi akuntabilitas resmi 5 Pilar
+# Inisialisasi FastMCP server dengan instruksi akuntabilitas
 heketon_mcp = FastMCP(
     name="Heketon-HR-Office-Orchestrator-MCP",
     instructions=(
         "Anda terhubung ke Heketon Accountable Office Agent MCP Server. "
-        "Patuhi 5 Pilar Akuntabilitas: "
+        "Patuhi 5 Akuntabilitas: "
         "(1) Selalu tampilkan sources_cited dari respons tool; "
         "(2) Jangan menebak kontak ambigu seperti 'Pak Budi'—tanyakan klarifikasi ke pengguna; "
         "(3) Jangan pernah memanggil approve_action_plan pada giliran yang sama dengan pembuatan draf—"

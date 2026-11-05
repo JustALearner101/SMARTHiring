@@ -56,7 +56,7 @@ def verify_plan_approval_ticket(
             False,
             (
                 f"Tiket persetujuan untuk ActionPlan #{clean_id} tidak ditemukan atau belum pernah diterbitkan. "
-                f"Persetujuan ditolak demi keamanan (Pilar APPROVAL)."
+                f"Persetujuan ditolak demi keamanan."
             ),
         )
 
@@ -66,7 +66,7 @@ def verify_plan_approval_ticket(
             (
                 f"Tiket persetujuan '{ticket}' tidak valid untuk ActionPlan #{clean_id}. "
                 f"Tiket resmi yang diterbitkan oleh sistem tidak cocok. "
-                f"Persetujuan ditolak demi keamanan (Pilar APPROVAL)."
+                f"Persetujuan ditolak demi keamanan."
             ),
         )
     return True, None
@@ -86,7 +86,7 @@ def check_anti_auto_chain_cooldown(plan_id: str) -> tuple[bool, str | None]:
         return (
             False,
             (
-                f"Pelanggaran Pilar APPROVAL dicegah (Anti-Auto-Chain Guard): "
+                f"Pelanggaran dicegah (Anti-Auto-Chain Guard): "
                 f"approve_action_plan dipanggil terlalu cepat ({elapsed}ms < {MIN_APPROVAL_COOLDOWN_MS}ms). "
                 f"Wajib menunggu respon dan persetujuan eksplisit manusia pada giliran terpisah."
             ),

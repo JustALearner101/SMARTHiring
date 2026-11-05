@@ -122,7 +122,7 @@ async def test_mcp_anti_auto_chain_cooldown():
     # Calling immediately must trigger cooldown violation (409)
     passed, err = check_anti_auto_chain_cooldown(test_plan_id)
     assert not passed
-    assert "Pelanggaran Pilar APPROVAL dicegah" in str(err)
+    assert "Pelanggaran dicegah" in str(err)
 
     # Calling for non-existent plan ID has no timestamp, thus passes
     passed_other, _ = check_anti_auto_chain_cooldown("untracked-plan-id")

@@ -5,6 +5,60 @@ from app.agent.AgentState import OrchestratorAgentState
 
 
 class SecondaryValidatorNode:
+    @staticmethod
+    def _sync_items_with_slot(
+        items: list[dict[str, Any]],
+        updated_slot: dict[str, Any],
+        inter_tz: str,
+        cand_tz: str,
+    ) -> list[dict[str, Any]]:
+        wib_str = updated_slot.get("formatted_wib", "")
+        wita_str = updated_slot.get("formatted_wita", "")
+        wit_str = updated_slot.get("formatted_wit", "")
+        all_tz = f"{wib_str} = {wita_str} = {wit_str}"
+        inter_primary = wita_str if inter_tz == "WITA" else (wit_str if inter_tz == "WIT" else wib_str)
+        cand_primary = wita_str if cand_tz == "WITA" else (wit_str if cand_tz == "WIT" else wib_str)
+        loc = updated_slot.get("location_type", "Google Meet")
+        dur = updated_slot.get("duration_minutes", 60)
+
+        synced: list[dict[str, Any]] = []
+        for it in items:
+            role_low = str(it.get("recipient_role", "")).lower()
+            ch = str(it.get("channel", "")).lower()
+            preview = str(it.get("content_preview", ""))
+            if ch == "calendar":
+                new_preview = f"Reservasi slot kalender pada {inter_primary} ({all_tz}) di {loc} ({dur} Menit)."
+            elif "candidate" in role_low:
+                if "- Jadwal Waktu Lokal Anda" in preview:
+                    lines = []
+                    for line in preview.split("\n"):
+                        if line.startswith("- Jadwal Waktu Lokal Anda"):
+                            lines.append(f"- Jadwal Waktu Lokal Anda ({cand_tz}): {cand_primary}")
+                        elif line.startswith("- Konversi Zona Waktu:"):
+                            lines.append(f"- Konversi Zona Waktu: {all_tz}")
+                        else:
+                            lines.append(line)
+                    new_preview = "\n".join(lines)
+                else:
+                    new_preview = f"{preview}\n\nJadwal ({cand_tz}): {cand_primary} ({all_tz})"
+            else:
+                if "- Jadwal (" in preview:
+                    lines = []
+                    for line in preview.split("\n"):
+                        if line.startswith("- Jadwal ("):
+                            lines.append(f"- Jadwal ({inter_tz}): {inter_primary}")
+                        elif line.startswith("- Konversi Zona Waktu:"):
+                            lines.append(f"- Konversi Zona Waktu: {all_tz}")
+                        elif line.startswith("- Jadwal Follow-Up"):
+                            lines.append(f"- Jadwal Follow-Up ({inter_tz}): {inter_primary} ({all_tz})")
+                        else:
+                            lines.append(line)
+                    new_preview = "\n".join(lines)
+                else:
+                    new_preview = preview
+            synced.append({**it, "content_preview": new_preview})
+        return synced
+
     @classmethod
     async def run(cls, state: OrchestratorAgentState) -> dict[str, Any]:
         slot = state.get("proposed_slot")
@@ -19,6 +73,12 @@ class SecondaryValidatorNode:
         # WIB is UTC+7
         wib_time = start_utc + timedelta(hours=7)
         cmd_lower = state.get("command", "").lower()
+        cand_tz = (state.get("candidate_timezone") or "WIB").upper()
+        inter_tz = (state.get("interviewer_timezone") or "WIB").upper()
+        if "wit" in cmd_lower and "wita" not in cmd_lower:
+            cand_tz = "WIT"
+        elif "wita" in cmd_lower:
+            cand_tz = "WITA"
 
         # 1. Check Weekend Blackout (Saturday=5, Sunday=6)
         if wib_time.weekday() in (5, 6):
@@ -42,7 +102,6 @@ class SecondaryValidatorNode:
                 "Secondary Validator Alert: Proposed slot on a weekend was rejected according to company policy "
                 "[RULE_WEEKEND_BLACKOUT]. Slot automatically shifted to next business day (Monday at 10:00 WIB)."
             )
-            inter_tz = state.get("interviewer_timezone") or "WIB"
             sources = [
                 {
                     **s,
@@ -54,24 +113,14 @@ class SecondaryValidatorNode:
                 }
                 for s in (state.get("sources_cited") or [])
             ]
-            items = [
-                {
-                    **it,
-                    "content_preview": (
-                        f"Reservasi slot kalender pada {updated_slot.get('formatted_wib')} di {updated_slot.get('location_type', 'Google Meet')} ({updated_slot.get('duration_minutes', 60)} Menit)."
-                        if it.get("channel") == "calendar"
-                        else it.get("content_preview", "")
-                    ),
-                }
-                for it in (state.get("items") or [])
-            ]
+            items = cls._sync_items_with_slot(state.get("items") or [], updated_slot, inter_tz, cand_tz)
             return {
                 "proposed_slot": updated_slot,
                 "sources_cited": sources,
                 "items": items,
                 "secondary_validator_passed": True,
                 "validator_notes": notes,
-                "status": "PENDING_APPROVAL",
+                "status": "PENDING APPROVAL",
             }
 
         # 2. Check Friday Prayer Blackout (weekday == 4 is Friday)
@@ -107,7 +156,6 @@ class SecondaryValidatorNode:
                 "14:00 WIB in accordance with company operational policy."
             )
 
-            inter_tz = state.get("interviewer_timezone") or "WIB"
             sources = [
                 {
                     **s,
@@ -119,34 +167,17 @@ class SecondaryValidatorNode:
                 }
                 for s in (state.get("sources_cited") or [])
             ]
-            items = [
-                {
-                    **it,
-                    "content_preview": (
-                        f"Reservasi slot kalender pada {updated_slot.get('formatted_wib')} di {updated_slot.get('location_type', 'Google Meet')} ({updated_slot.get('duration_minutes', 60)} Menit)."
-                        if it.get("channel") == "calendar"
-                        else it.get("content_preview", "")
-                    ),
-                }
-                for it in (state.get("items") or [])
-            ]
+            items = cls._sync_items_with_slot(state.get("items") or [], updated_slot, inter_tz, cand_tz)
             return {
                 "proposed_slot": updated_slot,
                 "sources_cited": sources,
                 "items": items,
                 "secondary_validator_passed": True,
                 "validator_notes": notes,
-                "status": "PENDING_APPROVAL",
+                "status": "PENDING APPROVAL",
             }
 
         # 3. Check cross-timezone working hours (09:00 - 17:00) across WIB, WITA, WIT
-        cand_tz = state.get("candidate_timezone") or "WIB"
-        inter_tz = state.get("interviewer_timezone") or "WIB"
-        if "wit" in cmd_lower:
-            cand_tz = "WIT"
-        elif "wita" in cmd_lower:
-            cand_tz = "WITA"
-
         tz_offsets = {
             "WIB": timedelta(hours=7),
             "WITA": timedelta(hours=8),
@@ -196,7 +227,6 @@ class SecondaryValidatorNode:
                     f"Slot automatically adjusted to {adjusted_wib.strftime('%H:%M')} WIB."
                 )
 
-            inter_tz = state.get("interviewer_timezone") or "WIB"
             sources = [
                 {
                     **s,
@@ -208,38 +238,47 @@ class SecondaryValidatorNode:
                 }
                 for s in (state.get("sources_cited") or [])
             ]
-            items = [
-                {
-                    **it,
-                    "content_preview": (
-                        f"Reservasi slot kalender pada {updated_slot.get('formatted_wib')} di {updated_slot.get('location_type', 'Google Meet')} ({updated_slot.get('duration_minutes', 60)} Menit)."
-                        if it.get("channel") == "calendar"
-                        else it.get("content_preview", "")
-                    ),
-                }
-                for it in (state.get("items") or [])
-            ]
+            items = cls._sync_items_with_slot(state.get("items") or [], updated_slot, inter_tz, cand_tz)
             return {
                 "proposed_slot": updated_slot,
                 "sources_cited": sources,
                 "items": items,
                 "secondary_validator_passed": True,
                 "validator_notes": notes,
-                "status": "PENDING_APPROVAL",
+                "status": "PENDING APPROVAL",
             }
 
+        wita_time = start_utc + timedelta(hours=8)
         wit_time = start_utc + timedelta(hours=9)
         updated_slot = {
             **slot,
+            "formatted_wita": slot.get("formatted_wita") or f"{wita_time.strftime('%A, %d %b %Y, %H:%M')} WITA",
             "formatted_wit": slot.get("formatted_wit") or f"{wit_time.strftime('%A, %d %b %Y, %H:%M')} WIT",
         }
+        items = cls._sync_items_with_slot(state.get("items") or [], updated_slot, inter_tz, cand_tz)
+
+        conflict_prefix = ""
+        if state.get("slot_conflict_detected"):
+            conflicting_wib = state.get("conflicting_slot_wib") or "yang diminta"
+            conflict_prefix = (
+                f"Calendar Conflict Avoided: Slot pukul {conflicting_wib} sudah terisi di kalender interviewer. "
+                f"Sistem secara otomatis mengusulkan slot kosong berikutnya ({updated_slot.get('formatted_wib')}) untuk mencegah double-booking. "
+            )
+
+        tz_conversion_note = (
+            f"Konversi lintas zona waktu terverifikasi: {wib_time.strftime('%H:%M')} WIB = "
+            f"{wita_time.strftime('%H:%M')} WITA = {wit_time.strftime('%H:%M')} WIT "
+            f"(Interviewer: {inter_tz}, Kandidat: {cand_tz})."
+        )
 
         return {
             "proposed_slot": updated_slot,
+            "items": items,
             "secondary_validator_passed": True,
             "validator_notes": (
-                "Slot verified to comply with 09:00 - 17:00 operational hours across participants' timezones "
-                f"({inter_tz} and {cand_tz}), free of Friday prayer conflicts, and meets the 15-minute buffer requirement."
+                f"{conflict_prefix}Slot verified to comply with 09:00 - 17:00 operational hours across participants' timezones "
+                f"({inter_tz} and {cand_tz}), free of Friday prayer conflicts, and meets the 15-minute buffer requirement. "
+                f"{tz_conversion_note}"
             ),
-            "status": "PENDING_APPROVAL",
+            "status": "PENDING APPROVAL",
         }

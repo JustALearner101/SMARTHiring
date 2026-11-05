@@ -30,11 +30,13 @@ import {
   isDeadlockResult,
   isDisambiguationResult,
   isGuardrailBlockedResult,
+  isNeedsClarificationResult,
   isOutOfScopeResult,
   listPresetScenarios,
   rejectActionPlan,
   undoActionPlan,
   type DeadlockEscalatedResult,
+  type NeedsClarificationResult,
   type OutOfScopeResult,
 } from "@/services/orchestrationService";
 import { Candidate } from "@/types/master";
@@ -125,6 +127,7 @@ function SchedulingContent() {
   const [auditLogs, setAuditLogs] = useState<AuditEvent[]>([]);
   const [outOfScopeData, setOutOfScopeData] = useState<OutOfScopeResult | null>(null);
   const [deadlockData, setDeadlockData] = useState<DeadlockEscalatedResult | null>(null);
+  const [clarificationData, setClarificationData] = useState<NeedsClarificationResult | null>(null);
 
   // Rejection modal & reason state (UX improvement)
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
@@ -191,10 +194,10 @@ function SchedulingContent() {
           const targetedPlan = await getActionPlan(planIdParam);
           if (!cancelled && targetedPlan) {
             setActivePlan(targetedPlan);
-            if (targetedPlan.status === "PENDING_APPROVAL") {
-              setStatus("PENDING_APPROVAL");
+            if (targetedPlan.status === "PENDING APPROVAL") {
+              setStatus("PENDING APPROVAL");
               pushAudit(
-                "PLAN_VALIDATED",
+                "PLAN VALIDATED",
                 "Action Plan Loaded for Review",
                 targetedPlan.validator_notes ||
                   `Action Plan #${targetedPlan.id} untuk ${targetedPlan.candidate_name} siap ditinjau untuk persetujuan.`,
@@ -232,7 +235,7 @@ function SchedulingContent() {
         }
       }
 
-      // 2. Fallback: Restore any active action plan (either in UNDO_WINDOW or PENDING_APPROVAL)
+      // 2. Fallback: Restore any active action plan (either in UNDO_WINDOW or PENDING APPROVAL)
       try {
         const plan = await getCurrentActionPlan();
         if (!cancelled && plan) {
@@ -252,11 +255,11 @@ function SchedulingContent() {
                 true
               );
             }
-          } else if (plan.status === "PENDING_APPROVAL") {
+          } else if (plan.status === "PENDING APPROVAL") {
             setActivePlan(plan);
-            setStatus("PENDING_APPROVAL");
+            setStatus("PENDING APPROVAL");
             pushAudit(
-              "PLAN_VALIDATED",
+              "PLAN VALIDATED",
               "Action Plan Awaiting Approval",
               plan.validator_notes ||
                 `Action plan #${plan.id} untuk ${plan.candidate_name} menunggu persetujuan HR.`,
@@ -298,14 +301,24 @@ function SchedulingContent() {
 
   const applyPlan = (plan: ActionPlan) => {
     setActivePlan(plan);
-    setStatus("PENDING_APPROVAL");
+    setStatus("PENDING APPROVAL");
     setIsProcessing(false);
     setIsApprovingPlan(false);
     finalizedRef.current = false;
 
-    const sourceRefs = plan.sources_cited.map((src) => src.ref_code).join(" · ");
+    if (!plan.guardrail_passed && plan.guardrail_notes) {
+      pushAudit(
+        "GUARDRAIL_BLOCKED",
+        "Embedded Instruction Disregarded",
+        plan.guardrail_notes,
+        "Guardrail Node",
+        "error"
+      );
+    }
+
+    const sourceRefs = (plan.sources_cited ?? []).map((src) => src.ref_code).join(" · ");
     pushAudit(
-      "SOURCES_RETRIEVED",
+      "SOURCES RETRIEVED",
       "Sources & Calendar Slots Verified",
       sourceRefs || `Calendar slots and candidate records verified for ${plan.candidate_name}.`,
       "Context Retriever Node",
@@ -313,10 +326,10 @@ function SchedulingContent() {
     );
 
     pushAudit(
-      "PLAN_VALIDATED",
+      "PLAN VALIDATED",
       "Action Plan Ready for Review",
       plan.validator_notes ||
-        "Draft WhatsApp to Candidate and Email to User are ready for Approval Gate.",
+        "Draft Email to Candidate and Email to User are ready for Approval Gate.",
       "Secondary Validator Agent",
       "success"
     );
@@ -333,7 +346,7 @@ function SchedulingContent() {
     finalizedRef.current = false;
 
     pushAudit(
-      "REQUEST_RECEIVED",
+      "REQUEST RECEIVED",
       "Perintah Scheduling Diterima",
       `Prompt: "${prompt}"`,
       "HR Admin (You)",
@@ -364,6 +377,22 @@ function SchedulingContent() {
         return;
       }
 
+      if (isNeedsClarificationResult(result)) {
+        setClarificationData(result);
+        setIsProcessing(false);
+        setStatus("NEEDS_CLARIFICATION");
+
+        pushAudit(
+          "CLARIFICATION_REQUESTED",
+          "Clarification Required",
+          result.message ||
+            "Request is ambiguous or missing required candidate/interviewer/time details.",
+          "Context Retriever Node",
+          "warning"
+        );
+        return;
+      }
+
       if (isOutOfScopeResult(result)) {
         setOutOfScopeData(result);
         setIsProcessing(false);
@@ -371,7 +400,7 @@ function SchedulingContent() {
 
         pushAudit(
           "OUT_OF_SCOPE_REFUSED",
-          "Out-of-Scope Request Refused (Pillar LIMITS)",
+          "Out-of-Scope Request Refused",
           result.escalation_reason || result.message,
           "Planner & Triage Agent",
           "error"
@@ -400,7 +429,7 @@ function SchedulingContent() {
 
         pushAudit(
           "INJECTION_BLOCKED",
-          "Adversarial Prompt Injection Blocked (Pillar PERMISSIONS)",
+          "Adversarial Prompt Injection Blocked",
           result.message || "Command contained adversarial prompt injection.",
           "Guardrail Node",
           "error"
@@ -460,6 +489,66 @@ function SchedulingContent() {
         return;
       }
 
+      if (isNeedsClarificationResult(result)) {
+        setClarificationData(result);
+        setIsProcessing(false);
+        setStatus("NEEDS_CLARIFICATION");
+
+        pushAudit(
+          "CLARIFICATION_REQUESTED",
+          "Clarification Required",
+          result.message ||
+            "Request is ambiguous or missing required candidate/interviewer/time details.",
+          "Context Retriever Node",
+          "warning"
+        );
+        return;
+      }
+
+      if (isOutOfScopeResult(result)) {
+        setOutOfScopeData(result);
+        setIsProcessing(false);
+        setStatus("OUT_OF_SCOPE");
+
+        pushAudit(
+          "OUT_OF_SCOPE_REFUSED",
+          "Out-of-Scope Request Refused",
+          result.escalation_reason || result.message,
+          "Planner & Triage Agent",
+          "error"
+        );
+        return;
+      }
+
+      if (isDeadlockResult(result)) {
+        setDeadlockData(result);
+        setIsProcessing(false);
+        setStatus("DEADLOCK");
+
+        pushAudit(
+          "DEADLOCK_ESCALATED",
+          "Negotiation Limit Exceeded — Escalated to HR",
+          result.escalation_reason || result.message,
+          "Planner & Triage Agent",
+          "error"
+        );
+        return;
+      }
+
+      if (isGuardrailBlockedResult(result)) {
+        setIsProcessing(false);
+        setStatus("GUARDRAIL_BLOCKED");
+
+        pushAudit(
+          "INJECTION_BLOCKED",
+          "Adversarial Prompt Injection Blocked",
+          result.message || "Command contained adversarial prompt injection.",
+          "Guardrail Node",
+          "error"
+        );
+        return;
+      }
+
       applyPlan(result as ActionPlan);
     } catch (error) {
       console.error("Failed to resolve disambiguation command:", error);
@@ -488,20 +577,21 @@ function SchedulingContent() {
     const candCh = candRoleItem?.channel?.toUpperCase() || "EMAIL";
     const interCh = interRoleItem?.channel?.toUpperCase() || "EMAIL";
 
-    pushAudit(
-      "HUMAN_APPROVED",
-      "Human-in-the-Loop Approval Granted",
-      `HR approved the Action Plan (Candidate: ${candCh}, Interviewer: ${interCh}). The 60-second grace period begins before external dispatch.`,
-      "HR Admin (You)",
-      "success"
-    );
-
     try {
       const approvedPlan = await approveActionPlan(planToApprove.id, {
         approved_by: "HR Admin (You)",
         send_immediately: false,
         customized_items: planToApprove.items,
+        proposed_slot: planToApprove.proposed_slot,
       });
+
+      pushAudit(
+        "HUMAN_APPROVED",
+        "Human-in-the-Loop Approval Granted",
+        `HR approved the Action Plan (Candidate: ${candCh}, Interviewer: ${interCh}). The 60-second grace period begins before external dispatch.`,
+        "HR Admin (You)",
+        "success"
+      );
 
       finalizedRef.current = false;
       setActivePlan(approvedPlan);
@@ -528,7 +618,16 @@ function SchedulingContent() {
       void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     } catch (error) {
       console.error("Failed to approve action plan:", error);
-      showError("Gagal Menyetujui", "Terjadi kesalahan saat menyetujui Action Plan.");
+      const errMsg =
+        error instanceof Error ? error.message : "Terjadi kesalahan saat menyetujui Action Plan.";
+      pushAudit(
+        "VALIDATION_VIOLATION_BLOCKED",
+        "Approval Blocked by Secondary Validator",
+        errMsg,
+        "Secondary Validator Agent",
+        "error"
+      );
+      showError("Gagal Menyetujui (Secondary Validator)", errMsg);
       setIsApprovingPlan(false);
     }
   };
@@ -630,7 +729,7 @@ function SchedulingContent() {
       setStatus("REJECTED");
 
       pushAudit(
-        "PLAN_REJECTED",
+        "PLAN REJECTED",
         "Action Plan Rejected by HR (Approval Gate)",
         `Rencana ditolak: "${reason}". Tidak ada pesan atau jadwal kalender yang dieksekusi.`,
         "HR Admin (You)",
@@ -664,6 +763,7 @@ function SchedulingContent() {
     setIsDisambiguationOpen(false);
     setOutOfScopeData(null);
     setDeadlockData(null);
+    setClarificationData(null);
   };
 
   return (
@@ -707,8 +807,8 @@ function SchedulingContent() {
         </div>
       )}
 
-      {/* Context Banner ketika sedang meninjau Action Plan tertentu (Pillar APPROVAL UX) */}
-      {status === "PENDING_APPROVAL" && activePlan && (
+      {/* Context Banner ketika sedang meninjau Action Plan tertentu*/}
+      {status === "PENDING APPROVAL" && activePlan && (
         <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-brand-200 bg-brand-50/80 p-4 dark:border-brand-500/20 dark:bg-brand-500/10 shadow-theme-xs">
           <div className="flex items-center gap-3">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-500 text-white font-bold text-xs shadow-theme-xs">
@@ -716,10 +816,16 @@ function SchedulingContent() {
             </span>
             <div className="text-start">
               <h4 className="text-sm font-bold text-gray-900 dark:text-white">
-                Sedang Meninjau Rencana Aksi AI: {activePlan.candidate_name}
+                Sedang Meninjau Rencana Aksi AI:{" "}
+                {activePlan.items?.some((it) => it.recipient_role.toLowerCase().includes("candidate"))
+                  ? activePlan.candidate_name
+                  : `${activePlan.proposed_slot?.title || "Follow-Up"} (${activePlan.interviewer_name})`}
               </h4>
               <p className="text-xs text-gray-600 dark:text-gray-300">
-                Posisi: {activePlan.candidate_position} · {activePlan.proposed_slot?.formatted_wib || "Jadwal Terjadwal"}
+                {activePlan.items?.some((it) => it.recipient_role.toLowerCase().includes("candidate"))
+                  ? `Posisi: ${activePlan.candidate_position} · `
+                  : `Penerima: ${activePlan.interviewer_name} (${activePlan.interviewer_dept}) · `}
+                {activePlan.proposed_slot?.formatted_wib || "Jadwal Terjadwal"}
               </p>
             </div>
           </div>
@@ -932,6 +1038,54 @@ function SchedulingContent() {
               </div>
             )}
 
+            {/* Status: NEEDS_CLARIFICATION (Pillar 4: LIMITS, TC-CHB-09) */}
+            {status === "NEEDS_CLARIFICATION" && (
+              <div className="rounded-2xl border-2 border-warning-300 bg-warning-50/60 p-6 dark:border-warning-500/40 dark:bg-warning-500/10 shadow-theme-xs">
+                <div className="flex items-start gap-3.5">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-warning-500 text-white shadow-theme-xs">
+                    <BoltIcon />
+                  </div>
+                  <div className="flex-1 text-start">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-base font-bold text-warning-900 dark:text-warning-300">
+                        Clarification Needed — Request Too Vague or Ambiguous
+                      </h3>
+                      <span className="rounded-full bg-warning-100 px-2.5 py-0.5 text-[10px] font-mono font-bold text-warning-800 dark:bg-warning-500/20 dark:text-warning-300">
+                        NEEDS_CLARIFICATION
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs text-warning-800 dark:text-warning-300 leading-relaxed">
+                      {clarificationData?.message ||
+                        "Instruksi belum memuat informasi yang cukup. AI tidak menebak nama kandidat, interviewer, atau waktu jadwal tanpa kejelasan. Mohon lengkapi detail perintah Anda."}
+                    </p>
+                    {Array.isArray(clarificationData?.similar_candidates) &&
+                      clarificationData.similar_candidates.length > 0 && (
+                        <div className="mt-3.5 rounded-xl border border-warning-200 bg-white p-3 dark:border-warning-800 dark:bg-gray-800 shadow-2xs">
+                          <span className="text-[10px] uppercase font-bold tracking-wider text-warning-700 dark:text-warning-400 block mb-1.5">
+                            Available Candidates in ATS Directory
+                          </span>
+                          <div className="flex flex-wrap gap-2">
+                            {clarificationData.similar_candidates.map((cand) => (
+                              <span
+                                key={String(cand.id)}
+                                className="rounded-lg bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-800 dark:bg-gray-700 dark:text-gray-200"
+                              >
+                                {cand.name} {cand.position ? `(${cand.position})` : ""}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    <div className="mt-4">
+                      <Button variant="primary" size="sm" onClick={handleReset}>
+                        Specify Request in Command Bar
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Status: OUT_OF_SCOPE (Pillar 4: LIMITS, TC-CHB-11) */}
             {status === "OUT_OF_SCOPE" && (
               <div className="rounded-2xl border-2 border-warning-300 bg-warning-50/60 p-6 dark:border-warning-500/40 dark:bg-warning-500/10 shadow-theme-xs">
@@ -942,7 +1096,7 @@ function SchedulingContent() {
                   <div className="flex-1 text-start">
                     <div className="flex items-center justify-between">
                       <h3 className="text-base font-bold text-warning-900 dark:text-warning-300">
-                        Out-of-Scope Request Refused (Pillar LIMITS)
+                        Out-of-Scope Request Refused
                       </h3>
                       <span className="rounded-full bg-warning-100 px-2.5 py-0.5 text-[10px] font-mono font-bold text-warning-800 dark:bg-warning-500/20 dark:text-warning-300">
                         LIMITS_ENFORCED
@@ -1018,7 +1172,7 @@ function SchedulingContent() {
                   <div className="flex-1 text-start">
                     <div className="flex items-center justify-between">
                       <h3 className="text-base font-bold text-error-900 dark:text-error-200">
-                        Prompt Injection Blocked (Pillar PERMISSIONS)
+                        Prompt Injection Blocked
                       </h3>
                       <span className="rounded-full bg-error-100 px-2.5 py-0.5 text-[10px] font-mono font-bold text-error-800 dark:bg-error-500/30 dark:text-error-300">
                         GUARDRAIL_BLOCKED
@@ -1037,8 +1191,8 @@ function SchedulingContent() {
               </div>
             )}
 
-            {/* Status: PENDING_APPROVAL or UNDO_WINDOW -> Confirmation Card */}
-            {(status === "PENDING_APPROVAL" || status === "UNDO_WINDOW") && activePlan && (
+            {/* Status: PENDING APPROVAL or UNDO_WINDOW -> Confirmation Card */}
+            {(status === "PENDING APPROVAL" || status === "UNDO_WINDOW") && activePlan && (
               <ConfirmationCard
                 plan={activePlan}
                 onApprove={handleApprove}

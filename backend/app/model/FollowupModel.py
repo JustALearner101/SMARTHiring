@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     JSON,
@@ -14,6 +14,12 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.model.BaseModel import TableBaseModel
+
+if TYPE_CHECKING:
+    from app.model.CandidateModel import Candidate
+    from app.model.JobModel import Job
+    from app.model.OrchestrationModel import NegotiationThread
+    from app.model.UserModel import User
 
 
 class FollowupPlan(TableBaseModel):
@@ -80,9 +86,9 @@ class FollowupPlan(TableBaseModel):
         nullable=True,
     )
 
-    job: Mapped["Job | None"] = relationship("Job", back_populates="followup_plans")  # noqa: F821
-    thread: Mapped["NegotiationThread | None"] = relationship("NegotiationThread")  # noqa: F821
-    approved_by: Mapped["User | None"] = relationship("User")  # noqa: F821
+    job: Mapped["Job | None"] = relationship("Job", back_populates="followup_plans")
+    thread: Mapped["NegotiationThread | None"] = relationship("NegotiationThread")
+    approved_by: Mapped["User | None"] = relationship("User")
     recipients: Mapped[list["ActionRecipient"]] = relationship(
         "ActionRecipient",
         back_populates="followup_plan",
@@ -128,6 +134,6 @@ class ActionRecipient(TableBaseModel):
         index=True,
     )
 
-    candidate: Mapped["Candidate | None"] = relationship("Candidate")  # noqa: F821
-    user: Mapped["User | None"] = relationship("User")  # noqa: F821
+    candidate: Mapped["Candidate | None"] = relationship("Candidate")
+    user: Mapped["User | None"] = relationship("User")
     followup_plan: Mapped["FollowupPlan"] = relationship("FollowupPlan", back_populates="recipients")

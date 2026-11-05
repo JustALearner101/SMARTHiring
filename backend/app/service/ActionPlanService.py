@@ -171,8 +171,8 @@ class ActionPlanService:
 
         # 4. Resilient Status Mapping to PlanStatus
         raw_status = str(plan.vapproval_status or "").upper()
-        if raw_status in ("AWAITING_APPROVAL", "DRAFT"):
-            mapped_status = "PENDING_APPROVAL"
+        if raw_status in ("AWAITING_APPROVAL", "AWAITING APPROVAL", "DRAFT"):
+            mapped_status = "PENDING APPROVAL"
         elif raw_status == "AWAITING_CLARIFICATION":
             mapped_status = "CLARIFICATION_NEEDED"
         elif raw_status == "APPROVED":
@@ -183,7 +183,7 @@ class ActionPlanService:
             "IDLE",
             "ANALYZING",
             "CLARIFICATION_NEEDED",
-            "PENDING_APPROVAL",
+            "PENDING APPROVAL",
             "UNDO_WINDOW",
             "EXECUTED",
             "UNDONE",
@@ -191,7 +191,7 @@ class ActionPlanService:
         ):
             mapped_status = raw_status
         else:
-            mapped_status = "PENDING_APPROVAL"
+            mapped_status = "PENDING APPROVAL"
 
         undo_exp = None
         if mapped_status == "UNDO_WINDOW" and plan.dundo_deadline:
@@ -204,6 +204,7 @@ class ActionPlanService:
             candidate_position=str(meta.get("candidate_position") or "Position"),
             candidate_email=meta.get("candidate_email") or "candidate@example.com",
             candidate_phone=meta.get("candidate_phone") or "+6281234567890",
+            candidate_timezone=meta.get("candidate_timezone") or "WIB",
             interviewer_id=str(meta.get("interviewer_id") or "1"),
             interviewer_name=str(meta.get("interviewer_name") or "Interviewer"),
             interviewer_role=str(
@@ -213,6 +214,7 @@ class ActionPlanService:
             interviewer_email=meta.get("interviewer_email")
             or "interviewer@company.com",
             interviewer_phone=meta.get("interviewer_phone") or "+6281198765432",
+            interviewer_timezone=meta.get("interviewer_timezone") or "WIB",
             raw_command=str(plan.vplan or "Autonomous scheduling"),
             negotiation_round=int(meta.get("negotiation_round") or 1),
             max_rounds=3,
@@ -261,12 +263,14 @@ class ActionPlanService:
 
     async def get_current_plan(self) -> ActionPlanDTO | None:
         try:
-            # Prioritize active plans awaiting approval or within the 60s undo window
-            plan = await self.action_plan_repo.get_latest_active_plan()
-            if not plan:
-                plan = await self.action_plan_repo.get_latest_plan()
-            if not plan:
+            # Check the most recently created plan first so a rejected/undone/executed latest plan
+            # does not resurrect an older unapproved plan upon page refresh (TC-SCHED-15)
+            latest_plan = await self.action_plan_repo.get_latest_plan()
+            if not latest_plan:
                 return None
+            if latest_plan.vapproval_status in ("EXECUTED", "UNDONE", "REJECTED", "INVALIDATED"):
+                return None
+            plan = latest_plan
 
             now = datetime.now(UTC)
 
@@ -334,10 +338,16 @@ class ActionPlanService:
         now = datetime.now(UTC)
         meta = plan.vagent_metadata or {}
 
-        # Apply customized items if provided by user in Confirmation Card
+        # Apply customized items and/or edited proposed_slot if provided by user in Confirmation Card
+        meta_updated = False
         if request.customized_items:
             items_dicts = [i.model_dump() for i in request.customized_items]
             meta["items"] = items_dicts
+            meta_updated = True
+        if request.proposed_slot:
+            meta["proposed_slot"] = request.proposed_slot.model_dump()
+            meta_updated = True
+        if meta_updated:
             plan.vagent_metadata = meta
             self.session.add(plan)
             await self.session.commit()

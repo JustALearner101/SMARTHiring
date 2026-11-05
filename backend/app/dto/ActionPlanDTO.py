@@ -9,7 +9,7 @@ PlanStatus = Literal[
     "ANALYZING",
     "CLARIFICATION_NEEDED",
     "NEEDS_CLARIFICATION",
-    "PENDING_APPROVAL",
+    "PENDING APPROVAL",
     "UNDO_WINDOW",
     "EXECUTED",
     "UNDONE",
@@ -57,12 +57,14 @@ class ActionPlanDTO(BaseDTO):
     candidate_position: str
     candidate_email: str | None = None
     candidate_phone: str | None = None
+    candidate_timezone: str | None = "WIB"
     interviewer_id: str
     interviewer_name: str
     interviewer_role: str
     interviewer_dept: str
     interviewer_email: str | None = None
     interviewer_phone: str | None = None
+    interviewer_timezone: str | None = "WIB"
     raw_command: str
     negotiation_round: int
     max_rounds: int = 3
@@ -85,6 +87,7 @@ class PlanApprovalRequestDTO(BaseDTO):
     approved_by: str = "HR Admin"
     send_immediately: bool = False
     customized_items: list[ActionItemDraftDTO] | None = None
+    proposed_slot: ProposedSlotDTO | None = None
 
 
 class PlanUndoRequestDTO(BaseDTO):

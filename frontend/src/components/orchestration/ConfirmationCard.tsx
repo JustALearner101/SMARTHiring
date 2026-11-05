@@ -43,22 +43,20 @@ export default function ConfirmationCard({
   const { role } = useAuth();
   const isHr = role === "HR";
 
-  // Derive initial channel from plan.items
-  const initialCandItem = plan.items.find(
-    (i) => i.recipient_role.toLowerCase().includes("candidate") || i.channel === "whatsapp"
-  );
-  const initialInterItem = plan.items.find(
-    (i) => !i.recipient_role.toLowerCase().includes("candidate") && i.channel !== "calendar"
-  );
+  const planItems = useMemo(() => plan.items ?? [], [plan.items]);
+  const sourcesCited = plan.sources_cited ?? [];
 
-  const [candidateChannel, setCandidateChannel] = useState<"email" | "whatsapp">(
-    initialCandItem?.channel === "whatsapp" ? "whatsapp" : "email"
+  // Derive initial items from plan.items (WhatsApp taken out -> Email only)
+  const initialCandItem = planItems.find(
+    (i) => i.recipient_role.toLowerCase().includes("candidate")
   );
-  const [interviewerChannel, setInterviewerChannel] = useState<"email" | "whatsapp">(
-    initialInterItem?.channel === "whatsapp" ? "whatsapp" : "email"
-  );
+  const hasCandidateItem = Boolean(initialCandItem);
 
-  const [activeTabId, setActiveTabId] = useState<string>(() => plan.items[0]?.id || "item-01");
+  // Kanal pengiriman dikunci ke Official Email (Sumopod SMTP)
+  const candidateChannel = "email" as const;
+  const interviewerChannel = "email" as const;
+
+  const [activeTabId, setActiveTabId] = useState<string>(() => planItems[0]?.id || "item-01");
   const [isCopied, setIsCopied] = useState(false);
 
   // Modals for Bonus Pillars
@@ -74,8 +72,79 @@ export default function ConfirmationCard({
   const [editTime, setEditTime] = useState("14:00");
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  // Active slot (supports local slot edits)
+  // Active slot (supports local slot edits & meeting platform/link edits)
   const [currentSlot, setCurrentSlot] = useState<ProposedSlot>(plan.proposed_slot);
+  const [slotEdited, setSlotEdited] = useState(false);
+
+  // Editable draft overrides per action item id (TC-SCHED-18)
+  const [editedDrafts, setEditedDrafts] = useState<Record<string, string>>({});
+
+  const MEETING_PLATFORM_OPTIONS = [
+    "Google Meet",
+    "Microsoft Teams",
+    "Zoom Meeting",
+    "On-Site / Custom",
+  ] as const;
+
+  const DEFAULT_PLATFORM_LINKS: Record<string, string> = {
+    "Google Meet": "https://meet.google.com/hkt-ops-2026",
+    "Microsoft Teams": "https://teams.microsoft.com/l/meetup-join/heketon-ops-2026",
+    "Zoom Meeting": "https://zoom.us/j/98234123890",
+    "On-Site / Custom": "Ruang Rapat Utama HQ Jakarta",
+  };
+
+  const detectPlatformFromUrl = (url: string, currentPlatform: string): string => {
+    const lower = url.toLowerCase();
+    if (lower.includes("teams.microsoft.com") || lower.includes("teams.live.com")) {
+      return "Microsoft Teams";
+    }
+    if (lower.includes("meet.google.com")) {
+      return "Google Meet";
+    }
+    if (lower.includes("zoom.us") || lower.includes("zoom.com")) {
+      return "Zoom Meeting";
+    }
+    return currentPlatform;
+  };
+
+  const handlePlatformChange = (newPlatform: string) => {
+    setCurrentSlot((prev) => {
+      const isDefaultLink = Object.values(DEFAULT_PLATFORM_LINKS).includes(
+        prev.meeting_link.trim()
+      );
+      const nextLink = isDefaultLink
+        ? DEFAULT_PLATFORM_LINKS[newPlatform] || prev.meeting_link
+        : prev.meeting_link;
+      const nextTitle = prev.title.startsWith("Follow-Up Meeting:")
+        ? `Follow-Up Meeting: ${newPlatform}`
+        : prev.title;
+
+      return {
+        ...prev,
+        title: nextTitle,
+        location_type: newPlatform,
+        meeting_link: nextLink,
+      };
+    });
+    setSlotEdited(true);
+  };
+
+  const handleMeetingLinkChange = (newLink: string) => {
+    setCurrentSlot((prev) => {
+      const detectedPlatform = detectPlatformFromUrl(newLink, prev.location_type);
+      const nextTitle = prev.title.startsWith("Follow-Up Meeting:")
+        ? `Follow-Up Meeting: ${detectedPlatform}`
+        : prev.title;
+
+      return {
+        ...prev,
+        title: nextTitle,
+        location_type: detectedPlatform,
+        meeting_link: newLink,
+      };
+    });
+    setSlotEdited(true);
+  };
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(currentSlot.meeting_link);
@@ -83,15 +152,35 @@ export default function ConfirmationCard({
     setTimeout(() => setIsCopied(false), 2000);
   };
 
-  // Contact addresses
+  // Contact addresses & timezones
   const candEmail = plan.candidate_email || "candidate@example.com";
-  const candPhone = plan.candidate_phone || "+6281234567890";
+  const candTz = (plan.candidate_timezone || "WIB").toUpperCase();
   const interEmail = plan.interviewer_email || "budi.santoso@company.com";
-  const interPhone = plan.interviewer_phone || "+6281198765432";
+  const interTz = (plan.interviewer_timezone || "WIB").toUpperCase();
 
   // Build reactive customized action items from backend plan.items
   const customizedItems = useMemo<ActionItemDraft[]>(() => {
-    return plan.items.map((it) => {
+    const candSlotDisplay =
+      candTz === "WITA"
+        ? currentSlot.formatted_wita
+        : candTz === "WIT"
+        ? currentSlot.formatted_wit || currentSlot.formatted_wib
+        : currentSlot.formatted_wib;
+    const interSlotDisplay =
+      interTz === "WITA"
+        ? currentSlot.formatted_wita
+        : interTz === "WIT"
+        ? currentSlot.formatted_wit || currentSlot.formatted_wib
+        : currentSlot.formatted_wib;
+    const allTzDisplay = [
+      currentSlot.formatted_wib,
+      currentSlot.formatted_wita,
+      currentSlot.formatted_wit,
+    ]
+      .filter(Boolean)
+      .join(" = ");
+
+    return planItems.map((it) => {
       const isCand = it.recipient_role.toLowerCase().includes("candidate");
       const isInter =
         !isCand &&
@@ -100,46 +189,85 @@ export default function ConfirmationCard({
           it.recipient_role.toLowerCase().includes("host") ||
           it.recipient_name === plan.interviewer_name);
 
+      const manualDraft = editedDrafts[it.id];
+
       if (isCand) {
+        const defaultCandPreview =
+          candidateChannel === it.channel && !slotEdited
+            ? it.content_preview
+            : `Halo ${plan.candidate_name},\n\nKami mengundang Anda untuk mengikuti User Technical Interview posisi ${plan.candidate_position} bersama ${plan.interviewer_name}:\n- Jadwal Waktu Lokal Anda (${candTz}): ${candSlotDisplay}\n- Konversi Zona Waktu: ${allTzDisplay}\n- Durasi: ${currentSlot.duration_minutes} Menit\n- Lokasi / Tautan: ${currentSlot.location_type} (${currentSlot.meeting_link})\n\nMohon konfirmasi ketersediaan Anda. Terima kasih,\nTim HR`;
+
         return {
           ...it,
           channel: candidateChannel,
-          action_type: candidateChannel === "email" ? "send_email" : "send_whatsapp",
-          recipient_contact: candidateChannel === "email" ? candEmail : candPhone,
+          action_type: "send_email",
+          recipient_contact: candEmail,
           is_external: true,
-          content_preview:
-            candidateChannel === "email"
-              ? it.content_preview
-              : `Halo ${plan.candidate_name}, berikut informasi jadwal wawancara teknis pada ${currentSlot.formatted_wib} via ${currentSlot.location_type} (${currentSlot.meeting_link}). Mohon konfirmasi kesediaan Anda.`,
+          content_preview: manualDraft !== undefined ? manualDraft : defaultCandPreview,
         };
       }
 
       if (isInter) {
+        const isNotulenDraft =
+          it.subject?.toLowerCase().includes("notulen") ||
+          it.content_preview.toLowerCase().includes("notulen");
+
+        let updatedNotulenPreview = it.content_preview;
+        if (isNotulenDraft && slotEdited) {
+          const baseLines = it.content_preview
+            .split("\n")
+            .filter((line) => !line.startsWith("- Lokasi / Tautan:"))
+            .map((line) =>
+              line.startsWith("- Jadwal Follow-Up")
+                ? `- Jadwal Follow-Up (${interTz}): ${interSlotDisplay} (${allTzDisplay})\n- Lokasi / Tautan: ${currentSlot.location_type} (${currentSlot.meeting_link})`
+                : line
+            );
+          updatedNotulenPreview = baseLines.join("\n");
+          if (!updatedNotulenPreview.includes("- Lokasi / Tautan:")) {
+            updatedNotulenPreview += `\n- Lokasi / Tautan: ${currentSlot.location_type} (${currentSlot.meeting_link})`;
+          }
+        }
+
+        const defaultInterPreview =
+          interviewerChannel === it.channel && !slotEdited
+            ? it.content_preview
+            : isNotulenDraft
+            ? updatedNotulenPreview
+            : `Yth. ${plan.interviewer_name},\n\nBerikut undangan User Technical Interview bersama kandidat ${plan.candidate_name} (${plan.candidate_position}):\n- Jadwal (${interTz}): ${interSlotDisplay}\n- Konversi Zona Waktu: ${allTzDisplay}\n- Durasi: ${currentSlot.duration_minutes} Menit\n- Lokasi / Tautan: ${currentSlot.location_type} (${currentSlot.meeting_link})\n\nSalam,\nHR & Talent Acquisition`;
+
         return {
           ...it,
           channel: interviewerChannel,
-          action_type: interviewerChannel === "email" ? "send_email" : "send_whatsapp",
-          recipient_contact: interviewerChannel === "email" ? interEmail : interPhone,
-          content_preview:
-            interviewerChannel === "email"
-              ? it.content_preview
-              : `Halo ${plan.interviewer_name}, reminder: jadwal pertemuan pada ${currentSlot.formatted_wib} di ${currentSlot.location_type}. Link: ${currentSlot.meeting_link}`,
+          action_type: "send_email",
+          recipient_contact: interEmail,
+          content_preview: manualDraft !== undefined ? manualDraft : defaultInterPreview,
         };
       }
 
-      return it;
+      if (it.channel === "calendar" && slotEdited && manualDraft === undefined) {
+        return {
+          ...it,
+          subject: `${currentSlot.title} (${currentSlot.location_type})`,
+          content_preview: `Reservasi slot kalender pada ${interSlotDisplay} (${allTzDisplay}) di ${currentSlot.location_type} (${currentSlot.meeting_link}) — ${currentSlot.duration_minutes} Menit.`,
+        };
+      }
+
+      return manualDraft !== undefined ? { ...it, content_preview: manualDraft } : it;
     });
   }, [
-    plan.items,
+    planItems,
     candidateChannel,
     interviewerChannel,
     candEmail,
-    candPhone,
+    candTz,
     interEmail,
-    interPhone,
+    interTz,
     plan.candidate_name,
+    plan.candidate_position,
     plan.interviewer_name,
     currentSlot,
+    slotEdited,
+    editedDrafts,
   ]);
 
   const activeItem =
@@ -151,19 +279,24 @@ export default function ConfirmationCard({
 
   const isHighImpactAction =
     plan.is_high_impact ||
-    candidateChannel === "whatsapp" ||
+    hasCandidateItem ||
     externalRecipients.length > 0;
 
   // Handle Approve Click
   const handleApproveClick = () => {
-    if (validationError) return;
-
     const updatedPlan: ActionPlan = {
       ...plan,
       proposed_slot: currentSlot,
       is_high_impact: isHighImpactAction,
       items: customizedItems,
     };
+
+    // If a slot rule violation was forced (TC-CHB-21), submit directly to backend
+    // so Secondary Validator Guard rejects with 409 and records VALIDATION_VIOLATION_BLOCKED in AuditLog
+    if (validationError) {
+      onApprove(updatedPlan);
+      return;
+    }
 
     // TC-CHB-22: Require extra confirmation modal for high-impact external sends
     if (isHighImpactAction) {
@@ -186,32 +319,20 @@ export default function ConfirmationCard({
   };
 
   // TC-CHB-21: Secondary validator checks when user edits slot
-  const handleSaveEditedSlot = () => {
-    const dayOfWeek = new Date(editDate).getDay(); // 5 is Friday
-    const [hh, mm] = editTime.split(":").map(Number);
-    const timeVal = (hh || 0) * 60 + (mm || 0);
+  const applyEditedSlot = (targetDateStr: string, targetTimeStr: string) => {
+    const [hh, mm] = targetTimeStr.split(":").map(Number);
+    const safeH = Number.isFinite(hh) ? hh : 14;
+    const safeM = Number.isFinite(mm) ? mm : 0;
+    const timeVal = safeH * 60 + safeM;
 
-    // Friday prayer window: 11:30 (690m) to 13:00 (780m)
-    if (dayOfWeek === 5 && timeVal >= 690 && timeVal < 780) {
-      setValidationError(
-        "Secondary Validator Alert (Rule Violation Blocked): Slot Friday 12:00 WIB overlaps with Friday prayer blackout [rule-jumatan] (11:30 - 13:00 WIB). Action execution blocked until a compliant slot is chosen."
-      );
-      setIsEditSlotModalOpen(false);
-      return;
-    }
+    // Construct ISO UTC timestamp from WIB (+07:00)
+    const wibIso = `${targetDateStr}T${String(safeH).padStart(2, "0")}:${String(safeM).padStart(2, "0")}:00+07:00`;
+    const startUtcDate = new Date(wibIso);
+    const endUtcDate = new Date(startUtcDate.getTime() + (currentSlot.duration_minutes || 60) * 60 * 1000);
+    const dayOfWeek = startUtcDate.getUTCDay(); // At 02:00-10:00 UTC, UTC day == WIB day (5 is Friday)
 
-    // Working hours: 09:00 (540m) to 17:00 (1020m)
-    if (timeVal < 540 || timeVal > 960) {
-      setValidationError(
-        "Secondary Validator Alert (Rule Violation Blocked): Slot is outside official operational working hours (09:00 - 17:00 WIB) [rule-working-hours]. Action execution blocked."
-      );
-      setIsEditSlotModalOpen(false);
-      return;
-    }
-
-    setValidationError(null);
-    const dateObj = new Date(`${editDate}T${editTime}:00`);
-    const dateStr = dateObj.toLocaleDateString("id-ID", {
+    const dateObj = new Date(`${targetDateStr}T${String(safeH).padStart(2, "0")}:${String(safeM).padStart(2, "0")}:00`);
+    const dateStr = dateObj.toLocaleDateString("en-US", {
       weekday: "long",
       day: "2-digit",
       month: "short",
@@ -220,11 +341,38 @@ export default function ConfirmationCard({
 
     setCurrentSlot((prev) => ({
       ...prev,
-      formatted_wib: `${dateStr}, ${editTime} WIB`,
-      formatted_wita: `${dateStr}, ${String(hh + 1).padStart(2, "0")}:${String(mm).padStart(2, "0")} WITA`,
-      formatted_wit: `${dateStr}, ${String(hh + 2).padStart(2, "0")}:${String(mm).padStart(2, "0")} WIT`,
+      start_utc: !Number.isNaN(startUtcDate.getTime()) ? startUtcDate.toISOString() : prev.start_utc,
+      end_utc: !Number.isNaN(endUtcDate.getTime()) ? endUtcDate.toISOString() : prev.end_utc,
+      formatted_wib: `${dateStr}, ${String(safeH).padStart(2, "0")}:${String(safeM).padStart(2, "0")} WIB`,
+      formatted_wita: `${dateStr}, ${String((safeH + 1) % 24).padStart(2, "0")}:${String(safeM).padStart(2, "0")} WITA`,
+      formatted_wit: `${dateStr}, ${String((safeH + 2) % 24).padStart(2, "0")}:${String(safeM).padStart(2, "0")} WIT`,
     }));
+    setSlotEdited(true);
+
+    // Friday prayer window: 11:30 (690m) to 13:00 (780m)
+    if (dayOfWeek === 5 && timeVal >= 690 && timeVal < 780) {
+      setValidationError(
+        `Secondary Validator Alert (Rule Violation Detected): Slot Friday ${targetTimeStr} WIB overlaps with Friday prayer blackout [rule-jumatan] (11:30 - 13:00 WIB). Approving this slot will be blocked by the Secondary Validator and logged to Audit Logs.`
+      );
+      setIsEditSlotModalOpen(false);
+      return;
+    }
+
+    // Working hours: 09:00 (540m) to 17:00 (1020m)
+    if (timeVal < 540 || timeVal >= 1020) {
+      setValidationError(
+        `Secondary Validator Alert (Rule Violation Detected): Slot ${targetTimeStr} WIB is outside official operational working hours (09:00 - 17:00 WIB) [rule-working-hours]. Approving this slot will be blocked by the Secondary Validator and logged to Audit Logs.`
+      );
+      setIsEditSlotModalOpen(false);
+      return;
+    }
+
+    setValidationError(null);
     setIsEditSlotModalOpen(false);
+  };
+
+  const handleSaveEditedSlot = () => {
+    applyEditedSlot(editDate, editTime);
   };
 
   return (
@@ -245,7 +393,7 @@ export default function ConfirmationCard({
               </span>
               <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-mono font-bold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                Live SMTP &amp; WhatsApp Gateways
+                Live SMTP Email Gateway
               </span>
             </div>
             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
@@ -281,7 +429,7 @@ export default function ConfirmationCard({
                   variant="outline"
                   onClick={() => {
                     setEditTime("14:00");
-                    handleSaveEditedSlot();
+                    applyEditedSlot(editDate, "14:00");
                   }}
                 >
                   Auto-Shift to Safe Slot (14:00 WIB)
@@ -342,7 +490,7 @@ export default function ConfirmationCard({
           </div>
         </div>
 
-        {/* WHERE: Platform & Link */}
+        {/* WHERE: Platform & Link (Interactive Selector + Custom URL Input) */}
         <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 dark:border-gray-800 dark:bg-gray-800/40">
           <div className="flex items-center justify-between text-[10px] font-bold text-gray-400 uppercase tracking-wider">
             <span>WHERE · Meeting Platform</span>
@@ -356,13 +504,35 @@ export default function ConfirmationCard({
               <span>{isCopied ? "Tersalin!" : "Salin Link"}</span>
             </button>
           </div>
-          <div className="mt-2">
-            <div className="text-xs font-semibold text-gray-900 dark:text-white">
-              {currentSlot.location_type}
-            </div>
-            <span className="text-[10px] font-mono text-gray-400 truncate block mt-0.5">
-              {currentSlot.meeting_link}
-            </span>
+          <div className="mt-2 space-y-1.5">
+            <select
+              value={
+                MEETING_PLATFORM_OPTIONS.includes(
+                  currentSlot.location_type as (typeof MEETING_PLATFORM_OPTIONS)[number]
+                )
+                  ? currentSlot.location_type
+                  : "On-Site / Custom"
+              }
+              disabled={!isHr || isApproving}
+              onChange={(e) => handlePlatformChange(e.target.value)}
+              aria-label="Meeting Platform"
+              className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-900 focus:border-brand-500 focus:outline-hidden focus:ring-2 focus:ring-brand-500/15 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+            >
+              {MEETING_PLATFORM_OPTIONS.map((platform) => (
+                <option key={platform} value={platform}>
+                  {platform}
+                </option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={currentSlot.meeting_link}
+              disabled={!isHr || isApproving}
+              onChange={(e) => handleMeetingLinkChange(e.target.value)}
+              placeholder="Paste link Google Meet / Microsoft Teams / Zoom..."
+              aria-label="Meeting Link URL"
+              className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-mono text-gray-700 placeholder-gray-400 focus:border-brand-500 focus:outline-hidden focus:ring-2 focus:ring-brand-500/15 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+            />
           </div>
         </div>
       </div>
@@ -382,98 +552,64 @@ export default function ConfirmationCard({
             <span className="rounded bg-brand-100 px-1.5 py-0.5 font-mono font-medium text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
               {customizedItems.length} Discrete Action Items
             </span>
-            <span>&bull;</span>
-            <span className="font-mono text-gray-400">Pillar APPROVAL</span>
           </div>
         </div>
 
-        <div className="mt-3.5 grid grid-cols-1 md:grid-cols-2 gap-3.5">
-          {/* Candidate Card */}
-          <div className={`rounded-xl border p-4 transition-all ${
-            candidateChannel === "email"
-              ? "border-brand-200 bg-white shadow-xs dark:border-brand-800 dark:bg-gray-800/90"
-              : "border-emerald-200 bg-white shadow-xs dark:border-emerald-800 dark:bg-gray-800/90"
-          }`}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-indigo-600 text-sm font-bold text-white shadow-2xs">
-                  {getInitials(plan.candidate_name)}
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-bold text-gray-900 dark:text-white truncate">
-                      {plan.candidate_name}
-                    </span>
-                    <span className="rounded bg-gray-100 px-1.5 py-0.2 text-[9px] font-semibold text-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                      Candidate
-                    </span>
+        <div className={`mt-3.5 grid grid-cols-1 ${hasCandidateItem ? "md:grid-cols-2" : ""} gap-3.5`}>
+          {/* Candidate Card (only shown when plan includes a candidate action item) */}
+          {hasCandidateItem && (
+            <div className="rounded-xl border border-brand-200 bg-white p-4 shadow-xs transition-all dark:border-brand-800 dark:bg-gray-800/90">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-indigo-600 text-sm font-bold text-white shadow-2xs">
+                    {getInitials(plan.candidate_name)}
                   </div>
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
-                    {plan.candidate_position}
-                  </p>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-bold text-gray-900 dark:text-white truncate">
+                        {plan.candidate_name}
+                      </span>
+                      <span className="rounded bg-gray-100 px-1.5 py-0.2 text-[9px] font-semibold text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                        Candidate
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                      {plan.candidate_position}
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Segmented Pill Selector with Active WhatsApp (TC-CHB-12) */}
-            <div className="mt-3.5">
-              <div className="flex rounded-lg bg-gray-100 p-1 dark:bg-gray-900">
-                <button
-                  type="button"
-                  onClick={() => setCandidateChannel("email")}
-                  className={`flex-1 flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-semibold transition-all ${
-                    candidateChannel === "email"
-                      ? "bg-white text-brand-700 shadow-xs dark:bg-gray-800 dark:text-brand-300"
-                      : "text-gray-500 hover:text-gray-900 dark:hover:text-gray-200"
-                  }`}
-                  title="Official Email via Sumopod SMTP"
-                >
-                  <EnvelopeIcon className="shrink-0" />
-                  <span>Email</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCandidateChannel("whatsapp")}
-                  className={`flex-1 flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-semibold transition-all ${
-                    candidateChannel === "whatsapp"
-                      ? "bg-white text-emerald-700 shadow-xs dark:bg-gray-800 dark:text-emerald-300"
-                      : "text-gray-500 hover:text-gray-900 dark:hover:text-gray-200"
-                  }`}
-                  title="Candidate WhatsApp Gateway"
-                >
-                  <ChatIcon className="shrink-0 text-emerald-600 dark:text-emerald-400" />
-                  <span>WhatsApp</span>
-                  <span className="rounded bg-emerald-100 px-1 py-0.2 text-[9px] font-mono font-bold text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
-                    Live
+              {/* Official Email Channel Indicator (WhatsApp Taken Out) */}
+              <div className="mt-3.5">
+                <div className="flex rounded-lg bg-gray-100 p-1 dark:bg-gray-900">
+                  <div
+                    className="flex-1 flex items-center justify-center gap-1.5 rounded-md bg-white py-1.5 text-xs font-semibold text-brand-700 shadow-xs dark:bg-gray-800 dark:text-brand-300"
+                    title="Official Email via Sumopod SMTP"
+                  >
+                    <EnvelopeIcon className="shrink-0" />
+                    <span>Email</span>
+                  </div>
+                </div>
+
+                {/* Destination Contact Handle Bar */}
+                <div className="mt-2.5 flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 border border-gray-100 dark:bg-gray-900/60 dark:border-gray-800 text-xs">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-gray-400 font-mono text-[11px]">Send to:</span>
+                    <strong className="text-gray-900 dark:text-white font-mono truncate">
+                      {candEmail}
+                    </strong>
+                  </div>
+                  <span className="shrink-0 rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
+                    Sumopod SSL 465
                   </span>
-                </button>
-              </div>
-
-              {/* Destination Contact Handle Bar */}
-              <div className="mt-2.5 flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 border border-gray-100 dark:bg-gray-900/60 dark:border-gray-800 text-xs">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="text-gray-400 font-mono text-[11px]">Send to:</span>
-                  <strong className="text-gray-900 dark:text-white font-mono truncate">
-                    {candidateChannel === "email" ? candEmail : candPhone}
-                  </strong>
                 </div>
-                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-mono font-semibold ${
-                  candidateChannel === "email"
-                    ? "bg-brand-50 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300"
-                    : "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
-                }`}>
-                  {candidateChannel === "email" ? "Sumopod SSL 465" : "WhatsApp Gateway"}
-                </span>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Interviewer Card */}
-          <div className={`rounded-xl border p-4 transition-all ${
-            interviewerChannel === "email"
-              ? "border-brand-200 bg-white shadow-xs dark:border-brand-800 dark:bg-gray-800/90"
-              : "border-emerald-200 bg-white shadow-xs dark:border-emerald-800 dark:bg-gray-800/90"
-          }`}>
+          <div className="rounded-xl border border-brand-200 bg-white p-4 shadow-xs transition-all dark:border-brand-800 dark:bg-gray-800/90">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-sm font-bold text-white shadow-2xs">
@@ -495,38 +631,16 @@ export default function ConfirmationCard({
               </div>
             </div>
 
-            {/* Segmented Pill Selector with Active WhatsApp */}
+            {/* Official Email Channel Indicator (WhatsApp Taken Out) */}
             <div className="mt-3.5">
               <div className="flex rounded-lg bg-gray-100 p-1 dark:bg-gray-900">
-                <button
-                  type="button"
-                  onClick={() => setInterviewerChannel("email")}
-                  className={`flex-1 flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-semibold transition-all ${
-                    interviewerChannel === "email"
-                      ? "bg-white text-brand-700 shadow-xs dark:bg-gray-800 dark:text-brand-300"
-                      : "text-gray-500 hover:text-gray-900 dark:hover:text-gray-200"
-                  }`}
+                <div
+                  className="flex-1 flex items-center justify-center gap-1.5 rounded-md bg-white py-1.5 text-xs font-semibold text-brand-700 shadow-xs dark:bg-gray-800 dark:text-brand-300"
                   title="Official Email via Sumopod SMTP"
                 >
                   <EnvelopeIcon className="shrink-0" />
                   <span>Email</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setInterviewerChannel("whatsapp")}
-                  className={`flex-1 flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-semibold transition-all ${
-                    interviewerChannel === "whatsapp"
-                      ? "bg-white text-emerald-700 shadow-xs dark:bg-gray-800 dark:text-emerald-300"
-                      : "text-gray-500 hover:text-gray-900 dark:hover:text-gray-200"
-                  }`}
-                  title="Interviewer WhatsApp Notification"
-                >
-                  <ChatIcon className="shrink-0 text-emerald-600 dark:text-emerald-400" />
-                  <span>WhatsApp</span>
-                  <span className="rounded bg-emerald-100 px-1 py-0.2 text-[9px] font-mono font-bold text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
-                    Live
-                  </span>
-                </button>
+                </div>
               </div>
 
               {/* Destination Contact Handle Bar */}
@@ -534,15 +648,11 @@ export default function ConfirmationCard({
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span className="text-gray-400 font-mono text-[11px]">Send to:</span>
                   <strong className="text-gray-900 dark:text-white font-mono truncate">
-                    {interviewerChannel === "email" ? interEmail : interPhone}
+                    {interEmail}
                   </strong>
                 </div>
-                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-mono font-semibold ${
-                  interviewerChannel === "email"
-                    ? "bg-brand-50 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300"
-                    : "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
-                }`}>
-                  {interviewerChannel === "email" ? "Sumopod SSL 465" : "WhatsApp Gateway"}
+                <span className="shrink-0 rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
+                  Sumopod SSL 465
                 </span>
               </div>
             </div>
@@ -642,7 +752,7 @@ export default function ConfirmationCard({
           })}
         </div>
 
-        {/* Selected Tab Preview Body */}
+        {/* Selected Tab Preview Body (TC-SCHED-18: Editable Message Drafts) */}
         <div className="p-4 bg-white dark:bg-gray-900">
           {activeItem && (
             <div>
@@ -651,22 +761,50 @@ export default function ConfirmationCard({
                   Target / Recipient: <strong>{activeItem.recipient_name}</strong>{" "}
                   {activeItem.recipient_contact && `(${activeItem.recipient_contact})`}
                 </span>
-                <span className="font-mono text-[10px] text-brand-600 dark:text-brand-400">
-                  {activeItem.channel === "email"
-                    ? "Sumopod SMTP (smtp.sumopod.com:465 SSL)"
-                    : activeItem.channel === "whatsapp"
-                    ? "WhatsApp Gateway (+62 Enterprise)"
-                    : "Google Calendar & PostgreSQL"}
-                </span>
+                <div className="flex items-center gap-2">
+                  {editedDrafts[activeItem.id] !== undefined && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditedDrafts((prev) => {
+                          const next = { ...prev };
+                          delete next[activeItem.id];
+                          return next;
+                        })
+                      }
+                      className="text-[10px] font-semibold text-brand-600 hover:underline dark:text-brand-400"
+                    >
+                      Reset Draft
+                    </button>
+                  )}
+                  <span className="font-mono text-[10px] text-brand-600 dark:text-brand-400">
+                    {activeItem.channel === "email"
+                      ? "Sumopod SMTP (smtp.sumopod.com:465 SSL)"
+                      : activeItem.channel === "whatsapp"
+                      ? "WhatsApp Gateway (+62 Enterprise)"
+                      : "Google Calendar & PostgreSQL"}
+                  </span>
+                </div>
               </div>
               {activeItem.subject && (
                 <div className="mb-2 text-xs font-semibold text-gray-800 dark:text-gray-200">
                   Subject: {activeItem.subject}
                 </div>
               )}
-              <pre className="whitespace-pre-wrap rounded-lg bg-gray-50 p-3.5 text-xs text-gray-800 font-sans border border-gray-100 dark:border-gray-800 dark:bg-gray-800/40 dark:text-gray-200 leading-relaxed">
-                {activeItem.content_preview}
-              </pre>
+              <textarea
+                rows={7}
+                value={activeItem.content_preview}
+                disabled={!isHr || isApproving}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setEditedDrafts((prev) => ({
+                    ...prev,
+                    [activeItem.id]: val,
+                  }));
+                }}
+                aria-label={`Message draft for ${activeItem.recipient_name}`}
+                className="w-full whitespace-pre-wrap rounded-lg bg-gray-50 p-3.5 text-xs text-gray-800 font-sans border border-gray-200 focus:border-brand-500 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-brand-500/15 dark:border-gray-800 dark:bg-gray-800/40 dark:text-gray-200 leading-relaxed transition-colors"
+              />
             </div>
           )}
         </div>
@@ -682,12 +820,12 @@ export default function ConfirmationCard({
             </h4>
           </div>
           <span className="text-[10px] text-gray-400">
-            {plan.sources_cited.length} valid sources
+            {sourcesCited.length} valid sources
           </span>
         </div>
 
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {plan.sources_cited.map((src) => (
+          {sourcesCited.map((src) => (
             <div
               key={src.id}
               className="rounded-lg border border-gray-200 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-800 shadow-2xs"
@@ -752,7 +890,7 @@ export default function ConfirmationCard({
               variant="primary"
               size="md"
               isLoading={isApproving}
-              disabled={!isHr || isApproving || Boolean(validationError)}
+              disabled={!isHr || isApproving}
               onClick={handleApproveClick}
               startIcon={<BoltIcon className="text-white shrink-0" />}
               className="shrink-0 whitespace-nowrap"
@@ -802,7 +940,7 @@ export default function ConfirmationCard({
 
           <div className="pt-2 border-t border-gray-100 dark:border-gray-800">
             <span className="text-[11px] text-gray-500 dark:text-gray-400 block mb-1.5">
-              Quick Test Slot Presets (Pillar PERMISSIONS &amp; BONUS):
+              Quick Test Slot Presets (&amp; BONUS):
             </span>
             <div className="flex flex-wrap gap-2">
               <button

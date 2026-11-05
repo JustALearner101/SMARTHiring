@@ -2,9 +2,7 @@ import secrets
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.model.OrchestrationModel import NegotiationThread
 
 from app.agent.AgentState import TriageEvaluationSchema
 from app.agent.GuardrailNode import GuardrailNode
@@ -22,6 +20,7 @@ from app.dto.OrchestratorCommandDTO import (
     InboundReplyRequestDTO,
     PresetScenarioDTO,
 )
+from app.exception.CustomException import BadRequestException
 from app.repository.ActionPlanRepository import ActionPlanRepository
 from app.repository.NegotiationThreadRepository import NegotiationThreadRepository
 from app.service.AuditLogService import AuditLogService
@@ -67,7 +66,9 @@ class OrchestratorCommandService:
         ]
 
     async def execute_command(self, request: CommandRequestDTO) -> ActionPlanDTO | dict[str, Any]:
-        cmd = request.command.strip()
+        cmd = (request.command or "").strip()
+        if not cmd:
+            raise BadRequestException("Command cannot be empty.")
         thread_id = request.thread_id
 
         current_round = 1
@@ -119,7 +120,7 @@ class OrchestratorCommandService:
                 ],
             }
 
-        # 2. Out-of-Scope Refusal Gate (Pillar LIMITS, TC-CHB-11)
+        # 2. Out-of-Scope Refusal Gate
         if agent_state.get("status") == "OUT_OF_SCOPE_REFUSED":
             escalation_reason = agent_state.get(
                 "escalation_reason",
@@ -129,7 +130,7 @@ class OrchestratorCommandService:
                 event_type="OUT_OF_SCOPE_REFUSED",
                 actor="AI_ORCHESTRATOR",
                 actor_type="AGENT",
-                title="Out-of-Scope Request Refused (Pillar LIMITS)",
+                title="Out-of-Scope Request Refused",
                 description=escalation_reason,
                 metadata={"raw_command": cmd, "topic": "financial_or_unauthorized"},
             )
@@ -157,15 +158,15 @@ class OrchestratorCommandService:
                 "message": "Autonomous orchestration stopped and escalated to HR.",
             }
 
-        # 4. Pure Prompt Injection Block Gate
+        # 4. Pure Prompt Injection Block Gate (TC-GRD-01..08)
         if agent_state.get("injection_detected") and not agent_state.get("sanitized_command"):
             guardrail_note = agent_state.get("guardrail_notes", "Adversarial prompt injection detected.")
             await self.audit_service.log_event(
-                event_type="INJECTION_BLOCKED",
+                event_type="GUARDRAIL_BLOCKED",
                 actor="AI_ORCHESTRATOR",
                 actor_type="AGENT",
                 title="Adversarial Prompt Injection Blocked",
-                description=guardrail_note,
+                description=f"{guardrail_note} | Raw command: {cmd}",
                 metadata={"raw_command": cmd},
             )
             return {
@@ -174,17 +175,16 @@ class OrchestratorCommandService:
                 "guardrail_notes": guardrail_note,
             }
 
-        # If injection was detected but legitimate command was sanitized, log audit event
+        # If injection was detected but legitimate command was sanitized (TC-CHB-02), log audit event
         if agent_state.get("injection_detected"):
             await self.audit_service.log_event(
-                event_type="INJECTION_BLOCKED",
+                event_type="GUARDRAIL_BLOCKED",
                 actor="AI_ORCHESTRATOR",
                 actor_type="AGENT",
-                title="Embedded Injection Disregarded (Pillar PERMISSIONS)",
-                description=agent_state.get("guardrail_notes", ""),
+                title="Embedded Injection Disregarded",
+                description=f"{agent_state.get('guardrail_notes', '')} | Raw command: {cmd}",
                 metadata={"raw_command": cmd, "sanitized_command": agent_state.get("sanitized_command")},
             )
-
 
         # 3. Extract Agent Output
         slot_dict = agent_state.get("proposed_slot") or {}
@@ -214,12 +214,14 @@ class OrchestratorCommandService:
             "candidate_position": agent_state.get("candidate_position") or "Senior Frontend Engineer",
             "candidate_email": agent_state.get("candidate_email") or "candidate@example.com",
             "candidate_phone": agent_state.get("candidate_phone") or "+6281234567890",
+            "candidate_timezone": agent_state.get("candidate_timezone") or "WIB",
             "interviewer_id": str(inter_id),
             "interviewer_name": agent_state.get("interviewer_name") or "Budi Santoso",
             "interviewer_role": agent_state.get("interviewer_role") or "VP of Engineering",
             "interviewer_dept": agent_state.get("interviewer_dept") or "Engineering",
             "interviewer_email": agent_state.get("interviewer_email") or "budi.santoso@company.com",
             "interviewer_phone": agent_state.get("interviewer_phone") or "+6281198765432",
+            "interviewer_timezone": agent_state.get("interviewer_timezone") or "WIB",
             "negotiation_round": agent_state.get("negotiation_round", current_round),
             "entity_resolution": agent_state.get("entity_resolution"),
         }
@@ -277,16 +279,18 @@ class OrchestratorCommandService:
             candidate_position=agent_metadata["candidate_position"],
             candidate_email=agent_metadata["candidate_email"],
             candidate_phone=agent_metadata["candidate_phone"],
+            candidate_timezone=agent_metadata["candidate_timezone"],
             interviewer_id=str(inter_id),
             interviewer_name=agent_metadata["interviewer_name"],
             interviewer_role=agent_metadata["interviewer_role"],
             interviewer_dept=agent_metadata["interviewer_dept"],
             interviewer_email=agent_metadata["interviewer_email"],
             interviewer_phone=agent_metadata["interviewer_phone"],
+            interviewer_timezone=agent_metadata["interviewer_timezone"],
             raw_command=cmd,
             negotiation_round=agent_metadata["negotiation_round"],
             max_rounds=3,
-            status="PENDING_APPROVAL",
+            status="PENDING APPROVAL",
             is_high_impact=agent_state.get("is_high_impact", True),
             guardrail_passed=agent_state.get("guardrail_passed", True),
             guardrail_notes=agent_state.get("guardrail_notes", ""),
@@ -314,12 +318,12 @@ class OrchestratorCommandService:
         if not is_safe:
             source_citation_tag = "[security-injection-disregarded]"
             await self.audit_service.log_event(
-                event_type="INJECTION_BLOCKED",
+                event_type="GUARDRAIL_BLOCKED",
                 actor=request.sender_role,
                 actor_type="AGENT",
-                title="Inbound Injection Blocked (Pillar PERMISSIONS)",
-                description=f"Inbound adversarial instruction disregarded: {guardrail_note}",
-                metadata={"raw_reply": reply, "stripped": stripped, "thread_id": thread_id},
+                title="Inbound Injection Blocked",
+                description=f"Inbound adversarial instruction disregarded: {guardrail_note} | Raw reply: {reply}",
+                metadata={"raw_command": reply, "raw_reply": reply, "stripped": stripped, "thread_id": thread_id},
             )
             if not sanitized_reply or len(sanitized_reply.strip()) <= 3:
                 return {

@@ -12,6 +12,7 @@ import type {
   DisambiguationProfile,
   NegotiationThread,
   PresetScenario,
+  ProposedSlot,
   SlotConflictCheckRequest,
   SlotConflictCheckResult,
   ThreadMessage,
@@ -22,6 +23,14 @@ export interface DisambiguationResult {
   status: "CLARIFICATION_NEEDED";
   message: string;
   profiles: DisambiguationProfile[];
+}
+
+export interface NeedsClarificationResult {
+  status: "NEEDS_CLARIFICATION";
+  is_ambiguous?: boolean;
+  message: string;
+  similar_candidates?: Array<{ id: number | string; name: string; position?: string }>;
+  action_plan?: null;
 }
 
 export interface OutOfScopeResult {
@@ -46,6 +55,7 @@ export interface GuardrailBlockedResult {
 export type OrchestratorCommandResult =
   | ActionPlan
   | DisambiguationResult
+  | NeedsClarificationResult
   | OutOfScopeResult
   | DeadlockEscalatedResult
   | GuardrailBlockedResult;
@@ -57,6 +67,12 @@ export function isDisambiguationResult(
     (result as DisambiguationResult)?.status === "CLARIFICATION_NEEDED" &&
     Array.isArray((result as DisambiguationResult)?.profiles)
   );
+}
+
+export function isNeedsClarificationResult(
+  result: OrchestratorCommandResult
+): result is NeedsClarificationResult {
+  return (result as NeedsClarificationResult)?.status === "NEEDS_CLARIFICATION";
 }
 
 export function isOutOfScopeResult(
@@ -106,6 +122,7 @@ export async function executeCommand(
   );
   if (
     isDisambiguationResult(result) ||
+    isNeedsClarificationResult(result) ||
     isOutOfScopeResult(result) ||
     isDeadlockResult(result) ||
     isGuardrailBlockedResult(result)
@@ -149,6 +166,7 @@ export interface ApprovalInput {
   approved_by?: string;
   send_immediately?: boolean;
   customized_items?: ActionItemDraft[];
+  proposed_slot?: ProposedSlot;
 }
 
 export async function approveActionPlan(
@@ -161,6 +179,7 @@ export async function approveActionPlan(
       approved_by: input.approved_by ?? "HR Admin (You)",
       send_immediately: input.send_immediately ?? false,
       customized_items: input.customized_items,
+      proposed_slot: input.proposed_slot,
     })
   );
   return normalizePlan(plan);

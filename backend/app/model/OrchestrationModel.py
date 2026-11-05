@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     BigInteger,
@@ -13,6 +14,10 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.model.BaseModel import TableBaseModel
+
+if TYPE_CHECKING:
+    from app.model.CandidateModel import Candidate
+    from app.model.UserModel import User
 
 
 class CalendarEvent(TableBaseModel):
@@ -44,7 +49,7 @@ class CalendarEvent(TableBaseModel):
     vrule_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
     vdescription: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    user: Mapped["User"] = relationship("User")  # noqa: F821
+    user: Mapped["User"] = relationship("User")
 
 
 class NegotiationThread(TableBaseModel):
@@ -82,8 +87,8 @@ class NegotiationThread(TableBaseModel):
     vescalation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     vagreed_slot: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-    candidate: Mapped["Candidate"] = relationship("Candidate")  # noqa: F821
-    interviewer: Mapped["User"] = relationship("User")  # noqa: F821
+    candidate: Mapped["Candidate"] = relationship("Candidate")
+    interviewer: Mapped["User"] = relationship("User")
     messages: Mapped[list["ThreadMessage"]] = relationship(
         "ThreadMessage",
         back_populates="thread",

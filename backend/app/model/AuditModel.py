@@ -1,7 +1,12 @@
+from typing import TYPE_CHECKING
+
 from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.model.BaseModel import AppendOnlyBaseModel
+
+if TYPE_CHECKING:
+    from app.model.JobModel import Job
 
 
 class AuditLog(AppendOnlyBaseModel):
@@ -29,7 +34,7 @@ class AuditLog(AppendOnlyBaseModel):
     vprev_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     vhash: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
 
-    job: Mapped["Job | None"] = relationship("Job")  # noqa: F821
+    job: Mapped["Job | None"] = relationship("Job")
 
 
 class SystemLog(AppendOnlyBaseModel):

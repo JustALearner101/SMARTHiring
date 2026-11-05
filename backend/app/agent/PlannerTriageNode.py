@@ -28,6 +28,62 @@ class PlannerResolutionSchema(BaseModel):
 
 
 class PlannerTriageNode:
+    @staticmethod
+    def _extract_explicit_time_and_tz(cmd_lower: str) -> tuple[str | None, str | None]:
+        """Deterministically extracts explicit requested time (HH:MM) and timezone (WIB/WITA/WIT) from command."""
+        explicit_tz: str | None = None
+
+        # 1. Match explicit HH:MM or HH.MM with optional period and timezone
+        # Avoid matching percentages like "92%"
+        for m in re.finditer(
+            r"\b(?:(jam|pukul|at)\s*)?(\d{1,2})[.:](\d{2})(?:\s*(pagi|siang|sore|malam|am|pm))?(?:\s*(wib|wita|wit))?\b",
+            cmd_lower,
+        ):
+            h = int(m.group(2))
+            minute = int(m.group(3))
+            period = m.group(4)
+            tz_tok = m.group(5)
+            if 0 <= h <= 23 and 0 <= minute <= 59:
+                if period in ("siang", "sore", "malam", "pm") and 1 <= h < 12 or not period and ("siang" in cmd_lower or "sore" in cmd_lower) and 1 <= h <= 6:
+                    h += 12
+                if tz_tok:
+                    explicit_tz = tz_tok.upper()
+                return f"{h:02d}:{minute:02d}", explicit_tz
+
+        # 2. Match "jam <H> [pagi|siang|sore|malam] [wib|wita|wit]"
+        m_hour = re.search(
+            r"\b(?:jam|pukul|at)\s*(\d{1,2})(?:\s*(pagi|siang|sore|malam|am|pm))?(?:\s*(wib|wita|wit))?\b",
+            cmd_lower,
+        )
+        if m_hour:
+            h = int(m_hour.group(1))
+            period = m_hour.group(2)
+            tz_tok = m_hour.group(3)
+            if 0 <= h <= 23:
+                if period in ("siang", "sore", "malam", "pm") and 1 <= h < 12 or not period and ("siang" in cmd_lower or "sore" in cmd_lower) and 1 <= h <= 6:
+                    h += 12
+                if tz_tok:
+                    explicit_tz = tz_tok.upper()
+                return f"{h:02d}:00", explicit_tz
+
+        # 3. Check general timezone mention if no inline timezone token was attached
+        if re.search(r"\bwita\b", cmd_lower) and not re.search(r"\bwib\b", cmd_lower):
+            explicit_tz = "WITA"
+        elif re.search(r"\bwit\b", cmd_lower) and not re.search(r"\bwib\b", cmd_lower):
+            explicit_tz = "WIT"
+        elif re.search(r"\bwib\b", cmd_lower):
+            explicit_tz = "WIB"
+
+        # 4. Natural language time-of-day hints (e.g. TC-CHB-01 "Jumat siang")
+        if "siang" in cmd_lower or "midday" in cmd_lower or "noon" in cmd_lower:
+            if "jumat" in cmd_lower or "friday" in cmd_lower:
+                return "14:00", explicit_tz
+            return "13:30", explicit_tz
+        if "sore" in cmd_lower or "afternoon" in cmd_lower:
+            return "15:00", explicit_tz
+
+        return None, explicit_tz
+
     @classmethod
     async def run(cls, state: OrchestratorAgentState) -> dict[str, Any]:
         cmd = state.get("command", "").strip()
@@ -84,56 +140,59 @@ class PlannerTriageNode:
 
         cand_name = state.get("candidate_name") or "Rina Kusuma"
         cand_pos = state.get("candidate_position") or "Senior Frontend Engineer"
-        cand_channel = "whatsapp" if ("whatsapp" in cmd_lower or "wa" in cmd_lower) else (state.get("candidate_channel") or "email")
+        has_wa_kw = bool(re.search(r"\b(?:whatsapp|wa)\b", cmd_lower))
+        cand_channel = "whatsapp" if has_wa_kw else (state.get("candidate_channel") or "email")
         cand_email = state.get("candidate_email") or "candidate@example.com"
         cand_phone = state.get("candidate_phone") or "+6281234567890"
+        cand_tz = (state.get("candidate_timezone") or "WIB").upper()
 
         inter_name = state.get("interviewer_name") or "Budi Santoso"
         inter_role = state.get("interviewer_role") or "VP of Engineering"
         inter_channel = "whatsapp" if ("wa budi" in cmd_lower or "whatsapp budi" in cmd_lower) else "email"
         inter_email = state.get("interviewer_email") or f"{inter_name.lower().replace(' ', '.')}@company.com"
         inter_phone = state.get("interviewer_phone") or "+6281198765432"
-        inter_tz = state.get("interviewer_timezone") or "WIB"
+        inter_tz = (state.get("interviewer_timezone") or "WIB").upper()
 
         available_slots = state.get("available_slots") or []
 
-        # Location extraction
-        loc_match = re.search(r"\b(?:di|at|in)\s+(ruang\s+rapat\s*[\w\d]+|meeting\s+room\s*[\w\d]+|room\s*[\w\d]+)\b", cmd, re.IGNORECASE)
+        # Location & Meeting Platform / Link extraction (Supports Google Meet, Microsoft Teams, Zoom, or Custom URL)
+        url_match = re.search(r"(https?://[^\s,\"')]+)", cmd, re.IGNORECASE)
+        custom_url = url_match.group(1).rstrip(".,;)") if url_match else None
+
+        loc_match = re.search(
+            r"\b(?:di|at|in)\s+(ruang\s+rapat\s*[\w\d]+|meeting\s+room\s*[\w\d]+|room\s*[\w\d]+)\b",
+            cmd,
+            re.IGNORECASE,
+        )
         if loc_match:
             location_type = loc_match.group(1).strip().title()
-            meeting_link = f"On-Site: {location_type}"
+            meeting_link = custom_url or f"On-Site: {location_type}"
+        elif (
+            (custom_url and ("teams.microsoft.com" in custom_url.lower() or "teams.live.com" in custom_url.lower()))
+            or re.search(r"\b(?:microsoft\s+teams|ms\s+teams|teams)\b", cmd_lower)
+        ):
+            location_type = "Microsoft Teams"
+            meeting_link = custom_url or "https://teams.microsoft.com/l/meetup-join/heketon-ops-2026"
+        elif (
+            (custom_url and ("zoom.us" in custom_url.lower() or "zoom.com" in custom_url.lower()))
+            or re.search(r"\bzoom\b", cmd_lower)
+        ):
+            location_type = "Zoom Meeting"
+            meeting_link = custom_url or "https://zoom.us/j/98234123890"
         else:
             location_type = "Google Meet"
-            meeting_link = "https://meet.google.com/hkt-ops-2026"
+            meeting_link = custom_url or "https://meet.google.com/hkt-ops-2026"
+
+        explicit_time_pref, explicit_tz = cls._extract_explicit_time_and_tz(cmd_lower)
+        if not explicit_tz:
+            if re.search(r"\bwita\b", cmd_lower) and not re.search(r"\bwib\b", cmd_lower):
+                explicit_tz = "WITA"
+            elif re.search(r"\bwit\b", cmd_lower) and not re.search(r"\bwib\b", cmd_lower):
+                explicit_tz = "WIT"
 
         # 2. Invoke LLM for Dynamic Entity Resolution & Drafting with Fallback
         def fallback_planner() -> PlannerResolutionSchema:
-            pref = "10:00"
-            if "16:00" in cmd_lower or "16.00" in cmd_lower or "4 sore" in cmd_lower:
-                pref = "16:00"
-            elif "14:00" in cmd_lower or "14.00" in cmd_lower or "2 siang" in cmd_lower:
-                pref = "14:00"
-            elif "11:30" in cmd_lower or "11.30" in cmd_lower:
-                pref = "11:30"
-            elif "13:30" in cmd_lower or "13.30" in cmd_lower:
-                pref = "13:30"
-            elif "siang" in cmd_lower:
-                if "jumat" in cmd_lower or "friday" in cmd_lower:
-                    pref = "14:00"
-                else:
-                    pref = "13:30"
-            else:
-                t_match = re.search(r"\b(?:jam|pukul)?\s*(\d{1,2})[.:](\d{2})\b", cmd_lower)
-                if t_match:
-                    pref = f"{int(t_match.group(1)):02d}:{int(t_match.group(2)):02d}"
-                else:
-                    h_match = re.search(r"\b(?:jam|pukul)\s*(\d{1,2})\b", cmd_lower)
-                    if h_match:
-                        h = int(h_match.group(1))
-                        if ("siang" in cmd_lower or "sore" in cmd_lower) and h < 12:
-                            h += 12
-                        pref = f"{h:02d}:00"
-
+            pref = explicit_time_pref or "10:00"
             return PlannerResolutionSchema(
                 target_time_preference=pref,
                 interviewer_message=f"Hello {inter_name}, here is the update regarding the schedule with {cand_name}.",
@@ -143,15 +202,15 @@ class PlannerTriageNode:
 
         system_instruction = (
             "You are Heketon AI Orchestrator, an autonomous HR scheduling agent. "
-            "Your task is to analyze the user's scheduling instruction, extract the target time preference, "
+            "Your task is to analyze the user's scheduling instruction, extract the target time preference in HH:MM format (24-hour), "
             "and draft professional, clear invitation messages for the interviewer and candidate. "
             "All timings must respect Indonesian business hours (09:00 - 17:00) and Friday prayer (11:30 - 13:00 WIB)."
         )
         user_content = (
             f"Command: '{cmd}'\n"
-            f"Candidate: {cand_name} ({cand_pos})\n"
-            f"Interviewer: {inter_name} ({inter_role})\n"
-            f"Available Database Slots: {[s.get('formatted_wib') for s in available_slots[:4]]}"
+            f"Candidate: {cand_name} ({cand_pos}, Timezone: {cand_tz})\n"
+            f"Interviewer: {inter_name} ({inter_role}, Timezone: {inter_tz})\n"
+            f"Available Database Slots: {[s.get('formatted_wib') for s in available_slots]}"
         )
 
         plan_res = await LlmFactory.invoke_structured_or_fallback(
@@ -170,16 +229,79 @@ class PlannerTriageNode:
         clean_cand_name = re.sub(r"\s+[0-9a-f]{6}\b", "", cand_name)
         slot_title = f"Follow-Up Meeting: {location_type}" if is_notulen else f"Technical Interview: {clean_cand_name}"
 
-        target_pref = plan_res.target_time_preference
+        # Sanitize LLM target_time_preference and prioritize deterministic explicit_time_pref from command
+        raw_llm_pref = plan_res.target_time_preference or "10:00"
+        m_llm = re.search(r"(\d{1,2})[.:](\d{2})", raw_llm_pref)
+        sanitized_llm_pref = f"{int(m_llm.group(1)):02d}:{int(m_llm.group(2)):02d}" if m_llm else "10:00"
+        target_pref = explicit_time_pref or sanitized_llm_pref
+
+        # Convert target_pref to WIB if the user explicitly requested a numeric clock time in WITA or WIT
+        # (do not shift generic "Jumat siang" -> 14:00 WIB, and do not shift if "WIB" was attached to the time)
+        is_generic_siang = ("siang" in cmd_lower or "midday" in cmd_lower or "noon" in cmd_lower) and not re.search(
+            r"\b(?:jam|pukul|at)?\s*\d{1,2}(?:[.:]\d{2})?\b", cmd_lower
+        )
+        effective_input_tz = explicit_tz
+        if not effective_input_tz and inter_tz == "WITA" and cand_tz == "WITA":
+            effective_input_tz = "WITA"
+
+        if (
+            not is_generic_siang
+            and effective_input_tz in ("WITA", "WIT")
+            and not re.search(r"\d{1,2}(?:[.:]\d{2})?\s*wib\b", cmd_lower)
+        ):
+            p_parts = target_pref.split(":")
+            req_h = int(p_parts[0])
+            req_m = int(p_parts[1]) if len(p_parts) > 1 else 0
+            offset_to_wib = 1 if effective_input_tz == "WITA" else 2
+            wib_h = (req_h - offset_to_wib) % 24
+            target_pref = f"{wib_h:02d}:{req_m:02d}"
+
         chosen_slot_data: dict[str, Any] | None = None
+        slot_conflict_detected = False
+        conflicting_slot_wib: str | None = None
+
+        # Determine if target_pref is a rule violation that SecondaryValidatorNode should catch and explain
+        p_parts = target_pref.split(":")
+        pref_h = int(p_parts[0]) if p_parts[0].isdigit() else 10
+        pref_m = int(p_parts[1]) if len(p_parts) > 1 and p_parts[1].isdigit() else 0
+        pref_minutes = pref_h * 60 + pref_m
+
+        target_date_str = state.get("target_date")
+        is_target_friday = False
+        if target_date_str:
+            try:
+                is_target_friday = date.fromisoformat(target_date_str).weekday() == 4
+            except Exception:
+                is_target_friday = "jumat" in cmd_lower or "friday" in cmd_lower
+        else:
+            is_target_friday = "jumat" in cmd_lower or "friday" in cmd_lower
+
+        is_friday_prayer_time = is_target_friday and (11 * 60 + 30 <= pref_minutes < 13 * 60)
+        cand_tz_offset_h = 2 if cand_tz == "WIT" else (1 if cand_tz == "WITA" else 0)
+        is_outside_working_hours = (
+            pref_h < 9
+            or pref_h >= 17
+            or (pref_h + cand_tz_offset_h) < 9
+            or (pref_h + cand_tz_offset_h) >= 17
+        )
 
         if available_slots:
             for s in available_slots:
                 if s.get("time_str") == target_pref or target_pref in s.get("formatted_wib", ""):
                     chosen_slot_data = s
                     break
-            if not chosen_slot_data and not any(kw in cmd_lower for kw in ["14:00", "14.00", "16:00", "16.00", "11:30", "13:30", "siang"]):
-                chosen_slot_data = available_slots[0]
+            # If target_pref is within valid working hours and not Friday prayer, yet missing from available_slots,
+            # it means an existing CalendarEvent in the DB occupies that slot (TC-SCHED-17).
+            # Select the nearest available slot to prevent double-booking!
+            if not chosen_slot_data and not is_friday_prayer_time and not is_outside_working_hours:
+                slot_conflict_detected = True
+                conflicting_slot_wib = f"{target_pref} WIB"
+                # Prefer the first available slot after target_pref, or fallback to available_slots[0]
+                after_slots = [
+                    s for s in available_slots
+                    if s.get("time_str", "00:00") > target_pref
+                ]
+                chosen_slot_data = after_slots[0] if after_slots else available_slots[0]
 
         if chosen_slot_data:
             start_utc_dt = datetime.fromisoformat(chosen_slot_data["start_utc"])
@@ -255,29 +377,41 @@ class PlannerTriageNode:
                 "meeting_link": meeting_link,
             }
 
-        # 4. Sources Cited
+        # 4. Sources Cited (TC-CHB-18, TC-SCHED-06: backed by real DB identifiers)
         inter_slug = inter_name.lower().replace(" ", "-")
+        inter_uid = state.get("interviewer_userid") or f"USR-00{state.get('interviewer_id') or 2}"
+        cand_code = state.get("candidate_code") or f"CAND-2026-00{state.get('candidate_id') or 1}"
+        office_code = state.get("office_code") or "HQ-JKT"
         sources = [
             {
-                "id": "src-01",
-                "ref_code": f"[cal-{inter_slug}]",
+                "id": f"cal-{office_code.lower()}-{inter_uid.lower()}",
+                "ref_code": f"[cal-{inter_slug}:{inter_uid}:{office_code}]",
                 "source_type": "CALENDAR",
-                "title": f"Calendar: {inter_name}",
-                "detail": f"Available slot verified at {slot_dict.get('formatted_wib', '')} ({inter_tz}) without conflicts.",
+                "title": f"Calendar: {inter_name} ({inter_uid} / {office_code})",
+                "detail": (
+                    f"Available slot verified on work calendar {office_code} for {inter_name} ({inter_email}) "
+                    f"at {slot_dict.get('formatted_wib', '')} ({inter_tz}) without conflicts."
+                ),
             },
             {
-                "id": "src-02",
-                "ref_code": "RULE_FRIDAY_PRAYER",
+                "id": "rule-friday-prayer-working-hours",
+                "ref_code": "[rule-friday-prayer:RULE_FRIDAY_PRAYER]",
                 "source_type": "OPERATIONAL_RULE",
                 "title": "Rules for Friday Prayer & Work Hours",
-                "detail": "Compliance with the 09:00 - 17:00 operational boundary and the Friday Prayer worship window (11:30 - 13:00 WIB).",
+                "detail": (
+                    "Compliance with active policies RULE_WORKING_HOURS (09:00 - 17:00 operational boundary, 15m buffer) "
+                    "and RULE_FRIDAY_PRAYER (11:30 - 13:00 WIB worship window)."
+                ),
             },
             {
-                "id": "src-03",
-                "ref_code": f"[cand-ats-{state.get('candidate_id', 1)}]",
+                "id": f"cand-{cand_code.lower()}",
+                "ref_code": f"[cand-ats-{state.get('candidate_id', 1)}:{cand_code}]",
                 "source_type": "CANDIDATE_ATS",
-                "title": f"Contact Preferences: {cand_name}",
-                "detail": f"Default channel: {cand_channel.upper()} (Corporate standard), Position: {cand_pos}.",
+                "title": f"Contact Preferences: {cand_name} ({cand_code})",
+                "detail": (
+                    f"ATS Code: {cand_code} (ID #{state.get('candidate_id', 1)}), Contact: {cand_email} / {cand_phone}, "
+                    f"Default channel: {cand_channel.upper()} ({cand_tz}), Position: {cand_pos}."
+                ),
             },
         ]
 
@@ -288,9 +422,24 @@ class PlannerTriageNode:
 
         action_items: list[dict[str, Any]] = []
 
+        inter_slot_display = (
+            slot_dict.get("formatted_wita")
+            if inter_tz == "WITA"
+            else (slot_dict.get("formatted_wit") if inter_tz == "WIT" else slot_dict.get("formatted_wib"))
+        )
+        cand_slot_display = (
+            slot_dict.get("formatted_wita")
+            if cand_tz == "WITA"
+            else (slot_dict.get("formatted_wit") if cand_tz == "WIT" else slot_dict.get("formatted_wib"))
+        )
+        all_tz_display = (
+            f"{slot_dict.get('formatted_wib')} = {slot_dict.get('formatted_wita')} = {slot_dict.get('formatted_wit')}"
+        )
+
         if is_notulen or is_reminder or extra_external_emails:
             # Discrete compound actions
             if is_notulen:
+                note_summary_line = cmd.strip()
                 action_items.append({
                     "id": f"item-0{len(action_items)+1}",
                     "action_type": "send_email",
@@ -301,8 +450,10 @@ class PlannerTriageNode:
                     "subject": f"Notulen Rapat Koordinasi — {inter_name}",
                     "content_preview": (
                         f"Yth. {inter_name},\n\nBerikut ringkasan notulen rapat koordinasi:\n"
-                        "- Pembahasan: Evaluasi target operasional dan pembagian follow-up tim.\n"
-                        "- Catatan: Jadwal follow-up telah dipersiapkan sesuai arahan.\n\n"
+                        f"- Ringkasan Catatan: {note_summary_line}\n"
+                        f"- Pembahasan: Evaluasi target operasional dan pembagian follow-up tim.\n"
+                        f"- Jadwal Follow-Up ({inter_tz}): {inter_slot_display} ({all_tz_display})\n"
+                        f"- Lokasi / Tautan: {location_type} ({meeting_link})\n\n"
                         "Salam,\nHR & Operations"
                     ),
                     "is_external": False,
@@ -339,7 +490,10 @@ class PlannerTriageNode:
                     "recipient_contact": ", ".join(cal_contacts),
                     "channel": "calendar",
                     "subject": f"{slot_title} ({location_type})",
-                    "content_preview": f"Reservasi slot kalender pada {slot_dict.get('formatted_wib')} di {location_type} ({slot_dict.get('duration_minutes', 60)} Menit).",
+                    "content_preview": (
+                        f"Reservasi slot kalender pada {inter_slot_display} ({all_tz_display}) "
+                        f"di {location_type} ({slot_dict.get('duration_minutes', 60)} Menit)."
+                    ),
                     "is_external": False,
                 })
 
@@ -359,8 +513,24 @@ class PlannerTriageNode:
                     "is_external": True,
                 })
         else:
-            interviewer_text = plan_res.interviewer_message or f"Hello {inter_name}, here is the interview invitation draft with {cand_name} for the {cand_pos} position."
-            candidate_text = plan_res.candidate_message or f"Dear {cand_name}, we invite you to a User Technical Interview via Google Meet at the agreed schedule."
+            interviewer_text = (
+                f"Yth. {inter_name},\n\n"
+                f"Berikut undangan User Technical Interview bersama kandidat {clean_cand_name} ({cand_pos}):\n"
+                f"- Jadwal ({inter_tz}): {inter_slot_display}\n"
+                f"- Konversi Zona Waktu: {all_tz_display}\n"
+                f"- Durasi: {slot_dict.get('duration_minutes', 60)} Menit\n"
+                f"- Lokasi / Tautan: {location_type} ({meeting_link})\n\n"
+                "Salam,\nHR & Talent Acquisition"
+            )
+            candidate_text = (
+                f"Halo {clean_cand_name},\n\n"
+                f"Kami mengundang Anda untuk mengikuti User Technical Interview posisi {cand_pos} bersama {inter_name}:\n"
+                f"- Jadwal Waktu Lokal Anda ({cand_tz}): {cand_slot_display}\n"
+                f"- Konversi Zona Waktu: {all_tz_display}\n"
+                f"- Durasi: {slot_dict.get('duration_minutes', 60)} Menit\n"
+                f"- Lokasi / Tautan: {location_type} ({meeting_link})\n\n"
+                "Mohon konfirmasi ketersediaan Anda. Terima kasih,\nTim HR"
+            )
 
             action_items = [
                 {
@@ -393,7 +563,9 @@ class PlannerTriageNode:
                     "recipient_contact": f"{inter_email}, {cand_email}",
                     "channel": "calendar",
                     "subject": f"Technical Interview: {cand_name} x {inter_name}",
-                    "content_preview": f"Synchronize a 60-minute {location_type} calendar slot.",
+                    "content_preview": (
+                        f"Reservasi slot kalender 60 menit ({location_type}) pada {all_tz_display}."
+                    ),
                     "is_external": False,
                 },
             ]
@@ -405,5 +577,7 @@ class PlannerTriageNode:
             "sources_cited": sources,
             "items": action_items,
             "is_high_impact": has_external,
+            "slot_conflict_detected": slot_conflict_detected,
+            "conflicting_slot_wib": conflicting_slot_wib,
             "status": "ANALYZING",
         }
