@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -8,6 +8,7 @@ PlanStatus = Literal[
     "IDLE",
     "ANALYZING",
     "CLARIFICATION_NEEDED",
+    "NEEDS_CLARIFICATION",
     "PENDING_APPROVAL",
     "UNDO_WINDOW",
     "EXECUTED",
@@ -50,6 +51,7 @@ class ProposedSlotDTO(BaseDTO):
 
 class ActionPlanDTO(BaseDTO):
     id: str
+    thread_id: str | None = None
     candidate_id: str
     candidate_name: str
     candidate_position: str
@@ -75,6 +77,8 @@ class ActionPlanDTO(BaseDTO):
     items: list[ActionItemDraftDTO] = Field(default_factory=list)
     created_at: str
     undo_expires_at: int | None = None
+    approval_ticket: str | None = None
+    entity_resolution: dict[str, Any] | None = None
 
 
 class PlanApprovalRequestDTO(BaseDTO):
@@ -90,4 +94,3 @@ class PlanUndoRequestDTO(BaseDTO):
 class PlanRejectRequestDTO(BaseDTO):
     rejected_by: str = "HR Admin"
     reason: str = "Plan rejected by HR at approval gate."
-

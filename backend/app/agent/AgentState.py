@@ -31,11 +31,16 @@ class OrchestratorAgentState(TypedDict, total=False):
     interviewer_email: str | None
     interviewer_phone: str | None
     interviewer_timezone: str | None
+    target_date: str | None
 
-    # Disambiguation Gate
+    # Disambiguation & Clarification Gate
     is_disambiguation_needed: bool
     disambiguation_profiles: list[dict[str, Any]]
     disambiguation_message: str | None
+    is_ambiguous: bool
+    clarification_message: str | None
+    similar_candidates: list[dict[str, Any]]
+    entity_resolution: dict[str, Any] | None
 
     # Guardrail 
     guardrail_passed: bool

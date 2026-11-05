@@ -1,7 +1,10 @@
+import secrets
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.model.OrchestrationModel import NegotiationThread
 
 from app.agent.AgentState import TriageEvaluationSchema
 from app.agent.GuardrailNode import GuardrailNode
@@ -81,9 +84,26 @@ class OrchestratorCommandService:
             sender_role="HR",
             channel="internal",
             thread_id=thread_id,
+            candidate_id=request.candidate_id,
+            interviewer_id=request.interviewer_id,
+            target_date=request.target_date,
             negotiation_round=current_round,
             max_rounds=3,
         )
+
+        # 0. Candidate Clarification Gate (Anti-Silent-Substitution)
+        if agent_state.get("status") == "NEEDS_CLARIFICATION":
+            msg = agent_state.get(
+                "clarification_message",
+                "Kandidat yang diminta dalam instruksi tidak ditemukan di database ATS.",
+            )
+            return {
+                "status": "NEEDS_CLARIFICATION",
+                "is_ambiguous": agent_state.get("is_ambiguous", False),
+                "message": msg,
+                "similar_candidates": agent_state.get("similar_candidates", []),
+                "action_plan": None,
+            }
 
         # 1. Disambiguation Gate
         if agent_state.get("is_disambiguation_needed", False):
@@ -201,7 +221,12 @@ class OrchestratorCommandService:
             "interviewer_email": agent_state.get("interviewer_email") or "budi.santoso@company.com",
             "interviewer_phone": agent_state.get("interviewer_phone") or "+6281198765432",
             "negotiation_round": agent_state.get("negotiation_round", current_round),
+            "entity_resolution": agent_state.get("entity_resolution"),
         }
+
+        # Generate official cryptographic approval ticket for human gate
+        official_ticket = f"TKT-HEK-{secrets.token_hex(4).upper()}"
+        agent_metadata["approval_ticket"] = official_ticket
 
         # 4. Persist FollowupPlan with Full Agent Metadata
         plan_data: dict[str, Any] = {
@@ -213,6 +238,7 @@ class OrchestratorCommandService:
             "vimpact_level": "HIGH" if agent_state.get("is_high_impact") else "NORMAL",
             "vapproval_status": "AWAITING_APPROVAL",
             "vagent_metadata": agent_metadata,
+            "vapproval_token": official_ticket,
         }
         if thread_id:
             plan_data["nid_thread"] = thread_id
@@ -223,6 +249,11 @@ class OrchestratorCommandService:
         ]
 
         created_plan = await self.action_plan_repo.create_action_plan(plan_data, recipients)
+        try:
+            from app.mcp.McpAuthGuard import register_plan_approval_ticket
+            register_plan_approval_ticket(str(created_plan.nid), official_ticket)
+        except Exception:
+            pass
 
         # 5. Log Immutable Audit Record
         await self.audit_service.log_event(
@@ -240,6 +271,7 @@ class OrchestratorCommandService:
 
         return ActionPlanDTO(
             id=str(created_plan.nid),
+            thread_id=str(thread_id) if thread_id else (str(created_plan.nid_thread) if getattr(created_plan, "nid_thread", None) else str(created_plan.nid)),
             candidate_id=str(cand_id),
             candidate_name=agent_metadata["candidate_name"],
             candidate_position=agent_metadata["candidate_position"],
@@ -264,6 +296,8 @@ class OrchestratorCommandService:
             sources_cited=sources_dtos,
             items=items_dtos,
             created_at=now.isoformat(),
+            approval_ticket=official_ticket,
+            entity_resolution=agent_state.get("entity_resolution"),
         )
 
     async def handle_inbound_reply(self, request: InboundReplyRequestDTO) -> ActionPlanDTO | dict[str, Any]:

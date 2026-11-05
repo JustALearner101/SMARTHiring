@@ -36,12 +36,12 @@ def build_orchestrator_graph(session: AsyncSession) -> Any:
         return "retriever"
 
     def route_after_retriever(state: OrchestratorAgentState) -> str:
-        if state.get("is_disambiguation_needed", False):
+        if state.get("is_disambiguation_needed", False) or state.get("status") == "NEEDS_CLARIFICATION":
             return END
         return "planner"
 
     def route_after_planner(state: OrchestratorAgentState) -> str:
-        if state.get("status") in ("DEADLOCK_ESCALATED", "OUT_OF_SCOPE_REFUSED"):
+        if state.get("status") in ("DEADLOCK_ESCALATED", "OUT_OF_SCOPE_REFUSED", "NEEDS_CLARIFICATION"):
             return END
         return "validator"
 
@@ -62,6 +62,9 @@ async def run_orchestrator_pipeline(
     sender_role: str = "HR",
     channel: str = "internal",
     thread_id: int | None = None,
+    candidate_id: int | None = None,
+    interviewer_id: int | None = None,
+    target_date: str | None = None,
     negotiation_round: int = 1,
     max_rounds: int = 3,
 ) -> OrchestratorAgentState:
@@ -74,6 +77,9 @@ async def run_orchestrator_pipeline(
         "sender_role": sender_role,
         "channel": channel,
         "thread_id": thread_id,
+        "candidate_id": candidate_id,
+        "interviewer_id": interviewer_id,
+        "target_date": target_date,
         "negotiation_round": negotiation_round,
         "max_rounds": max_rounds,
         "status": "ANALYZING",

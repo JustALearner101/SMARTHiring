@@ -29,6 +29,7 @@ from app.controller import (
 from app.core.AppConfig import settings
 from app.db.DatabaseSession import engine
 from app.exception import register_exception_handlers
+from app.mcp import mount_mcp_on_fastapi
 from app.middleware import RateLimiterMiddleware
 from app.middleware.SystemLogMiddleware import SystemLogMiddleware
 
@@ -60,6 +61,10 @@ TAGS_METADATA = [
     {"name": "SystemLogs", "description": "Technical system access, error stacktraces, and mutation logs."},
     {"name": "Notifications", "description": "Aggregated user-scoped notifications and task alerts."},
     {"name": "Dashboard", "description": "Aggregated dashboard metrics, upcoming interviews, and activity feeds."},
+    {
+        "name": "ModelContextProtocol",
+        "description": "Tencent Cloud WorkBuddy AI Model Context Protocol (MCP) Streamable HTTP / SSE endpoint (/mcp).",
+    },
 ]
 
 app = FastAPI(
@@ -115,3 +120,7 @@ app.include_router(slot_conflict_checker_router, prefix=settings.API_V1_STR)
 app.include_router(audit_log_router, prefix=settings.API_V1_STR)
 app.include_router(system_log_router, prefix=settings.API_V1_STR)
 app.include_router(notification_router, prefix=settings.API_V1_STR)
+
+# Mount Heketon Model Context Protocol (MCP) Streamable HTTP / SSE endpoint (/mcp)
+mount_mcp_on_fastapi(app)
+

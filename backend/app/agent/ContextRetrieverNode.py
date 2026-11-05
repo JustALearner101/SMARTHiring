@@ -1,5 +1,5 @@
 import re
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,7 +23,9 @@ class ContextRetrieverNode:
         cmd = state.get("command", "").strip()
         cmd_lower = cmd.lower()
 
+        # ---------------------------------------------------------------------
         # 1. Disambiguation Check for Interviewer
+        # ---------------------------------------------------------------------
         # Check if generic "budi" is mentioned without department or last name
         if "budi" in cmd_lower and not any(kw in cmd_lower for kw in ["santoso", "engineering", "hartono", "finance"]):
             ambiguous_users = await self.contact_repo.find_ambiguous_names("Budi")
@@ -51,63 +53,135 @@ class ContextRetrieverNode:
                     "disambiguation_profiles": profiles,
                 }
 
-        # 2. Dynamic Interviewer Resolution
-        active_interviewers = await self.contact_repo.list_interviewers()
+        # ---------------------------------------------------------------------
+        # 2. Dynamic Interviewer Resolution (with Ground-Truth Support)
+        # ---------------------------------------------------------------------
         selected_interviewer = None
+        explicit_interviewer_id = state.get("interviewer_id")
+        if explicit_interviewer_id:
+            try:
+                selected_interviewer = await self.contact_repo.get_by_id(int(explicit_interviewer_id))
+            except Exception:
+                selected_interviewer = None
 
-        if "hartono" in cmd_lower or "finance" in cmd_lower:
-            cand_users = await self.contact_repo.find_ambiguous_names("Budi Hartono")
-            selected_interviewer = cand_users[0] if cand_users else None
-        elif "santoso" in cmd_lower or "engineering" in cmd_lower:
-            cand_users = await self.contact_repo.find_ambiguous_names("Budi Santoso")
-            selected_interviewer = cand_users[0] if cand_users else None
-        else:
-            best_inter_score = 0
+        if not selected_interviewer:
+            active_interviewers = await self.contact_repo.list_interviewers()
             for user in active_interviewers:
                 u_name_lower = user.vname.lower().strip()
-                score = 0
                 if u_name_lower in cmd_lower:
-                    score += 1000 + len(u_name_lower)
+                    selected_interviewer = user
+                    break
+                # Check for first name match if unambiguous
+                name_tokens = u_name_lower.split()
+                if name_tokens and name_tokens[0] in cmd_lower:
+                    selected_interviewer = user
+                    break
+
+            if not selected_interviewer and active_interviewers:
+                budi_users = await self.contact_repo.find_ambiguous_names("Budi Santoso")
+                selected_interviewer = budi_users[0] if budi_users else active_interviewers[0]
+
+        # ---------------------------------------------------------------------
+        # 3. Dynamic Candidate Resolution (Anti-Silent-Substitution)
+        # ---------------------------------------------------------------------
+        all_candidates, _ = await self.candidate_repo.search(limit=100)
+        target_candidate = None
+        explicit_candidate_id = state.get("candidate_id")
+
+        if explicit_candidate_id:
+            try:
+                cand_int = int(explicit_candidate_id)
+                target_candidate = next((c for c in all_candidates if c.nid == cand_int), None)
+            except Exception:
+                target_candidate = None
+
+        # Check if candidate name was mentioned in command
+        cand_kw_match = re.search(
+            r"(?:kandidat|candidate)\s+([A-Za-z\s]+?)(?:\s+posisi|\s+untuk|\s+minggu|\s+pada|\s+dengan|\s+hari|$)",
+            cmd,
+            re.IGNORECASE,
+        )
+        extracted_cand_name = cand_kw_match.group(1).strip() if cand_kw_match else None
+
+        if not target_candidate:
+            scored_candidates: list[tuple[Any, int]] = []
+            for cand in all_candidates:
+                c_name_lower = cand.vname.lower().strip()
+                score = 0
+
+                # Exact full name match in command
+                if c_name_lower in cmd_lower:
+                    score += 1000 + len(c_name_lower)
+                elif extracted_cand_name and c_name_lower in extracted_cand_name.lower():
+                    score += 900 + len(c_name_lower)
                 else:
-                    name_tokens = [t for t in re.findall(r"\b\w+\b", u_name_lower) if len(t) >= 3]
+                    name_tokens = [t for t in re.findall(r"\b\w+\b", c_name_lower) if len(t) >= 3]
+                    matched_count = 0
                     for token in name_tokens:
                         if re.search(rf"\b{re.escape(token)}\b", cmd_lower):
                             score += len(token) * 10
-                if score > best_inter_score:
-                    best_inter_score = score
-                    selected_interviewer = user
+                            matched_count += 1
+                    # Bonus if job position also matches, BUT ONLY if name also partially matched
+                    if matched_count > 0:
+                        if cand.vjob_position and cand.vjob_position.lower() in cmd_lower:
+                            score += 50
+                        if matched_count > 1:
+                            score += matched_count * 50
 
-        if not selected_interviewer and active_interviewers:
-            budi_users = await self.contact_repo.find_ambiguous_names("Budi Santoso")
-            selected_interviewer = budi_users[0] if budi_users else active_interviewers[0]
+                if score >= 50:
+                    scored_candidates.append((cand, score))
 
-        # 3. Dynamic Candidate Resolution
-        all_candidates, _ = await self.candidate_repo.search(limit=100)
-        target_candidate = None
-        best_cand_score = 0
+            scored_candidates.sort(key=lambda x: x[1], reverse=True)
 
-        for cand in all_candidates:
-            c_name_lower = cand.vname.lower().strip()
-            score = 0
+            # Did the user explicitly ask for a candidate?
+            user_specified_candidate = extracted_cand_name or any(
+                kw in cmd_lower for kw in ["kandidat", "candidate"]
+            )
 
-            # Exact full name match in command
-            if c_name_lower in cmd_lower:
-                score += 1000 + len(c_name_lower)
-            else:
-                name_tokens = [t for t in re.findall(r"\b\w+\b", c_name_lower) if len(t) >= 3]
-                matched_count = 0
-                for token in name_tokens:
-                    if re.search(rf"\b{re.escape(token)}\b", cmd_lower):
-                        score += len(token) * 10
-                        matched_count += 1
-                if matched_count > 1:
-                    score += matched_count * 50
+            if scored_candidates:
+                top_cand, top_score = scored_candidates[0]
+                # Check for ambiguity (two candidates with very close top scores)
+                close_matches = [c for c, s in scored_candidates if s >= top_score * 0.9 and s > 0]
+                if len(close_matches) > 1 and top_score < 1000:
+                    return {
+                        "status": "NEEDS_CLARIFICATION",
+                        "is_ambiguous": True,
+                        "clarification_message": (
+                            f"Ditemukan beberapa kandidat dengan nama mirip: "
+                            f"{', '.join([c.vname for c in close_matches])}. "
+                            f"Harap sebutkan nama lengkap atau candidate_id secara spesifik."
+                        ),
+                        "similar_candidates": [
+                            {"id": c.nid, "name": c.vname, "position": c.vjob_position}
+                            for c in close_matches
+                        ],
+                    }
 
-            if score > best_cand_score:
-                best_cand_score = score
-                target_candidate = cand
+                # If score is strong enough (exact match or multiple tokens matched)
+                if top_score >= 80:
+                    target_candidate = top_cand
 
-        if not target_candidate and all_candidates:
+            # If user explicitly asked for a candidate but NO match was found, or match was too weak:
+            # STOP and halt with NEEDS_CLARIFICATION — NEVER silently substitute!
+            if user_specified_candidate and not target_candidate:
+                missing_name = extracted_cand_name or "yang diminta"
+                similar = [
+                    {"id": c.nid, "name": c.vname, "position": c.vjob_position}
+                    for c, _ in scored_candidates[:3]
+                ]
+                return {
+                    "status": "NEEDS_CLARIFICATION",
+                    "is_ambiguous": False,
+                    "clarification_message": (
+                        f"Kandidat '{missing_name}' tidak ditemukan di database ATS Heketon. "
+                        f"Autonomous triage dihentikan untuk mencegah salah jadwal. "
+                        f"Harap daftarkan kandidat terlebih dahulu atau periksa ejaan nama."
+                    ),
+                    "similar_candidates": similar,
+                }
+
+        # If still no candidate and no candidate was specified in command at all, only then default to first
+        if not target_candidate and all_candidates and not user_specified_candidate:
             target_candidate = all_candidates[0]
 
         updates: dict[str, Any] = {
@@ -127,6 +201,18 @@ class ContextRetrieverNode:
             })
 
         if target_candidate:
+            req_name = extracted_cand_name or target_candidate.vname
+            is_exact = not extracted_cand_name or (
+                extracted_cand_name.lower().strip() == target_candidate.vname.lower().strip()
+            )
+            match_score = 1.0 if is_exact else 0.85
+            updates["entity_resolution"] = {
+                "requested_candidate": req_name,
+                "resolved_candidate_id": str(target_candidate.nid),
+                "resolved_name": target_candidate.vname,
+                "confidence": match_score,
+                "match_type": "EXACT" if match_score >= 0.95 else ("FUZZY" if match_score >= 0.85 else "AMBIGUOUS"),
+            }
             updates.update({
                 "candidate_id": target_candidate.nid,
                 "candidate_name": target_candidate.vname,
@@ -137,34 +223,62 @@ class ContextRetrieverNode:
                 "candidate_timezone": target_candidate.vtimezone,
             })
 
+        # ---------------------------------------------------------------------
         # 4. Resolve Target Date & Query Available Slots from Calendar DB
-        # Reference local Indonesian time (WIB = UTC+7) to avoid off-by-one day calculation
+        # ---------------------------------------------------------------------
         now_utc = datetime.now(UTC)
         now_wib = now_utc + timedelta(hours=7)
-        target_date = (now_wib + timedelta(days=2)).date()
-        day_explicitly_requested = False
+        explicit_target_date = state.get("target_date")
 
-        day_keywords = {
-            "monday": 0, "senin": 0, "tuesday": 1, "selasa": 1,
-            "wednesday": 2, "rabu": 2, "thursday": 3, "kamis": 3,
-            "friday": 4, "jumat": 4, "saturday": 5, "sabtu": 5,
-            "sunday": 6, "minggu": 6,
-        }
-        for kw, target_wd in day_keywords.items():
-            if kw in cmd_lower:
-                day_explicitly_requested = True
-                days_ahead = (target_wd - now_wib.weekday() + 7) % 7
-                if days_ahead == 0 and not any(h in cmd_lower for h in ["hari ini", "today"]):
-                    days_ahead = 7
-                target_date = (now_wib + timedelta(days=days_ahead)).date()
-                break
-
-        if "besok" in cmd_lower or "tomorrow" in cmd_lower:
-            day_explicitly_requested = True
-            target_date = (now_wib + timedelta(days=1)).date()
-        elif "lusa" in cmd_lower or "day after tomorrow" in cmd_lower:
-            day_explicitly_requested = True
+        if explicit_target_date:
+            try:
+                target_date = date.fromisoformat(explicit_target_date)
+            except Exception:
+                target_date = (now_wib + timedelta(days=2)).date()
+        else:
             target_date = (now_wib + timedelta(days=2)).date()
+            is_this_week = "minggu ini" in cmd_lower or "this week" in cmd_lower
+
+            # Day of week mapping
+            day_keywords = {
+                "monday": 0, "senin": 0, "tuesday": 1, "selasa": 1,
+                "wednesday": 2, "rabu": 2, "thursday": 3, "kamis": 3,
+                "friday": 4, "jumat": 4, "saturday": 5, "sabtu": 5,
+            }
+            # Only treat "minggu" or "sunday" as Sunday if NOT part of "minggu ini" / "minggu depan"
+            if not is_this_week and "minggu depan" not in cmd_lower:
+                day_keywords["sunday"] = 6
+                day_keywords["minggu"] = 6
+
+            day_matched = False
+            for kw, target_wd in day_keywords.items():
+                if re.search(rf"\b{re.escape(kw)}\b", cmd_lower):
+                    days_ahead = (target_wd - now_wib.weekday() + 7) % 7
+                    if days_ahead == 0 and not any(h in cmd_lower for h in ["hari ini", "today"]):
+                        days_ahead = 7
+                    target_date = (now_wib + timedelta(days=days_ahead)).date()
+                    day_matched = True
+                    break
+
+            if not day_matched:
+                if "besok" in cmd_lower or "tomorrow" in cmd_lower:
+                    target_date = (now_wib + timedelta(days=1)).date()
+                elif "lusa" in cmd_lower or "day after tomorrow" in cmd_lower:
+                    target_date = (now_wib + timedelta(days=2)).date()
+                elif is_this_week:
+                    # Pick next available business day in this week (Monday - Friday)
+                    days_ahead = 1
+                    cand_d = (now_wib + timedelta(days=days_ahead)).date()
+                    while cand_d.weekday() in (5, 6) or cand_d.weekday() < now_wib.weekday():
+                        days_ahead += 1
+                        cand_d = (now_wib + timedelta(days=days_ahead)).date()
+                    target_date = cand_d
+
+        # STRICT WEEKEND AVOIDANCE: Ensure target_date NEVER falls on Saturday (5) or Sunday (6)
+        if target_date.weekday() == 5:
+            target_date = target_date + timedelta(days=2)  # Shift to Monday
+        elif target_date.weekday() == 6:
+            target_date = target_date + timedelta(days=1)  # Shift to Monday
 
         # Check candidate timezone from command
         if any(kw in cmd_lower for kw in ["candidate in wit", "kandidat di wit", "di wit", "zona wit", "= 18:00 wit"]):
@@ -179,20 +293,9 @@ class ContextRetrieverNode:
             available_slots = await self.cal_repo.find_available_slots(
                 user_id=selected_interviewer.nid,
                 target_date=target_date,
-                duration_minutes=60,
-                timezone_str=selected_interviewer.vtimezone or "WIB",
             )
-            # Only search next day if day was NOT explicitly requested and no slots found
-            if not available_slots and not day_explicitly_requested:
-                next_day = target_date + timedelta(days=1)
-                available_slots = await self.cal_repo.find_available_slots(
-                    user_id=selected_interviewer.nid,
-                    target_date=next_day,
-                    duration_minutes=60,
-                    timezone_str=selected_interviewer.vtimezone or "WIB",
-                )
 
-        updates["target_date_hint"] = target_date.isoformat()
+        updates["target_date"] = target_date.isoformat()
         updates["available_slots"] = available_slots
 
         return updates

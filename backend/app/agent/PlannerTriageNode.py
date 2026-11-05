@@ -167,7 +167,8 @@ class PlannerTriageNode:
         is_interview = any(kw in cmd_lower for kw in ["interview", "wawancara", "interviw", "teknis", "technical"])
         is_scheduling = any(kw in cmd_lower for kw in ["jadwal", "jadwalin", "follow-up", "follow up", "schedule", "booking", "temu", "rapat"])
 
-        slot_title = f"Follow-Up Meeting: {location_type}" if is_notulen else f"User Technical Interview: {cand_name}"
+        clean_cand_name = re.sub(r"\s+[0-9a-f]{6}\b", "", cand_name)
+        slot_title = f"Follow-Up Meeting: {location_type}" if is_notulen else f"Technical Interview: {clean_cand_name}"
 
         target_pref = plan_res.target_time_preference
         chosen_slot_data: dict[str, Any] | None = None
@@ -200,7 +201,7 @@ class PlannerTriageNode:
             now_utc = datetime.now(UTC)
             now_wib = now_utc + timedelta(hours=7)
 
-            target_date_hint = state.get("target_date_hint")
+            target_date_hint = state.get("target_date") or state.get("target_date_hint")
             if target_date_hint:
                 try:
                     target_date = date.fromisoformat(target_date_hint)
@@ -266,7 +267,7 @@ class PlannerTriageNode:
             },
             {
                 "id": "src-02",
-                "ref_code": "[rule-friday-prayer]",
+                "ref_code": "RULE_FRIDAY_PRAYER",
                 "source_type": "OPERATIONAL_RULE",
                 "title": "Rules for Friday Prayer & Work Hours",
                 "detail": "Compliance with the 09:00 - 17:00 operational boundary and the Friday Prayer worship window (11:30 - 13:00 WIB).",
@@ -369,7 +370,7 @@ class PlannerTriageNode:
                     "recipient_role": inter_role,
                     "recipient_contact": inter_phone if inter_channel == "whatsapp" else inter_email,
                     "channel": inter_channel,
-                    "subject": f"User Technical Interview Invitation: {cand_name}" if inter_channel == "email" else None,
+                    "subject": f"Technical Interview Invitation: {clean_cand_name} ({cand_pos})" if inter_channel == "email" else None,
                     "content_preview": interviewer_text,
                     "is_external": False,
                 },

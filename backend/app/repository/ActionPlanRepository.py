@@ -4,9 +4,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.model.CandidateModel import Candidate
 from app.model.FollowupModel import ActionRecipient, FollowupPlan
-from app.model.UserModel import User
 from app.repository.BaseRepository import BaseRepository
 
 

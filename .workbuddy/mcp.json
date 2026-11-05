@@ -1,0 +1,11 @@
+{
+  "$schema": "https://workbuddy.tencentcloud.com/schemas/mcp-config.v1.json",
+  "mcpServers": {
+    "heketon-office-agent": {
+      "url": "http://localhost:8000/mcp/sse",
+      "headers": {
+        "X-Demo-Role": "HR"
+      }
+    }
+  }
+}

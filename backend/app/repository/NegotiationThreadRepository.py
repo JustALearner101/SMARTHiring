@@ -34,8 +34,16 @@ class NegotiationThreadRepository(BaseRepository[NegotiationThread]):
         )
         count_stmt = select(func.count()).select_from(NegotiationThread)
         if status:
-            stmt = stmt.where(NegotiationThread.vstatus == status)
-            count_stmt = count_stmt.where(NegotiationThread.vstatus == status)
+            if status.strip().upper() == "ACTIVE":
+                stmt = stmt.where(
+                    NegotiationThread.vstatus.in_(["NEGOTIATING", "SCHEDULED"])
+                )
+                count_stmt = count_stmt.where(
+                    NegotiationThread.vstatus.in_(["NEGOTIATING", "SCHEDULED"])
+                )
+            else:
+                stmt = stmt.where(NegotiationThread.vstatus == status)
+                count_stmt = count_stmt.where(NegotiationThread.vstatus == status)
 
         total = (await self.session.execute(count_stmt)).scalar_one() or 0
         items = (await self.session.execute(stmt.offset(offset).limit(limit))).scalars().all()

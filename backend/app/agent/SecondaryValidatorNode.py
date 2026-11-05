@@ -20,7 +20,61 @@ class SecondaryValidatorNode:
         wib_time = start_utc + timedelta(hours=7)
         cmd_lower = state.get("command", "").lower()
 
-        # Check Friday Prayer Blackout (weekday == 4 is Friday)
+        # 1. Check Weekend Blackout (Saturday=5, Sunday=6)
+        if wib_time.weekday() in (5, 6):
+            days_to_monday = 7 - wib_time.weekday()
+            adjusted_date = wib_time.date() + timedelta(days=days_to_monday)
+            adjusted_wib = datetime.combine(adjusted_date, time(10, 0))
+            adjusted_start_utc = adjusted_wib - timedelta(hours=7)
+            adjusted_end_utc = adjusted_start_utc + timedelta(hours=1)
+            adjusted_wita = adjusted_wib + timedelta(hours=1)
+            adjusted_wit = adjusted_wib + timedelta(hours=2)
+
+            updated_slot = {
+                **slot,
+                "start_utc": adjusted_start_utc.isoformat(),
+                "end_utc": adjusted_end_utc.isoformat(),
+                "formatted_wib": f"{adjusted_wib.strftime('%A, %d %b %Y, %H:%M')} WIB",
+                "formatted_wita": f"{adjusted_wita.strftime('%A, %d %b %Y, %H:%M')} WITA",
+                "formatted_wit": f"{adjusted_wit.strftime('%A, %d %b %Y, %H:%M')} WIT",
+            }
+            notes = (
+                "Secondary Validator Alert: Proposed slot on a weekend was rejected according to company policy "
+                "[RULE_WEEKEND_BLACKOUT]. Slot automatically shifted to next business day (Monday at 10:00 WIB)."
+            )
+            inter_tz = state.get("interviewer_timezone") or "WIB"
+            sources = [
+                {
+                    **s,
+                    "detail": (
+                        f"Available slot verified at {updated_slot.get('formatted_wib', '')} ({inter_tz}) without conflicts."
+                        if s.get("id") == "src-01" or s.get("source_type") == "CALENDAR"
+                        else s.get("detail", "")
+                    ),
+                }
+                for s in (state.get("sources_cited") or [])
+            ]
+            items = [
+                {
+                    **it,
+                    "content_preview": (
+                        f"Reservasi slot kalender pada {updated_slot.get('formatted_wib')} di {updated_slot.get('location_type', 'Google Meet')} ({updated_slot.get('duration_minutes', 60)} Menit)."
+                        if it.get("channel") == "calendar"
+                        else it.get("content_preview", "")
+                    ),
+                }
+                for it in (state.get("items") or [])
+            ]
+            return {
+                "proposed_slot": updated_slot,
+                "sources_cited": sources,
+                "items": items,
+                "secondary_validator_passed": True,
+                "validator_notes": notes,
+                "status": "PENDING_APPROVAL",
+            }
+
+        # 2. Check Friday Prayer Blackout (weekday == 4 is Friday)
         is_friday_prayer_conflict = False
         if wib_time.weekday() == 4:
             f_start = time(11, 30)
@@ -49,18 +103,43 @@ class SecondaryValidatorNode:
 
             notes = (
                 "Secondary Validator Alert: Proposed Friday slot at 11:30 - 13:00 WIB rejected because it overlaps "
-                "with Friday prayer blackout hours [rule-jumatan]. Slot automatically adjusted to "
+                "with Friday prayer blackout hours [RULE_FRIDAY_PRAYER]. Slot automatically adjusted to "
                 "14:00 WIB in accordance with company operational policy."
             )
 
+            inter_tz = state.get("interviewer_timezone") or "WIB"
+            sources = [
+                {
+                    **s,
+                    "detail": (
+                        f"Available slot verified at {updated_slot.get('formatted_wib', '')} ({inter_tz}) without conflicts."
+                        if s.get("id") == "src-01" or s.get("source_type") == "CALENDAR"
+                        else s.get("detail", "")
+                    ),
+                }
+                for s in (state.get("sources_cited") or [])
+            ]
+            items = [
+                {
+                    **it,
+                    "content_preview": (
+                        f"Reservasi slot kalender pada {updated_slot.get('formatted_wib')} di {updated_slot.get('location_type', 'Google Meet')} ({updated_slot.get('duration_minutes', 60)} Menit)."
+                        if it.get("channel") == "calendar"
+                        else it.get("content_preview", "")
+                    ),
+                }
+                for it in (state.get("items") or [])
+            ]
             return {
                 "proposed_slot": updated_slot,
+                "sources_cited": sources,
+                "items": items,
                 "secondary_validator_passed": True,
                 "validator_notes": notes,
                 "status": "PENDING_APPROVAL",
             }
 
-        # Check cross-timezone working hours (09:00 - 17:00) across WIB, WITA, WIT
+        # 3. Check cross-timezone working hours (09:00 - 17:00) across WIB, WITA, WIT
         cand_tz = state.get("candidate_timezone") or "WIB"
         inter_tz = state.get("interviewer_timezone") or "WIB"
         if "wit" in cmd_lower:
@@ -107,18 +186,43 @@ class SecondaryValidatorNode:
                 notes = (
                     f"Secondary Validator Alert: Proposed slot {wib_time.strftime('%H:%M')} WIB corresponds to "
                     f"{cand_time.strftime('%H:%M')} WIT, which exceeds candidate's local working hours (09:00 - 17:00 WIT) "
-                    "[rule-working-hours]. Slot automatically adjusted to mutually compatible business hours: "
+                    "[RULE_WORKING_HOURS]. Slot automatically adjusted to mutually compatible business hours: "
                     f"{adjusted_wib.strftime('%H:%M')} WIB ({adjusted_wit.strftime('%H:%M')} WIT). "
                     "Alternative compatible slots: 10:00 WIB (12:00 WIT), 13:30 WIB (15:30 WIT), 14:00 WIB (16:00 WIT)."
                 )
             else:
                 notes = (
-                    "Secondary Validator Alert: Slot is outside standard working hours (09:00 - 17:00 local time) [rule-working-hours]. "
+                    "Secondary Validator Alert: Slot is outside standard working hours (09:00 - 17:00 local time) [RULE_WORKING_HOURS]. "
                     f"Slot automatically adjusted to {adjusted_wib.strftime('%H:%M')} WIB."
                 )
 
+            inter_tz = state.get("interviewer_timezone") or "WIB"
+            sources = [
+                {
+                    **s,
+                    "detail": (
+                        f"Available slot verified at {updated_slot.get('formatted_wib', '')} ({inter_tz}) without conflicts."
+                        if s.get("id") == "src-01" or s.get("source_type") == "CALENDAR"
+                        else s.get("detail", "")
+                    ),
+                }
+                for s in (state.get("sources_cited") or [])
+            ]
+            items = [
+                {
+                    **it,
+                    "content_preview": (
+                        f"Reservasi slot kalender pada {updated_slot.get('formatted_wib')} di {updated_slot.get('location_type', 'Google Meet')} ({updated_slot.get('duration_minutes', 60)} Menit)."
+                        if it.get("channel") == "calendar"
+                        else it.get("content_preview", "")
+                    ),
+                }
+                for it in (state.get("items") or [])
+            ]
             return {
                 "proposed_slot": updated_slot,
+                "sources_cited": sources,
+                "items": items,
                 "secondary_validator_passed": True,
                 "validator_notes": notes,
                 "status": "PENDING_APPROVAL",

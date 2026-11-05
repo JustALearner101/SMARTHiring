@@ -13,6 +13,9 @@ class CommandRequestDTO(BaseDTO):
     command: str
     scenario_id: str | None = None
     thread_id: int | None = None
+    candidate_id: int | None = None
+    interviewer_id: int | None = None
+    target_date: str | None = None
 
 
 class InboundReplyRequestDTO(BaseDTO):

@@ -233,6 +233,8 @@ class ActionPlanService:
             items=items_dtos,
             created_at=plan.dcrea.isoformat() if plan.dcrea else now.isoformat(),
             undo_expires_at=undo_exp,
+            approval_ticket=plan.vapproval_token or meta.get("approval_ticket"),
+            entity_resolution=meta.get("entity_resolution"),
         )
 
     async def get_plan_by_id(self, plan_id: str) -> ActionPlanDTO | None:
