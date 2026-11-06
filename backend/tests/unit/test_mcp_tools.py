@@ -54,7 +54,7 @@ def _parse_resource_text(res) -> str:
 
 @pytest.mark.asyncio
 async def test_mcp_primitives_discovery():
-    """Verify all 13 tools, 4 resources, and 3 prompts are registered on FastMCP."""
+    """Verify all 17 tools, 4 resources, and 3 prompts are registered on FastMCP."""
     # 1. Tools
     tool_names = [t.name for t in await heketon_mcp.list_tools()]
     expected_tools = [
@@ -63,8 +63,10 @@ async def test_mcp_primitives_discovery():
         "get_operational_rules",
         "list_national_holidays",
         "check_slot_conflict",
+        "validate_schedule",
         "list_negotiation_threads",
         "verify_audit_chain",
+        "draft_action_plan",
         "orchestrate_hr_command",
         "orchestrate_voice_note",
         "triage_candidate_reply",
@@ -107,15 +109,10 @@ async def test_mcp_primitives_discovery():
 
 @pytest.mark.asyncio
 async def test_mcp_rbac_guard_resolution():
-    """Verify RBAC resolution strictly maps to HR, ADMIN, or INTERVIEWER."""
-    hr_caller = await verify_caller_rbac(caller_role_override="HR")
-    assert hr_caller.role == "HR"
-
-    admin_caller = await verify_caller_rbac(caller_role_override="ADMIN")
-    assert admin_caller.role == "ADMIN"
-
-    interviewer_caller = await verify_caller_rbac(caller_role_override="INTERVIEWER")
-    assert interviewer_caller.role == "INTERVIEWER"
+    """Verify RBAC resolution strictly returns authoritative HR identity."""
+    caller = await verify_caller_rbac()
+    assert caller.role == "HR"
+    assert caller.actor_id == "hr.lead@company.com"
 
 
 @pytest.mark.asyncio
@@ -155,27 +152,17 @@ async def test_mcp_tool_search_contacts():
 
 
 @pytest.mark.asyncio
-async def test_mcp_tool_candidate_salary_masking():
-    """Verify candidate expected_salary is redacted for INTERVIEWER role."""
-    # 1. As INTERVIEWER: salary must be masked
-    res_interviewer = await heketon_mcp.call_tool(
-        "get_candidate_profile",
-        {"candidate_query": "Rina", "caller_role_override": "INTERVIEWER"},
-    )
-    content_inv = _parse_tool_result(res_interviewer)
-    assert content_inv["found"] is True
-    assert content_inv["caller_role"] == "INTERVIEWER"
-    assert content_inv["candidate"]["expected_salary"] in (None, "[CONFIDENTIAL_SALARY_LOCKED]")
-    assert "REDACTED_BY_RBAC" in content_inv["candidate"].get("salary_mask_notice", "")
-
-    # 2. As HR: salary is accessible
+async def test_mcp_tool_candidate_profile():
+    """Verify candidate profile is accessible to authoritative HR caller."""
     res_hr = await heketon_mcp.call_tool(
         "get_candidate_profile",
-        {"candidate_query": "Rina", "caller_role_override": "HR"},
+        {"candidate_query": "Rina"},
     )
     content_hr = _parse_tool_result(res_hr)
     assert content_hr["found"] is True
     assert content_hr["caller_role"] == "HR"
+    assert "candidate" in content_hr
+    assert content_hr["candidate"]["name"] == "Rina Kusuma"
 
 
 @pytest.mark.asyncio
@@ -187,7 +174,7 @@ async def test_mcp_tool_check_slot_conflict():
         {
             "date": "2026-11-06",  # Friday
             "time": "12:00",
-            "interviewer_id": "1",
+            "interviewer_id": "10",
             "timezone": "WIB",
             "duration_minutes": 60,
         },
@@ -203,28 +190,136 @@ async def test_mcp_tool_check_slot_conflict():
 
 
 @pytest.mark.asyncio
+async def test_mcp_tool_validate_schedule():
+    """Verify validate_schedule enforces operational rules and buffer deterministically."""
+    # 1. Valid slot (Monday 10:00 WIB)
+    res_valid = await heketon_mcp.call_tool(
+        "validate_schedule",
+        {
+            "start_time": "2026-11-09T10:00:00+07:00",
+            "duration_minutes": 60,
+            "candidate_id": 1,
+            "interviewer_id": 10,
+        },
+    )
+    val_data = _parse_tool_result(res_valid)
+    assert val_data["is_valid"] is True
+    assert val_data["status"] == "VALID"
+    assert len(val_data["violations"]) == 0
+
+    # 2. Friday prayer conflict (11:30 - 13:00)
+    res_friday = await heketon_mcp.call_tool(
+        "validate_schedule",
+        {
+            "start_time": "2026-11-13T12:00:00+07:00",
+            "duration_minutes": 60,
+            "candidate_id": 1,
+            "interviewer_id": 10,
+        },
+    )
+    fri_data = _parse_tool_result(res_friday)
+    assert fri_data["is_valid"] is False
+    assert any(v.get("rule_id") == "RULE_FRIDAY_PRAYER" for v in fri_data["violations"])
+    assert len(fri_data["suggestions"]) > 0
+
+    # 3. Weekend blackout
+    res_weekend = await heketon_mcp.call_tool(
+        "validate_schedule",
+        {
+            "start_time": "2026-11-07T10:00:00+07:00",  # Saturday
+            "duration_minutes": 60,
+            "candidate_id": 1,
+            "interviewer_id": 10,
+        },
+    )
+    wk_data = _parse_tool_result(res_weekend)
+    assert wk_data["is_valid"] is False
+    assert any(
+        v.get("rule_id") == "RULE_WEEKEND_BLACKOUT" for v in wk_data["violations"]
+    )
+
+    # 4. Meeting buffer violation (Budi has sync 13:00 - 14:00 on 2026-11-09)
+    res_buf = await heketon_mcp.call_tool(
+        "validate_schedule",
+        {
+            "start_time": "2026-11-09T14:05:00+07:00",
+            "duration_minutes": 60,
+            "candidate_id": 1,
+            "interviewer_id": 10,
+        },
+    )
+    buf_data = _parse_tool_result(res_buf)
+    assert buf_data["is_valid"] is False
+    assert any(
+        v.get("rule_id") == "RULE_MEETING_BUFFER" for v in buf_data["violations"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_mcp_tool_draft_action_plan():
+    """Verify draft_action_plan creates pending plan and enforces server defense-in-depth."""
+    # 1. Happy path: valid draft creation
+    res_draft = await heketon_mcp.call_tool(
+        "draft_action_plan",
+        {
+            "title": "Technical Interview Round 1",
+            "candidate_id": 1,
+            "interviewer_id": 10,
+            "start_time": "2026-11-09T10:00:00+07:00",
+            "duration_minutes": 60,
+            "location_type": "Google Meet",
+            "candidate_channel": "whatsapp",
+            "interviewer_channel": "email",
+        },
+    )
+    draft_data = _parse_tool_result(res_draft)
+    assert draft_data["success"] is True
+    assert draft_data["status"] == "PENDING APPROVAL"
+    assert draft_data["approval_ticket"].startswith("TKT-HEK-")
+    assert draft_data["confirmation_card_ready"] is True
+    assert len(draft_data["items"]) == 3
+    assert len(draft_data["sources_cited"]) >= 4
+
+    # 2. Defense-in-depth: Rejects Friday prayer conflict
+    res_fri_draft = await heketon_mcp.call_tool(
+        "draft_action_plan",
+        {
+            "title": "Technical Interview Friday Clash",
+            "candidate_id": 1,
+            "interviewer_id": 10,
+            "start_time": "2026-11-13T12:00:00+07:00",
+            "duration_minutes": 60,
+        },
+    )
+    fri_draft_data = _parse_tool_result(res_fri_draft)
+    assert fri_draft_data["success"] is False
+    assert fri_draft_data["status"] == "REJECTED_BY_OPERATIONAL_RULES"
+    assert "RULE_FRIDAY_PRAYER" in fri_draft_data["rejected_rules"]
+
+    # 3. Defense-in-depth: Rejects buffer conflict (14:05)
+    res_buf_draft = await heketon_mcp.call_tool(
+        "draft_action_plan",
+        {
+            "title": "Technical Interview Buffer Conflict",
+            "candidate_id": 1,
+            "interviewer_id": 10,
+            "start_time": "2026-11-09T14:05:00+07:00",
+            "duration_minutes": 60,
+        },
+    )
+    buf_draft_data = _parse_tool_result(res_buf_draft)
+    assert buf_draft_data["success"] is False
+    assert buf_draft_data["status"] == "REJECTED_BY_OPERATIONAL_RULES"
+    assert "RULE_MEETING_BUFFER" in buf_draft_data["rejected_rules"]
+
+
+@pytest.mark.asyncio
 async def test_mcp_tool_verify_audit_chain():
     """Verify audit log hash-chain verification tool returns valid cryptographic status."""
     res = await heketon_mcp.call_tool("verify_audit_chain", {})
     content = _parse_tool_result(res)
     assert "is_valid" in content
     assert content["is_valid"] is True
-
-
-@pytest.mark.asyncio
-async def test_mcp_tool_approval_rbac_forbidden():
-    """Verify INTERVIEWER is forbidden (403) from approving action plans."""
-    res = await heketon_mcp.call_tool(
-        "approve_action_plan",
-        {
-            "plan_id": "1",
-            "approval_ticket": "TKT-TEST",
-            "caller_role_override": "INTERVIEWER",
-        },
-    )
-    content = _parse_tool_result(res)
-    assert content["success"] is False
-    assert content["error_code"] == "403_MCP_PERMISSION_DENIED"
 
 
 @pytest.mark.asyncio
@@ -236,7 +331,6 @@ async def test_mcp_tool_interview_consent_gate():
             "candidate_id": "1",
             "profile_code": "PROFILE-TECH-R1",
             "consent_status": "NOT_GRANTED",
-            "caller_role_override": "HR",
         },
     )
     content = _parse_tool_result(res_no_consent)
@@ -297,7 +391,9 @@ def _plan_metadata(start: datetime) -> dict:
     }
 
 
-async def _create_test_plan(ticket: str, start: datetime, thread_id: int | None = None) -> int:
+async def _create_test_plan(
+    ticket: str, start: datetime, thread_id: int | None = None
+) -> int:
     async with AsyncSessionLocal() as db:
         plan = FollowupPlan(
             vplan="Regression test plan",
@@ -379,7 +475,9 @@ async def test_approve_rejects_weekend_slot():
 async def test_action_plan_thread_id_roundtrip():
     """thread_id must survive the read path instead of always being null."""
     async with AsyncSessionLocal() as db:
-        thread_id = (await db.execute(select(NegotiationThread.nid).limit(1))).scalar_one()
+        thread_id = (
+            await db.execute(select(NegotiationThread.nid).limit(1))
+        ).scalar_one()
 
     start = datetime(2026, 11, 12, 3, 0, tzinfo=UTC)
     plan_id = await _create_test_plan("TKT-HEK-THREAD01", start, thread_id=thread_id)

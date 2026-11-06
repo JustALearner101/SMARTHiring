@@ -52,11 +52,12 @@ class CalendarMatrixRepository(BaseRepository[CalendarEvent]):
         target_date: date,
         duration_minutes: int = 60,
         timezone_str: str = "WIB",
+        buffer_minutes: int = 15,
     ) -> list[dict[str, Any]]:
         """Finds non-conflicting available slots for an interviewer on target_date.
 
         Complies with 09:00 - 17:00 working hours, Friday prayer blackout (11:30 - 13:00),
-        and checks for public holidays.
+        checks for public holidays, and strictly enforces buffer_minutes before and after events.
         """
         # 1. Check if public holiday
         holiday_stmt = select(Holiday).where(Holiday.dholiday_date == target_date)
@@ -65,20 +66,26 @@ class CalendarMatrixRepository(BaseRepository[CalendarEvent]):
             return []
 
         # Candidate slot times in local hours
-        # Mon-Thu: 09:00, 10:00, 11:00, 13:30, 14:00, 15:00, 16:00
+        # Mon-Thu: 09:00, 09:30, 10:00, 10:30, 11:00, 13:30, 14:00, 14:15, 14:30, 15:00, 15:30, 16:00
         # Friday: exclude 11:30 - 13:00
         candidate_times = [
             time(9, 0),
+            time(9, 30),
             time(10, 0),
+            time(10, 30),
             time(11, 0),
             time(13, 30),
             time(14, 0),
+            time(14, 15),
+            time(14, 30),
             time(15, 0),
+            time(15, 30),
             time(16, 0),
         ]
 
         is_friday = target_date.weekday() == 4  # 4 is Friday
         tz_offset_hours = 8 if timezone_str == "WITA" else (9 if timezone_str == "WIT" else 7)
+        buffer_delta = timedelta(minutes=buffer_minutes)
 
         available_slots: list[dict[str, Any]] = []
 
@@ -96,8 +103,17 @@ class CalendarMatrixRepository(BaseRepository[CalendarEvent]):
             slot_start_utc = local_dt.replace(tzinfo=UTC) - timedelta(hours=tz_offset_hours)
             slot_end_utc = slot_start_utc + timedelta(minutes=duration_minutes)
 
-            # Check conflicts against database calendar events
-            conflicts = await self.find_conflicts(user_id, slot_start_utc, slot_end_utc)
+            # Check working hours bounds (09:00 - 17:00 local time)
+            local_end_time = (local_dt + timedelta(minutes=duration_minutes)).time()
+            if local_end_time > time(17, 0):
+                continue
+
+            # Check conflicts against database calendar events with buffer enforcement
+            conflicts = await self.find_conflicts(
+                user_id,
+                slot_start_utc - buffer_delta,
+                slot_end_utc + buffer_delta,
+            )
             if not conflicts:
                 wib_dt = slot_start_utc + timedelta(hours=7)
                 wita_dt = slot_start_utc + timedelta(hours=8)

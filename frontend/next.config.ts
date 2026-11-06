@@ -20,6 +20,16 @@ const DISABLED_ROUTE_PREFIXES = ["/simulator", "/audit/guardrail"];
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  async rewrites() {
+    const backendUrl = process.env.INTERNAL_BACKEND_URL || "http://127.0.0.1:8000";
+    return [
+      { source: "/api/:path*", destination: `${backendUrl}/api/:path*` },
+      { source: "/docs", destination: `${backendUrl}/docs` },
+      { source: "/openapi.json", destination: `${backendUrl}/openapi.json` },
+      { source: "/mcp/:path*", destination: `${backendUrl}/mcp/:path*` },
+      { source: "/health", destination: `${backendUrl}/health` },
+    ];
+  },
   async redirects() {
     return DISABLED_ROUTE_PREFIXES.flatMap((prefix) => [
       { source: prefix, destination: "/", permanent: false },

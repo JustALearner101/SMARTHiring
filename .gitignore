@@ -52,9 +52,18 @@ pnpm-debug.log*
 storage/
 backend/storage/
 
-# Beads / Dolt files (added by bd init)
+# AI Agent Workspaces & Local Tool Configs
+.agents/
+.beads/
+.claude/
+.codex/
+.cursor/
 .dolt/
 *.db
 .beads-credential-key
-.beads/proxieddb/
 *.gate.lock*
+
+# Docker Compose Local Instances (contains sensitive credentials)
+docker-compose.yml
+docker-compose.override.yml
+!docker-compose.example.yml
