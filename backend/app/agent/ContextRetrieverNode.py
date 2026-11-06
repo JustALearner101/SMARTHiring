@@ -127,6 +127,7 @@ class ContextRetrieverNode:
         non_name_tokens = {
             "requested", "meminta", "minta", "ingin", "di", "in", "wib", "wita", "wit",
             "schedule", "interview", "wawancara", "reschedule", "moved", "adjustment",
+            "ini", "itu", "tersebut", "id", "nomor", "no", "yang",
         }
         if extracted_cand_name and extracted_cand_name.lower().split()[0] in non_name_tokens:
             extracted_cand_name = None
@@ -319,12 +320,10 @@ class ContextRetrieverNode:
             })
 
         if target_candidate:
-            req_name = extracted_cand_name or target_candidate.vname
+            req_name = target_candidate.vname if not extracted_cand_name or extracted_cand_name.lower().strip() in non_name_tokens else extracted_cand_name
             resolved_name = target_candidate.vname
             if explicit_candidate_id or state.get("thread_id") or (extracted_cand_name and extracted_cand_name.lower().strip() == resolved_name.lower().strip()):
                 match_score, match_type = 1.0, "EXACT"
-
-
 
             elif resolved_name.lower().strip() in cmd_lower:
                 match_score, match_type = 0.98, "EXACT"
@@ -360,6 +359,15 @@ class ContextRetrieverNode:
         if explicit_target_date:
             try:
                 target_date = date.fromisoformat(explicit_target_date)
+                if target_date < now_wib.date():
+                    return {
+                        "status": "NEEDS_CLARIFICATION",
+                        "is_ambiguous": False,
+                        "clarification_message": (
+                            f"Tanggal penjadwalan '{explicit_target_date}' berada di masa lalu "
+                            f"(hari ini {now_wib.date().isoformat()}). Penjadwalan tanggal masa lalu dilarang."
+                        ),
+                    }
             except Exception:
                 target_date = (now_wib + timedelta(days=2)).date()
         else:

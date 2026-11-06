@@ -112,7 +112,6 @@ def check_anti_auto_chain_cooldown(
 
 async def verify_caller_rbac(
     ctx: Context | None = None,
-    caller_role_override: str | None = None,
 ) -> McpCallerContext:
     """Resolve caller identity and role for Heketon MCP Server.
 

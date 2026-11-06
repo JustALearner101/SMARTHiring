@@ -756,7 +756,7 @@ async def seed_data() -> None:
                             vchannel="email",
                             vcontent="Dear Dewi Lestari, we invite you to an interview with VP of Finance Budi Hartono on Tuesday at 11:00 WITA.",
                             vproposed_slot="Selasa, 11:00 WITA",
-                            vsource_citation="[cal-budi-hartono:EMP-FIN-001:HQ-JKT]",
+                            vsource_citation="[cal-budi-hartono:EMP-FIN-002:HQ-JKT]",
                         )
                     )
                     session.add(

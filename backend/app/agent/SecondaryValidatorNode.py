@@ -90,6 +90,19 @@ class SecondaryValidatorNode:
         duration_delta = timedelta(minutes=duration_minutes)
         # WIB is UTC+7
         wib_time = start_utc + timedelta(hours=7)
+        now_utc = datetime.now(UTC)
+        now_wib = now_utc + timedelta(hours=7)
+
+        # 0. Check Past Date
+        if wib_time.date() < now_wib.date():
+            return {
+                "secondary_validator_passed": False,
+                "validator_action": "REJECTED",
+                "validator_rule": "RULE_PAST_DATE_PROHIBITED",
+                "validator_notes": f"Secondary Validator Error: Proposed slot {wib_time.date().isoformat()} is in the past (today is {now_wib.date().isoformat()}). Scheduling past dates is prohibited.",
+                "status": "NEEDS_CLARIFICATION",
+            }
+
         cmd_lower = state.get("command", "").lower()
         cand_tz = (state.get("candidate_timezone") or "WIB").upper()
         inter_tz = (state.get("interviewer_timezone") or "WIB").upper()
@@ -97,6 +110,88 @@ class SecondaryValidatorNode:
             cand_tz = "WIT"
         elif "wita" in cmd_lower:
             cand_tz = "WITA"
+
+        # 0b. Check National Holiday / Cuti Bersama
+        from app.db.DatabaseSession import AsyncSessionLocal
+        from app.repository.HolidayRepository import HolidayRepository
+
+        holiday_obj = None
+        try:
+            async with AsyncSessionLocal() as db_session:
+                repo = HolidayRepository(db_session)
+                holiday_obj = await repo.is_holiday(wib_time.date())
+        except Exception:
+            pass
+
+        if holiday_obj:
+            next_date = wib_time.date() + timedelta(days=1)
+            try:
+                async with AsyncSessionLocal() as db_session:
+                    repo = HolidayRepository(db_session)
+                    for _ in range(14):
+                        if next_date.weekday() in (5, 6) or await repo.is_holiday(next_date):
+                            next_date += timedelta(days=1)
+                        else:
+                            break
+            except Exception:
+                while next_date.weekday() in (5, 6):
+                    next_date += timedelta(days=1)
+
+            adjusted_wib = datetime.combine(next_date, time(10, 0), tzinfo=UTC)
+            adjusted_start_utc = adjusted_wib - timedelta(hours=7)
+            adjusted_end_utc = adjusted_start_utc + duration_delta
+            adjusted_wita = adjusted_wib + timedelta(hours=1)
+            adjusted_wit = adjusted_wib + timedelta(hours=2)
+
+            updated_slot = {
+                **slot,
+                "start_utc": adjusted_start_utc.isoformat(),
+                "end_utc": adjusted_end_utc.isoformat(),
+                "formatted_wib": f"{adjusted_wib.strftime('%A, %d %b %Y, %H:%M')} WIB",
+                "formatted_wita": f"{adjusted_wita.strftime('%A, %d %b %Y, %H:%M')} WITA",
+                "formatted_wit": f"{adjusted_wit.strftime('%A, %d %b %Y, %H:%M')} WIT",
+            }
+            h_type = (
+                "Collective Leave"
+                if holiday_obj.vtype == "COLLECTIVE_LEAVE"
+                else "National Holiday"
+            )
+            notes = (
+                f"Secondary Validator Alert: Proposed slot falls on {h_type} '{holiday_obj.vname}' "
+                f"[RULE_NATIONAL_HOLIDAY]. Slot automatically shifted to next business day ({adjusted_wib.strftime('%A, %d %b %Y, 10:00')} WIB)."
+            )
+            sources = [
+                {
+                    **s,
+                    "detail": (
+                        f"Available slot verified at {updated_slot.get('formatted_wib', '')} ({inter_tz}) without conflicts."
+                        if s.get("id") == "src-01" or s.get("source_type") == "CALENDAR"
+                        else s.get("detail", "")
+                    ),
+                }
+                for s in (state.get("sources_cited") or [])
+            ]
+            if not any(s.get("id") == "rule-national-holiday" for s in sources):
+                sources.append({
+                    "id": "rule-national-holiday",
+                    "ref_code": "[rule-national-holiday:RULE_NATIONAL_HOLIDAY]",
+                    "source_type": "OPERATIONAL_RULE",
+                    "title": f"National Holiday: {holiday_obj.vname}",
+                    "detail": f"Compliance with national holiday policy. Slot rescheduled from {holiday_obj.vname} to {adjusted_wib.strftime('%A, %d %b %Y')}.",
+                })
+            items = cls._sync_items_with_slot(
+                state.get("items") or [], updated_slot, inter_tz, cand_tz
+            )
+            return {
+                "proposed_slot": updated_slot,
+                "sources_cited": sources,
+                "items": items,
+                "secondary_validator_passed": True,
+                "validator_action": "AUTO_SHIFTED",
+                "validator_rule": "RULE_NATIONAL_HOLIDAY",
+                "validator_notes": notes,
+                "status": "PENDING APPROVAL",
+            }
 
         # 1. Check Weekend Blackout (Saturday=5, Sunday=6)
         if wib_time.weekday() in (5, 6):

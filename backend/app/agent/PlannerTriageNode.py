@@ -329,6 +329,17 @@ class PlannerTriageNode:
             if target_date_hint:
                 try:
                     target_date = date.fromisoformat(target_date_hint)
+                    if target_date < now_wib.date():
+                        return {
+                            "status": "NEEDS_CLARIFICATION",
+                            "is_ambiguous": False,
+                            "clarification_message": (
+                                f"Tanggal penjadwalan '{target_date_hint}' berada di masa lalu "
+                                f"(hari ini {now_wib.date().isoformat()}). Penjadwalan tanggal masa lalu dilarang."
+                            ),
+                            "action_plan": None,
+                            "approval_ticket": None,
+                        }
                 except Exception:
                     target_date = (now_wib + timedelta(days=2)).date()
             else:

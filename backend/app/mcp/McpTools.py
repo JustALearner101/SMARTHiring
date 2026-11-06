@@ -51,7 +51,7 @@ from app.service.SpeechToTextService import SpeechToTextService
 logger = logging.getLogger(__name__)
 
 # Build marker: lets blackbox testers confirm which build the running server executes.
-MCP_SERVER_VERSION = "2026.11.06-rev5"
+MCP_SERVER_VERSION = "2026.11.06-rev6"
 
 
 def register_heketon_mcp_tools(mcp: FastMCP) -> None:
@@ -292,7 +292,7 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
     async def check_slot_conflict(
         date: str,
         time: str,
-        interviewer_id: str = "1",
+        interviewer_id: str = "10",
         timezone: str = "WIB",
         duration_minutes: int = 60,
         candidate_id: str | None = None,
@@ -497,10 +497,9 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
         ),
     )
     async def verify_audit_chain(
-        caller_role_override: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        await verify_caller_rbac(ctx, caller_role_override)
+        await verify_caller_rbac(ctx)
         async with AsyncSessionLocal() as db:
             svc = AuditLogService(db)
             verification = await svc.verify_hash_chain()
@@ -514,10 +513,9 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
         ),
     )
     async def get_operational_rules(
-        caller_role_override: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        await verify_caller_rbac(ctx, caller_role_override)
+        await verify_caller_rbac(ctx)
         async with AsyncSessionLocal() as db:
             svc = OperationalPolicyService(db)
             policy = await svc.get_operational_policy()
@@ -1126,8 +1124,42 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
                         "message": f"Thread negosiasi #{t_id} tidak ditemukan.",
                     }
 
+                if thread.vstatus in ("DEADLOCK_ESCALATED", "HALTED", "COMPLETED"):
+                    return {
+                        "success": False,
+                        "status": "HALTED",
+                        "thread_status": thread.vstatus,
+                        "is_escalated": True,
+                        "escalation_reason": "THREAD_ALREADY_HALTED",
+                        "message": (
+                            f"Thread #{t_id} sedang dalam status {thread.vstatus} dan tidak dapat diproses secara otonom tanpa intervensi HR eksplisit."
+                        ),
+                        "action_plan": None,
+                        "approval_ticket": None,
+                    }
+
                 max_rounds = thread.nmax_rounds or 3
                 current_round = thread.ncurrent_round or 1
+
+                from app.agent.GuardrailNode import GuardrailNode
+                is_safe, _sanitized_reply, guardrail_note, stripped = GuardrailNode.sanitize_and_scan(reply_text)
+                if not is_safe:
+                    await AuditLogService(db).log_event(
+                        event_type="GUARDRAIL_BLOCKED",
+                        actor="CANDIDATE",
+                        actor_type="AGENT",
+                        title="Inbound Injection Blocked",
+                        description=f"Inbound adversarial instruction disregarded: {guardrail_note} | Raw reply: {reply_text}",
+                        metadata={"raw_reply": reply_text, "stripped": stripped, "thread_id": t_id},
+                    )
+                    return {
+                        "success": False,
+                        "status": "GUARDRAIL_BLOCKED",
+                        "error_code": "GUARDRAIL_BLOCKED",
+                        "message": f"Inbound reply rejected by guardrail: {guardrail_note}",
+                        "thread_status": thread.vstatus or "ACTIVE",
+                        "negotiation_round": current_round,
+                    }
                 if current_round >= max_rounds:
                     await thread_svc.negotiation_repo.update_thread_status(
                         t_id,
@@ -1283,16 +1315,24 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
             }
 
         async with AsyncSessionLocal() as db:
-            resolved_ref = str(session_id or candidate_id).strip()
-            c_id = int(resolved_ref) if resolved_ref.isdigit() else 1
+            target_session_id = (
+                int(str(session_id).strip())
+                if session_id and str(session_id).strip().isdigit()
+                else (int(str(candidate_id).strip()) if str(candidate_id).strip().isdigit() else 1)
+            )
+            target_cand_id = (
+                int(str(candidate_id).strip())
+                if candidate_id and str(candidate_id).strip().isdigit()
+                else target_session_id
+            )
             prof_stmt = select(Profile).where(Profile.vcode == profile_code)
             prof = (await db.execute(prof_stmt)).scalars().first()
             p_id = prof.nid if prof else 1
 
             result = await run_interview_analyzer_pipeline(
                 session=db,
-                interview_id=c_id if session_id and str(session_id).isdigit() else 1,
-                candidate_id=c_id,
+                interview_id=target_session_id,
+                candidate_id=target_cand_id,
                 profile_id=p_id,
                 consent_status="GRANTED",
                 notes=notes
@@ -1311,7 +1351,7 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
                     )
                     for pt in result.get("competency_points", [])
                 ],
-                "session_id": str(session_id or candidate_id),
+                "session_id": str(target_session_id),
                 "evaluated_by_role": caller.role,
                 "salary_visibility": "[CONFIDENTIAL_SALARY_LOCKED]"
                 if caller.role == "INTERVIEWER"
@@ -1533,6 +1573,15 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
             resolved_decision = "REJECT"
         elif resolved_decision in ("REVISIT", "HOLD"):
             resolved_decision = "HOLD"
+        else:
+            return {
+                "success": False,
+                "error_code": "400_INVALID_DECISION",
+                "message": (
+                    f"Keputusan '{decision}' tidak valid. "
+                    "Gunakan salah satu dari: ADVANCE (atau HIRE), REJECT (atau NO_HIRE), HOLD (atau REVISIT)."
+                ),
+            }
 
         async with AsyncSessionLocal() as db:
             user_stmt = (
