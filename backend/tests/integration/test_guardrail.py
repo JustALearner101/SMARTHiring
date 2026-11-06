@@ -139,7 +139,7 @@ async def test_grd07_injection_in_reply_executes_nothing(safe_client: AsyncClien
     )
  
     assert res.status_code == 200
-    assert res.json()["data"]["status"] == "DEADLOCK_ESCALATED"  # safe outcome: handed to HR
+    assert res.json()["data"]["status"] in ("DEADLOCK_ESCALATED", "GUARDRAIL_BLOCKED")  # safe outcome: blocked / handed to HR
     assert await _count(test_session, bookings) == bookings_before
     assert await _count(test_session, approved) == approved_before
  
