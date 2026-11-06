@@ -83,8 +83,8 @@ class Settings(BaseSettings):
     SMTP_HOST: str = "smtp.sumopod.com"
     SMTP_PORT: int = 465
     SMTP_SSL: bool = True
-    SMTP_USER: str = "cmvrou21uns4x08tdsx9ug8gu"
-    SMTP_PASSWORD: str = "ECsqDrJXsGktokRYd0Y1lcoeaEm1YrHj"
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
     SMTP_FROM_EMAIL: str = "notifications@smarthiring.ai"
     SMTP_FROM_NAME: str = "SmartHiring AI Orchestrator"
 
