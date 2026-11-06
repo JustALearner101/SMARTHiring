@@ -1,7 +1,0 @@
-{
-  "database": "dolt",
-  "backend": "dolt",
-  "dolt_mode": "embedded",
-  "dolt_database": "Heketon",
-  "project_id": "02536cf0-1207-454b-9171-c3b750e0fcf3"
-}

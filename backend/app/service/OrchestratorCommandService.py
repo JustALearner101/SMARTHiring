@@ -75,7 +75,16 @@ class OrchestratorCommandService:
         if thread_id:
             thread = await self.thread_repo.get_thread(thread_id)
             if thread:
-                current_round = thread.ncurrent_round
+                if thread.vstatus in ("DEADLOCK_ESCALATED", "HALTED", "COMPLETED"):
+                    return {
+                        "status": "HALTED",
+                        "is_escalated": True,
+                        "escalation_reason": "THREAD_ALREADY_HALTED",
+                        "message": f"Thread #{thread_id} sedang dalam status {thread.vstatus} dan tidak dapat diproses secara otonom tanpa intervensi HR eksplisit.",
+                        "action_plan": None,
+                        "approval_ticket": None,
+                    }
+                current_round = thread.ncurrent_round or 1
 
         # Run Pipeline 1: LangGraph Orchestrator with Checkpointer & Dynamic Slots
         agent_state = await run_orchestrator_pipeline(
@@ -279,6 +288,7 @@ class OrchestratorCommandService:
                     .where(
                         NegotiationThread.nid_candidate == int(cand_id),
                         NegotiationThread.nid_interviewer == int(inter_id),
+                        NegotiationThread.vstatus.in_(["NEGOTIATING", "ACTIVE"]),
                     )
                     .order_by(NegotiationThread.nid.desc())
                 )
@@ -383,13 +393,19 @@ class OrchestratorCommandService:
 
         # Check existing thread
         thread = await self.thread_repo.get_thread(thread_id)
+        if thread and thread.vstatus in ("DEADLOCK_ESCALATED", "HALTED", "COMPLETED"):
+            return {
+                "status": "HALTED",
+                "thread_status": thread.vstatus,
+                "is_escalated": True,
+                "escalation_reason": "THREAD_ALREADY_HALTED",
+                "message": f"Thread #{thread_id} sedang dalam status {thread.vstatus} dan tidak dapat diproses secara otonom tanpa intervensi HR eksplisit.",
+            }
         current_round = thread.ncurrent_round if thread else 1
 
         # 0. Scan inbound reply with GuardrailNode (TC-CHB-16)
-        is_safe, sanitized_reply, guardrail_note, stripped = GuardrailNode.sanitize_and_scan(reply)
-        source_citation_tag = None
+        is_safe, _sanitized_reply, guardrail_note, stripped = GuardrailNode.sanitize_and_scan(reply)
         if not is_safe:
-            source_citation_tag = "[security-injection-disregarded]"
             await self.audit_service.log_event(
                 event_type="GUARDRAIL_BLOCKED",
                 actor=request.sender_role,
@@ -398,14 +414,13 @@ class OrchestratorCommandService:
                 description=f"Inbound adversarial instruction disregarded: {guardrail_note} | Raw reply: {reply}",
                 metadata={"raw_command": reply, "raw_reply": reply, "stripped": stripped, "thread_id": thread_id},
             )
-            if not sanitized_reply or len(sanitized_reply.strip()) <= 3:
-                return {
-                    "status": "GUARDRAIL_BLOCKED",
-                    "message": f"Inbound reply rejected by guardrail: {guardrail_note}",
-                }
-            effective_reply = sanitized_reply
-        else:
-            effective_reply = reply
+            return {
+                "status": "GUARDRAIL_BLOCKED",
+                "message": f"Inbound reply rejected by guardrail: {guardrail_note}",
+            }
+
+        effective_reply = reply
+        source_citation_tag = None
 
         effective_lower = effective_reply.lower()
 

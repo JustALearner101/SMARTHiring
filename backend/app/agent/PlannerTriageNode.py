@@ -297,15 +297,16 @@ class PlannerTriageNode:
             if not chosen_slot_data and not is_friday_prayer_time and not is_outside_working_hours:
                 slot_conflict_detected = True
                 conflicting_slot_wib = f"{target_pref} WIB"
-                # Prefer the first available slot after target_pref, or fallback to available_slots[0]
+                # Prefer the first available slot at or after target_pref, or fallback to available_slots[0]
                 after_slots = [
                     s for s in available_slots
-                    if s.get("time_str", "00:00") > target_pref
+                    if s.get("time_str", "00:00") >= target_pref
                 ]
                 chosen_slot_data = after_slots[0] if after_slots else available_slots[0]
 
         if chosen_slot_data:
             start_utc_dt = datetime.fromisoformat(chosen_slot_data["start_utc"])
+            target_date = (start_utc_dt + timedelta(hours=7)).date()
             wib_t = start_utc_dt + timedelta(hours=7)
             wita_t = start_utc_dt + timedelta(hours=8)
             wit_t = start_utc_dt + timedelta(hours=9)
@@ -328,6 +329,17 @@ class PlannerTriageNode:
             if target_date_hint:
                 try:
                     target_date = date.fromisoformat(target_date_hint)
+                    if target_date < now_wib.date():
+                        return {
+                            "status": "NEEDS_CLARIFICATION",
+                            "is_ambiguous": False,
+                            "clarification_message": (
+                                f"Tanggal penjadwalan '{target_date_hint}' berada di masa lalu "
+                                f"(hari ini {now_wib.date().isoformat()}). Penjadwalan tanggal masa lalu dilarang."
+                            ),
+                            "action_plan": None,
+                            "approval_ticket": None,
+                        }
                 except Exception:
                     target_date = (now_wib + timedelta(days=2)).date()
             else:
@@ -414,16 +426,29 @@ class PlannerTriageNode:
                     f"at {slot_dict.get('formatted_wib', '')} ({inter_tz}) without conflicts."
                 ),
             },
-            {
-                "id": "rule-friday-prayer",
-                "ref_code": "[rule-friday-prayer:RULE_FRIDAY_PRAYER]",
-                "source_type": "OPERATIONAL_RULE",
-                "title": "Rule: Friday Prayer Blackout",
-                "detail": (
-                    "Compliance with active policies RULE_WORKING_HOURS (09:00 - 17:00 operational boundary, "
-                    "configured meeting buffer) and RULE_FRIDAY_PRAYER (11:30 - 13:00 WIB worship window)."
-                ),
-            },
+            (
+                {
+                    "id": "rule-friday-prayer",
+                    "ref_code": "[rule-friday-prayer:RULE_FRIDAY_PRAYER]",
+                    "source_type": "OPERATIONAL_RULE",
+                    "title": "Rule: Friday Prayer Blackout",
+                    "detail": (
+                        "Compliance with active policies RULE_WORKING_HOURS (09:00 - 17:00 operational boundary, "
+                        "configured meeting buffer) and RULE_FRIDAY_PRAYER (11:30 - 13:00 WIB worship window)."
+                    ),
+                }
+                if target_date.weekday() == 4
+                else {
+                    "id": "rule-working-hours",
+                    "ref_code": "[rule-working-hours:RULE_WORKING_HOURS]",
+                    "source_type": "OPERATIONAL_RULE",
+                    "title": "Rule: Operational Working Hours",
+                    "detail": (
+                        "Compliance with active policies RULE_WORKING_HOURS (09:00 - 17:00 operational boundary, "
+                        "configured 15-minute meeting buffer)."
+                    ),
+                }
+            ),
             {
                 "id": f"cand-{cand_code.lower()}",
                 "ref_code": f"[cand-ats-{state.get('candidate_id', 1)}:{cand_code}]",

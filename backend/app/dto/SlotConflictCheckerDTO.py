@@ -34,6 +34,7 @@ class SlotConflictCheckResultDTO(BaseDTO):
         "NATIONAL_HOLIDAY",
         "WEEKEND_BLOCKED",
         "INTERVIEWER_NOT_FOUND",
+        "VALIDATION_ERROR",
     ]
     message: str
     rule_code: str | None = None

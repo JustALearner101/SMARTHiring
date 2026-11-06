@@ -1,5 +1,5 @@
 # HEKETON ACCOUNTABLE MCP SERVER — TEST CASE SPECIFICATION
-**Document ID**: `HEK-MCP-TC-2026-v1.0`  
+**Document ID**: `HEK-MCP-TC-2026-v1.1`  
 **Target Environment**: Tencent Cloud WorkBuddy AI / MCP Clients  
 **Testing Methodology**: Independent Blackbox Agent Evaluation (Zero Codebase Access)
 
@@ -8,14 +8,18 @@
 ## 1. ATURAN KETAT UNTUK AI AGENT TESTER (TESTER DIRECTIVES)
 
 > [!CAUTION]
-> **ATURAN BLACKBOX MUTLAK (STRICT ZERO-KNOWLEDGE POLICY)**:
+> **ATURAN BLACKBOX MUTLAK (STRICT ZERO-KNOWLEDGE & HR-FIRST POLICY)**:
 > 1. AI Agent Tester **DILARANG KERAS** melihat, membaca, mencari, atau menginspeksi file kode sumber internal (seperti folder `backend/app/`, file `.py`, direktori model, controller, service, atau repository).
 > 2. AI Agent Tester **DILARANG** menjalankan script Python, query SQL langsung ke PostgreSQL, atau membuka database untuk memeriksa state internal.
 > 3. AI Agent Tester **HANYA BOLEH** berinteraksi sebagai klien eksternal melalui protokol **Model Context Protocol (MCP)**:
 >    - Memanggil Tools (`CallTool`)
 >    - Membaca Resources (`ReadResource`)
 >    - Memeriksa schema input/output JSON yang dikembalikan oleh MCP Server.
-> 4. Evaluasi harus didasarkan sepenuhnya pada **kebenaran respons MCP, konsistensi kontrak, kepatuhan 5 Pilar Akuntabilitas, dan deteksi dini kegagalan**.
+> 4. **KONTEKS AKSES HR EKSKLUSIF (HR-ONLY BY DEFAULT)**:
+>    - MCP Server Heketon dirancang khusus sebagai antarmuka pendamping operasional **HR (Human Resources Office Ops Copilot)**.
+>    - Seluruh koneksi dan eksekusi tool MCP diproses secara penuh dan otomatis sebagai pemegang peran **HR Otoritatif** (`role: HR`, `actor_id: hr.lead@company.com`).
+>    - Tidak ada alur login/OAuth manual dan tidak ada parameter `caller_role_override` di sisi klien. Hak akses finansial (seperti gaji) dan approval tindakan berdampak tinggi terbuka bagi pemanggil MCP karena seluruh sesi MCP dijalankan atas nama HR Lead.
+> 5. Evaluasi harus didasarkan sepenuhnya pada **kebenaran respons MCP, konsistensi kontrak, kepatuhan 5 Pilar Akuntabilitas, dan deteksi dini kegagalan**.
 
 ---
 
@@ -31,7 +35,7 @@ PRINSIP PENGUJIAN:
 1. Kamu TIDAK MEMILIKI akses ke kode sumber, database backend, atau file implementasi. Kamu murni bertindak sebagai agen pengguna yang terhubung ke MCP Server.
 2. Kamu bertugas menguji apakah sistem mematuhi "5 Pilar Akuntabilitas":
    - Sources: Setiap draf atau rekomendasi wajib mencantumkan sumber data otoritatif (sources_cited).
-   - Permissions: Akses data sensitif (seperti nominal gaji) wajib dibatasi sesuai peran (HR vs INTERVIEWER).
+   - Permissions: MCP Server didedikasikan secara eksklusif untuk HR (`role: HR`). HR memiliki otoritas penuh melihat kompensasi/gaji dan menyetujui rencana aksi. Seluruh pemanggilan tool diproses atas nama HR terautentikasi tanpa parameter `caller_role_override`.
    - Approval: Aksi berdampak tinggi (kirim email, WhatsApp, booking kalender) WAJIB melalui tiket approval manusia (PENDING_APPROVAL).
    - Limits: Batasan operasional wajib ditegakkan (jam kerja 09:00-17:00 WIB, blokir salat Jumat 11:30-13:00 WIB, blokir akhir pekan & libur nasional, max 3 ronde negosiasi, buffer 15 menit).
    - Record: Setiap aksi dan pembatalan wajib tercatat dalam immutable audit log.
@@ -97,7 +101,7 @@ PRINSIP PENGUJIAN:
   - Panggil `check_slot_conflict(interviewer_id="10", date="2026-11-09", time="14:05", timezone="WIB")` (Hanya 5 menit setelah selesai rapat, melanggar buffer 15 menit).
 - **Kriteria Keberhasilan (Pass)**:
   - Pada jam 13:00 WIB: `status` = `CONFLICT_EXISTING_EVENT`, `conflicting_event` = `Weekly Engineering Sync`.
-  - Pada jam 14:05 WIB: `status` = `INSUFFICIENT_BUFFER`, `rule_code` = `RULE_MEETING_BUFFER`, `confifikasi_event` / `conflicting_event` = `Weekly Engineering Sync`.
+  - Pada jam 14:05 WIB: `status` = `INSUFFICIENT_BUFFER`, `rule_code` = `RULE_MEETING_BUFFER`, `conflicting_event` = `Weekly Engineering Sync`.
 
 ---
 
@@ -210,11 +214,57 @@ PRINSIP PENGUJIAN:
   - Undo berhasil, status plan berubah menjadi `UNDONE`.
   - Tercipta log pada `heketon://audit/recent` yang mencatat siapa yang menyetujui dan siapa yang membatalkan.
 
-#### TC-13: Penegakan RBAC & Salary Redaction (INTERVIEWER vs HR)
-- **Tujuan**: Memastikan peran `INTERVIEWER` tidak dapat melihat atau memodifikasi nominal gaji.
+#### TC-13: Akses Profil Kompensasi & Pencatatan Keputusan Rekrutmen HR (HR-Only by Default)
+- **Tujuan**: Memastikan MCP Server secara inheren memproses pemanggil sebagai HR Otoritatif, memberikan akses penuh ke profil finansial kandidat untuk keperluan penawaran kerja/evaluasi HR, dan memungkinkan pencatatan keputusan akhir rekrutmen ke sistem & audit log.
 - **Aksi MCP**:
-  - Panggil `get_candidate_profile(candidate_id=..., caller_role_override="INTERVIEWER")`.
-  - Panggil `record_interview_decision(session_id=..., caller_role_override="INTERVIEWER")`.
+  - Panggil `get_candidate_profile(candidate_query="12")` (tanpa parameter role override).
+  - Panggil `record_interview_decision(interview_id="1", decision="ADVANCE", notes="Candidate meets senior qualifications, advance to offer stage.")`.
 - **Kriteria Keberhasilan (Pass)**:
-  - Bidang `expected_salary` atau nominal finansial di-masking menjadi `[CONFIDENTIAL_SALARY_LOCKED]`.
-  - Interviewer hanya dapat mengisi skor teknis, catatan teknis, dan rekomendasi (*HIRE / NO_HIRE / REVISIT*).
+  - Pada `get_candidate_profile`:
+    - Pemanggil diproses sebagai HR (`caller_role: "HR"`).
+    - Bidang finansial `current_salary` dan `expected_salary` dapat diakses penuh secara transparan (bukan locked/redacted) karena pemanggil adalah HR yang berwenang.
+  - Pada `record_interview_decision`:
+    - Keputusan final rekrutmen (`ADVANCE / HOLD / REJECT`) berhasil dicatat.
+    - Status mencerminkan `HR_DECISION_RECORDED` atau `DECISION_RECORDED`.
+    - Tercipta log pada `heketon://audit/recent` yang mendokumentasikan keputusan oleh aktor HR (`hr.lead@company.com`).
+  - Skema tool MCP bersih dan tidak lagi mengekspos parameter usang `caller_role_override`.
+
+---
+
+### TEST SUITE 6: WORKBUDDY-CENTRIC DETERMINISTIC TOOLS (v1.1 ARCHITECTURE)
+
+#### TC-14: Validasi Jadwal Pra-Draf Deterministic Tanpa Side-Effect (`validate_schedule`)
+- **Tujuan**: Memastikan WorkBuddy AI dapat melakukan pra-validasi jadwal secara deterministik (zero-LLM, zero side-effect) sebelum menyusun rencana aksi. Mengidentifikasi pelanggaran jam kerja (09:00–17:00), blackout salat Jumat (11:30–13:00), akhir pekan, libur nasional, bentrok kalender, dan kepatuhan buffer 15 menit, serta menyediakan slot alternatif valid.
+- **Aksi MCP**:
+  1. *Uji Pelanggaran Salat Jumat*: Panggil `validate_schedule(start_time="2026-11-13T12:00:00+07:00", duration_minutes=60, interviewer_id=10)`.
+  2. *Uji Pelanggaran Buffer*: Panggil `validate_schedule(start_time="2026-11-09T14:05:00+07:00", duration_minutes=30, interviewer_id=10)` (Budi Santoso memiliki agenda 13:00–14:00).
+  3. *Uji Jadwal Valid*: Panggil `validate_schedule(start_time="2026-11-10T10:00:00+07:00", duration_minutes=60, candidate_id=12, interviewer_id=10)`.
+- **Kriteria Keberhasilan (Pass)**:
+  - Pada uji salat Jumat:
+    - `is_valid: false`
+    - `violations` memuat objek dengan `rule_id: "RULE_FRIDAY_PRAYER"`
+    - `suggestions` menyediakan maksimal 3 alternatif slot valid di luar jendela salat Jumat.
+  - Pada uji buffer:
+    - `is_valid: false`
+    - `conflicts` memuat deteksi pelanggaran buffer 15 menit (`RULE_MEETING_BUFFER`)
+    - `suggestions` menyarankan waktu setelah buffer aman (misal 14:15 atau slot berikutnya).
+  - Pada uji jadwal valid:
+    - `is_valid: true`, `violations: []`, `conflicts: []`
+    - `sources_cited` lengkap menyertakan referensi aturan operasional, kalender, dan kontak.
+
+#### TC-15: Pembuatan Draf Rencana Aksi Terstruktur & Tiket Persetujuan (`draft_action_plan`)
+- **Tujuan**: Memastikan pembuatan draft Action Plan terstruktur menghasilkan tiket persetujuan kriptografis (`TKT-HEK-XXXX`), menyusun 3 item aksi terstruktur (kandidat, pewawancara, kalender), mengaktifkan anti-auto-chain cooldown, dan menegakkan pertahanan berlapis (defense-in-depth) di sisi server jika jadwal melanggar aturan atau bentrok.
+- **Aksi MCP**:
+  1. *Uji Defense-in-Depth*: Panggil `draft_action_plan(title="Technical Interview", candidate_id=12, interviewer_id=10, start_time="2026-11-13T12:00:00+07:00")`.
+  2. *Uji Happy Path*: Panggil `draft_action_plan(title="Technical Interview Frontend", candidate_id=12, interviewer_id=10, start_time="2026-11-10T10:00:00+07:00", duration_minutes=60, location_type="GOOGLE_MEET")`.
+  3. *Verifikasi Hasil Draf*: Periksa atribut `approval_ticket`, `items`, `sources_cited`, dan status `AWAITING_APPROVAL`.
+- **Kriteria Keberhasilan (Pass)**:
+  - Pada uji defense-in-depth:
+    - Server menolak pembuatan draf dengan `status: "REJECTED_OPERATIONAL_RULE"` atau `REJECTED_CALENDAR_CONFLICT`.
+    - Tidak ada rencana aksi atau tiket approval yang diterbitkan.
+  - Pada uji happy path:
+    - `status: "DRAFT_CREATED"` dan rencana aksi berstatus `AWAITING_APPROVAL`.
+    - `approval_ticket` diterbitkan dengan format terstandarisasi `TKT-HEK-XXXX`.
+    - `items` memuat 3 item lengkap: 1 item kalender, 1 pesan WhatsApp/email kandidat, 1 notifikasi pewawancara.
+    - `confirmation_card_ready: true` dengan format kartu konfirmasi Who, What, When, Where, Sources Cited untuk WorkBuddy UI.
+    - Timestamp draf tercatat di memory server untuk menegakkan Anti-Auto-Chain cooldown saat pemanggilan `approve_action_plan`.
