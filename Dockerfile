@@ -9,7 +9,7 @@
 FROM node:22-bookworm-slim AS frontend-deps
 WORKDIR /build/frontend
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@9 --activate
 
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
@@ -20,7 +20,7 @@ RUN pnpm install --frozen-lockfile
 FROM node:22-bookworm-slim AS frontend-builder
 WORKDIR /build/frontend
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@9 --activate
 
 COPY --from=frontend-deps /build/frontend/node_modules ./node_modules
 COPY frontend/ ./
