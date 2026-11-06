@@ -12,11 +12,14 @@ import json
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.DatabaseSession import AsyncSessionLocal
 from app.main import app
 from app.mcp.McpAuthGuard import _PLAN_DRAFT_TIMESTAMPS_MS, MIN_APPROVAL_COOLDOWN_MS
 from app.mcp.McpServer import heketon_mcp
+from app.model.OrchestrationModel import CalendarEvent
 from app.service.InterviewSessionService import InterviewSessionService
 
 
@@ -144,6 +147,10 @@ class TestMcpIntegrationE2E:
         budi_id = contacts["contacts"][0]["id"]
 
         # Step 2: Validate schedule (Read-only, zero LLM)
+        async with AsyncSessionLocal() as session:
+            await session.execute(delete(CalendarEvent).where(CalendarEvent.vrule_code == "[cal-agent-booked]"))
+            await session.commit()
+
         val_res = await heketon_mcp.call_tool(
             "validate_schedule",
             {
@@ -209,6 +216,12 @@ class TestMcpIntegrationE2E:
         assert approve_data["success"] is True
         assert approve_data["status"] == "UNDO_WINDOW"
         assert approve_data["undo_buffer_seconds"] == 60
+
+        # Teardown: undo to leave calendar & thread pristine for subsequent tests
+        await heketon_mcp.call_tool(
+            "undo_action_plan",
+            {"plan_id": plan_id, "reason": "Test teardown cleanup"},
+        )
 
     async def test_voice_note_orchestration_and_audit(self):
         """Test voice note transcription-to-action triage with audit log verification."""

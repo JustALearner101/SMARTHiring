@@ -358,11 +358,18 @@ class SlotConflictCheckerService:
         w_start = policy.twork_start
         w_end = policy.twork_end
 
-        # Evaluate in interviewer's local timezone (WIB/WITA/WIT)
+        # Evaluate in requested timezone (WIB/WITA/WIT)
+        req_tz = (request.timezone or "WIB").upper()
+        r_offset = TZ_OFFSETS.get(req_tz, TZ_OFFSETS["WIB"])
+        r_start = start_utc + r_offset
+        r_end = end_utc + r_offset
+
+        # Interviewer's local timezone (for Friday prayer and logging)
         i_offset = TZ_OFFSETS.get(interviewer_tz, TZ_OFFSETS["WIB"])
         i_start = start_utc + i_offset
         i_end = end_utc + i_offset
-        if i_start.time() < w_start or i_end.time() > w_end:
+
+        if r_start.time() < w_start or r_end.time() > w_end:
             alt_strs, alt_dtos = await self._find_valid_alternatives(
                 base_date=req_date,
                 timezone_str=request.timezone,
@@ -374,7 +381,7 @@ class SlotConflictCheckerService:
             return SlotConflictCheckResultDTO(
                 is_available=False,
                 status="OUTSIDE_WORKING_HOURS",
-                message=f"Slot corresponds to {i_start.strftime('%H:%M')} - {i_end.strftime('%H:%M')} {interviewer_tz}, which is outside interviewer's operational working hours ({w_start.strftime('%H:%M')} - {w_end.strftime('%H:%M')} {interviewer_tz}).",
+                message=f"Slot corresponds to {r_start.strftime('%H:%M')} - {r_end.strftime('%H:%M')} {req_tz}, which is outside operational working hours ({w_start.strftime('%H:%M')} - {w_end.strftime('%H:%M')} {req_tz}).",
                 rule_code="RULE_WORKING_HOURS",
                 suggested_alternatives=alt_strs,
                 suggested_alternative_slots=alt_dtos,

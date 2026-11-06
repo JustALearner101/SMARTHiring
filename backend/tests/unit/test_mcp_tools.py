@@ -6,7 +6,9 @@ File: backend/tests/unit/test_mcp_tools.py
 import json
 
 import pytest
+from sqlalchemy import delete
 
+from app.db.DatabaseSession import AsyncSessionLocal
 from app.mcp.McpAuthGuard import (
     _PLAN_DRAFT_TIMESTAMPS_MS,
     MIN_APPROVAL_COOLDOWN_MS,
@@ -15,6 +17,7 @@ from app.mcp.McpAuthGuard import (
     verify_caller_rbac,
 )
 from app.mcp.McpServer import heketon_mcp
+from app.model.OrchestrationModel import CalendarEvent
 
 
 def _parse_tool_result(res) -> dict:
@@ -192,6 +195,10 @@ async def test_mcp_tool_check_slot_conflict():
 @pytest.mark.asyncio
 async def test_mcp_tool_validate_schedule():
     """Verify validate_schedule enforces operational rules and buffer deterministically."""
+    async with AsyncSessionLocal() as session:
+        await session.execute(delete(CalendarEvent).where(CalendarEvent.vrule_code == "[cal-agent-booked]"))
+        await session.commit()
+
     # 1. Valid slot (Monday 10:00 WIB)
     res_valid = await heketon_mcp.call_tool(
         "validate_schedule",
@@ -258,6 +265,10 @@ async def test_mcp_tool_validate_schedule():
 @pytest.mark.asyncio
 async def test_mcp_tool_draft_action_plan():
     """Verify draft_action_plan creates pending plan and enforces server defense-in-depth."""
+    async with AsyncSessionLocal() as session:
+        await session.execute(delete(CalendarEvent).where(CalendarEvent.vrule_code == "[cal-agent-booked]"))
+        await session.commit()
+
     # 1. Happy path: valid draft creation
     res_draft = await heketon_mcp.call_tool(
         "draft_action_plan",
@@ -363,7 +374,6 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
-from app.db.DatabaseSession import AsyncSessionLocal
 from app.model.FollowupModel import FollowupPlan
 from app.model.OrchestrationModel import NegotiationThread
 from app.service.ActionPlanService import ActionPlanService

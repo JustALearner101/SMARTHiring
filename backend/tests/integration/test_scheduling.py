@@ -167,6 +167,10 @@ async def test_sched12_execution_happens_exactly_once(client: AsyncClient, test_
     )
     assert executed <= 1
 
+    from sqlalchemy import delete
+    await test_session.execute(delete(CalendarEvent).where(CalendarEvent.vrule_code == "[cal-agent-booked]"))
+    await test_session.commit()
+
 
 async def test_sched13_rapid_triple_approve_approves_only_once(client: AsyncClient, test_session: AsyncSession):
     plan_id = (await _plan(client))["id"]

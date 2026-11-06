@@ -389,10 +389,10 @@ class OrchestratorCommandService:
 
     async def handle_inbound_reply(self, request: InboundReplyRequestDTO) -> ActionPlanDTO | dict[str, Any]:
         reply = request.reply_text.strip()
-        thread_id = request.thread_id or 1
+        thread_id = request.thread_id
 
-        # Check existing thread
-        thread = await self.thread_repo.get_thread(thread_id)
+        # Check existing thread if thread_id explicitly specified
+        thread = await self.thread_repo.get_thread(thread_id) if thread_id else None
         if thread and thread.vstatus in ("DEADLOCK_ESCALATED", "HALTED", "COMPLETED"):
             return {
                 "status": thread.vstatus,
@@ -486,8 +486,8 @@ class OrchestratorCommandService:
                 actor="AI_ORCHESTRATOR",
                 actor_type="AGENT",
                 title="Out-of-Scope Negotiation Escalated to HR",
-                description=f"Thread #{thread_id}: {reason}",
-                metadata={"thread_id": thread_id, "topic": "out_of_scope"},
+                description=f"Thread #{thread_id or 1}: {reason}",
+                metadata={"thread_id": thread_id or 1, "topic": "out_of_scope"},
             )
             return {
                 "status": "DEADLOCK_ESCALATED",
@@ -507,8 +507,8 @@ class OrchestratorCommandService:
                 actor="AI_ORCHESTRATOR",
                 actor_type="AGENT",
                 title="Interview Schedule Confirmed",
-                description=f"Interview schedule on thread #{thread_id} has been confirmed by {request.sender_role}.",
-                metadata={"thread_id": thread_id},
+                description=f"Interview schedule on thread #{thread_id or 1} has been confirmed by {request.sender_role}.",
+                metadata={"thread_id": thread_id or 1},
             )
             return {
                 "status": "CONFIRMED",
