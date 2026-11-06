@@ -68,7 +68,7 @@ class SimulatorWhatsAppService:
                 action_metadata={
                     "proposed_slot": "Friday afternoon",
                     "conflict_detected": True,
-                    "conflict_reason": "Friday afternoon slot conflicts with Friday prayer rule 11:30 - 13:00 WIB [rule-jumatan].",
+                    "conflict_reason": "Friday afternoon slot conflicts with Friday prayer rule 11:30 - 13:00 WIB [RULE_FRIDAY_PRAYER].",
                 },
             ),
         ]

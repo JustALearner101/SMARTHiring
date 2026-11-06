@@ -88,8 +88,11 @@ async def test_salary_masking_for_interviewer_vs_hr(client: AsyncClient):
 
 # ------------------ Approval Gate Enforcement & 3-Role RBAC ------------------ #
 async def test_action_plan_approval_gate_rbac(client: AsyncClient):
-    # Trigger plan creation
-    await client.post("/api/v1/orchestrator/command", json={"command": "Review plan test rbac"})
+    # Trigger plan creation with explicit candidate and interviewer
+    await client.post(
+        "/api/v1/orchestrator/command",
+        json={"command": "Jadwalkan technical interview untuk Rina Kusuma dengan Budi Santoso hari Kamis"},
+    )
     curr_res = await client.get("/api/v1/actionPlans/current")
     assert curr_res.status_code == 200
     plan_id = curr_res.json()["data"]["id"]

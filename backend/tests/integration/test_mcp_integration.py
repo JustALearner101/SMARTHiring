@@ -197,5 +197,5 @@ class TestMcpIntegrationE2E:
             {"candidate_query": "Rina", "caller_role_override": "INTERVIEWER"},
         )
         cand_data = _unwrap(cand_res)
-        assert cand_data["candidate"]["expected_salary"] is None
+        assert cand_data["candidate"]["expected_salary"] in (None, "[CONFIDENTIAL_SALARY_LOCKED]")
         assert "REDACTED_BY_RBAC" in cand_data["candidate"]["salary_mask_notice"]

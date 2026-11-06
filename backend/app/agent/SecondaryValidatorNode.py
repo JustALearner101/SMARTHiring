@@ -1,4 +1,4 @@
-from datetime import datetime, time, timedelta
+from datetime import UTC, datetime, time, timedelta
 from typing import Any
 
 from app.agent.AgentState import OrchestratorAgentState
@@ -65,11 +65,15 @@ class SecondaryValidatorNode:
         if not slot:
             return {
                 "secondary_validator_passed": True,
+                "validator_action": "NONE",
+                "validator_rule": None,
                 "validator_notes": "No calendar slot needs validation.",
             }
 
         start_utc_str = slot.get("start_utc", "")
         start_utc = datetime.fromisoformat(start_utc_str)
+        duration_minutes = int(slot.get("duration_minutes") or 60)
+        duration_delta = timedelta(minutes=duration_minutes)
         # WIB is UTC+7
         wib_time = start_utc + timedelta(hours=7)
         cmd_lower = state.get("command", "").lower()
@@ -84,9 +88,9 @@ class SecondaryValidatorNode:
         if wib_time.weekday() in (5, 6):
             days_to_monday = 7 - wib_time.weekday()
             adjusted_date = wib_time.date() + timedelta(days=days_to_monday)
-            adjusted_wib = datetime.combine(adjusted_date, time(10, 0))
+            adjusted_wib = datetime.combine(adjusted_date, time(10, 0), tzinfo=UTC)
             adjusted_start_utc = adjusted_wib - timedelta(hours=7)
-            adjusted_end_utc = adjusted_start_utc + timedelta(hours=1)
+            adjusted_end_utc = adjusted_start_utc + duration_delta
             adjusted_wita = adjusted_wib + timedelta(hours=1)
             adjusted_wit = adjusted_wib + timedelta(hours=2)
 
@@ -119,6 +123,8 @@ class SecondaryValidatorNode:
                 "sources_cited": sources,
                 "items": items,
                 "secondary_validator_passed": True,
+                "validator_action": "AUTO_SHIFTED",
+                "validator_rule": "RULE_WEEKEND_BLACKOUT",
                 "validator_notes": notes,
                 "status": "PENDING APPROVAL",
             }
@@ -126,18 +132,19 @@ class SecondaryValidatorNode:
         # 2. Check Friday Prayer Blackout (weekday == 4 is Friday)
         is_friday_prayer_conflict = False
         if wib_time.weekday() == 4:
-            f_start = time(11, 30)
-            f_end = time(13, 0)
-            slot_time = wib_time.time()
-            if not (slot_time < f_start or slot_time >= f_end) or "11:30" in cmd_lower or "12:00" in cmd_lower or "jumat siang" in cmd_lower:
+            f_start = wib_time.replace(hour=11, minute=30, second=0, microsecond=0)
+            f_end = wib_time.replace(hour=13, minute=0, second=0, microsecond=0)
+            slot_end_wib = wib_time + duration_delta
+            # Overlap-aware: an 11:00-12:00 slot must also be rejected.
+            if wib_time < f_end and slot_end_wib > f_start:
                 is_friday_prayer_conflict = True
 
         if is_friday_prayer_conflict:
             # Shift to safe Friday afternoon slot: 14:00 WIB (07:00 UTC)
             adjusted_date = wib_time.date()
-            adjusted_wib = datetime.combine(adjusted_date, time(14, 0))
+            adjusted_wib = datetime.combine(adjusted_date, time(14, 0), tzinfo=UTC)
             adjusted_start_utc = adjusted_wib - timedelta(hours=7)
-            adjusted_end_utc = adjusted_start_utc + timedelta(hours=1)
+            adjusted_end_utc = adjusted_start_utc + duration_delta
             adjusted_wita = adjusted_wib + timedelta(hours=1)
             adjusted_wit = adjusted_wib + timedelta(hours=2)
 
@@ -151,7 +158,7 @@ class SecondaryValidatorNode:
             }
 
             notes = (
-                "Secondary Validator Alert: Proposed Friday slot at 11:30 - 13:00 WIB rejected because it overlaps "
+                "Secondary Validator Passed (Auto-Remediation Applied): Initial Friday slot at 11:30 - 13:00 WIB rejected because it overlaps "
                 "with Friday prayer blackout hours [RULE_FRIDAY_PRAYER]. Slot automatically adjusted to "
                 "14:00 WIB in accordance with company operational policy."
             )
@@ -173,6 +180,8 @@ class SecondaryValidatorNode:
                 "sources_cited": sources,
                 "items": items,
                 "secondary_validator_passed": True,
+                "validator_action": "AUTO_SHIFTED",
+                "validator_rule": "RULE_FRIDAY_PRAYER",
                 "validator_notes": notes,
                 "status": "PENDING APPROVAL",
             }
@@ -187,9 +196,9 @@ class SecondaryValidatorNode:
         inter_offset = tz_offsets.get(inter_tz, timedelta(hours=7))
 
         cand_time = start_utc + cand_offset
-        cand_end_time = cand_time + timedelta(hours=1)
+        cand_end_time = cand_time + duration_delta
         inter_time = start_utc + inter_offset
-        inter_end_time = inter_time + timedelta(hours=1)
+        inter_end_time = inter_time + duration_delta
 
         is_cand_out = cand_time.time() < time(9, 0) or cand_end_time.time() > time(17, 0)
         is_inter_out = inter_time.time() < time(9, 0) or inter_end_time.time() > time(17, 0)
@@ -198,9 +207,9 @@ class SecondaryValidatorNode:
             adjusted_date = wib_time.date()
             # If candidate is in WIT, 14:00 WIB = 16:00 WIT is mutually compatible (within 09:00 - 17:00 for both)
             adjusted_hour = 14 if cand_tz == "WIT" else 10
-            adjusted_wib = datetime.combine(adjusted_date, time(adjusted_hour, 0))
+            adjusted_wib = datetime.combine(adjusted_date, time(adjusted_hour, 0), tzinfo=UTC)
             adjusted_start_utc = adjusted_wib - timedelta(hours=7)
-            adjusted_end_utc = adjusted_start_utc + timedelta(hours=1)
+            adjusted_end_utc = adjusted_start_utc + duration_delta
             adjusted_wita = adjusted_wib + timedelta(hours=1)
             adjusted_wit = adjusted_wib + timedelta(hours=2)
 
@@ -244,6 +253,8 @@ class SecondaryValidatorNode:
                 "sources_cited": sources,
                 "items": items,
                 "secondary_validator_passed": True,
+                "validator_action": "AUTO_SHIFTED",
+                "validator_rule": "RULE_WORKING_HOURS",
                 "validator_notes": notes,
                 "status": "PENDING APPROVAL",
             }
@@ -275,9 +286,12 @@ class SecondaryValidatorNode:
             "proposed_slot": updated_slot,
             "items": items,
             "secondary_validator_passed": True,
+            "validator_action": "NONE",
+            "validator_rule": None,
             "validator_notes": (
                 f"{conflict_prefix}Slot verified to comply with 09:00 - 17:00 operational hours across participants' timezones "
-                f"({inter_tz} and {cand_tz}), free of Friday prayer conflicts, and meets the 15-minute buffer requirement. "
+                f"({inter_tz} and {cand_tz}), outside the Friday prayer blackout window, "
+                f"for the requested {duration_minutes}-minute duration. "
                 f"{tz_conversion_note}"
             ),
             "status": "PENDING APPROVAL",

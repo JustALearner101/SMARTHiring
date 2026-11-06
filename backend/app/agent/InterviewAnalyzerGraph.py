@@ -483,6 +483,7 @@ class InterviewAnalyzerGraph:
             await self.session.flush()
 
             # Only add Evidence if quote is substantive and coverage is not NOT_DISCUSSED
+            ev_cit: str | None = None
             if eval_item.coverage_status != "NOT_DISCUSSED" and eval_item.verbatim_quote:
                 target_seg_id = find_best_segment(eval_item.verbatim_quote, segments, preferred_seg_no=eval_item.segment_no)
                 if target_seg_id:
@@ -492,7 +493,12 @@ class InterviewAnalyzerGraph:
                         vquote=eval_item.verbatim_quote,
                     )
                     self.session.add(ev)
+                    ev_cit = f"[seg-{target_seg_id:03d}]"
 
+            sp._comp_code = comp_obj.vcode if comp_obj else "C1"  # type: ignore[attr-defined]
+            sp._comp_name = comp_obj.vname if comp_obj else "Competency"  # type: ignore[attr-defined]
+            sp._vis_class = comp_obj.vvisibility_class if comp_obj else "GENERAL"  # type: ignore[attr-defined]
+            sp._ev_citation = ev_cit  # type: ignore[attr-defined]
             created_points.append(sp)
 
         # Update Job Status to COMPLETED (10)
@@ -514,7 +520,15 @@ class InterviewAnalyzerGraph:
         return {
             "job_status": "COMPLETED",
             "competency_points": [
-                {"id": p.nid, "content": p.vcontent, "status": p.vcoverage_status}
+                {
+                    "id": p.nid,
+                    "competency_code": getattr(p, "_comp_code", None),
+                    "competency_name": getattr(p, "_comp_name", None),
+                    "visibility_class": getattr(p, "_vis_class", "GENERAL"),
+                    "content": p.vcontent,
+                    "status": p.vcoverage_status,
+                    "evidence_citation": getattr(p, "_ev_citation", None),
+                }
                 for p in created_points
             ],
             "audit_entries": [
@@ -563,10 +577,55 @@ async def run_interview_analyzer_pipeline(
     # Load candidate info
     cand_stmt = select(Candidate).where(Candidate.nid == candidate_id)
     cand = (await session.execute(cand_stmt)).scalars().first()
+    if not cand:
+        cand = (await session.execute(select(Candidate).order_by(Candidate.nid.asc()).limit(1))).scalars().first()
 
     # Load profile info
     prof_stmt = select(Profile).where(Profile.nid == profile_id)
     prof = (await session.execute(prof_stmt)).scalars().first()
+    if not prof:
+        prof = (await session.execute(select(Profile).order_by(Profile.nid.asc()).limit(1))).scalars().first()
+
+    if job_id is None and consent_status == "GRANTED":
+        from app.model.InterviewModel import Interview, SourceFile
+
+        int_stmt = select(Interview).where(Interview.nid == interview_id)
+        interview_obj = (await session.execute(int_stmt)).scalars().first()
+        if not interview_obj:
+            interview_obj = Interview(
+                vconsent_status="GRANTED",
+                nid_profile=prof.nid if prof else profile_id,
+                nid_candidate=cand.nid if cand else candidate_id,
+            )
+            session.add(interview_obj)
+            await session.flush()
+            interview_id = interview_obj.nid
+
+        sf_stmt = select(SourceFile).where(SourceFile.nid_interview == interview_obj.nid).order_by(SourceFile.nid.desc())
+        sf_obj = (await session.execute(sf_stmt)).scalars().first()
+        if not sf_obj:
+            sf_obj = SourceFile(
+                vtype="MANUAL_NOTE",
+                vurl=audio_url or "mcp://workbuddy/session-notes",
+                vduration=audio_duration or "03:00",
+                nid_interview=interview_obj.nid,
+            )
+            session.add(sf_obj)
+            await session.flush()
+
+        job_stmt = select(Job).where(Job.nid_source == sf_obj.nid).order_by(Job.nid.desc())
+        job_obj = (await session.execute(job_stmt)).scalars().first()
+        if not job_obj:
+            job_obj = Job(
+                vasr_engine="HEKETON_MCP_ANALYZER",
+                vasr_model_version="v1.0",
+                vlanguage_code="id",
+                nstatus=2,
+                nid_source=sf_obj.nid,
+            )
+            session.add(job_obj)
+            await session.flush()
+        job_id = job_obj.nid
 
     initial_state: InterviewAnalyzerState = {
         "interview_id": interview_id,

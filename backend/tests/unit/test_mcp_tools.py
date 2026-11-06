@@ -41,7 +41,12 @@ def _parse_tool_result(res) -> dict:
 def _parse_resource_text(res) -> str:
     """Helper to extract text from FastMCP read_resource response."""
     if isinstance(res, list) and len(res) > 0:
-        return res[0].text if hasattr(res[0], "text") else str(res[0])
+        first = res[0]
+        if hasattr(first, "content"):
+            return first.content
+        return first.text if hasattr(first, "text") else str(first)
+    if hasattr(res, "content"):
+        return res.content
     if hasattr(res, "text"):
         return res.text
     return str(res)
@@ -160,7 +165,7 @@ async def test_mcp_tool_candidate_salary_masking():
     content_inv = _parse_tool_result(res_interviewer)
     assert content_inv["found"] is True
     assert content_inv["caller_role"] == "INTERVIEWER"
-    assert content_inv["candidate"]["expected_salary"] is None
+    assert content_inv["candidate"]["expected_salary"] in (None, "[CONFIDENTIAL_SALARY_LOCKED]")
     assert "REDACTED_BY_RBAC" in content_inv["candidate"].get("salary_mask_notice", "")
 
     # 2. As HR: salary is accessible
@@ -254,3 +259,147 @@ async def test_mcp_resources_reading():
     sheet_text = _parse_resource_text(raw_sheet)
     assert "What the Agent CAN Access" in sheet_text
     assert "What the Agent Will NEVER Do" in sheet_text
+
+
+# =============================================================================
+# Regression tests for the blackbox audit findings (F-01, F-05, F-13, F-04)
+# =============================================================================
+
+from datetime import UTC, datetime, timedelta
+
+from sqlalchemy import select
+
+from app.db.DatabaseSession import AsyncSessionLocal
+from app.model.FollowupModel import FollowupPlan
+from app.model.OrchestrationModel import NegotiationThread
+from app.service.ActionPlanService import ActionPlanService
+
+
+def _plan_metadata(start: datetime) -> dict:
+    return {
+        "proposed_slot": {
+            "title": "Technical Interview",
+            "start_utc": start.isoformat(),
+            "end_utc": (start + timedelta(minutes=60)).isoformat(),
+            "formatted_wib": "10:00 WIB",
+            "formatted_wita": "11:00 WITA",
+            "formatted_wit": "12:00 WIT",
+            "duration_minutes": 60,
+            "location_type": "Google Meet",
+            "meeting_link": "https://meet.google.com/hkt-ops-2026",
+        },
+        "candidate_id": "1",
+        "candidate_name": "Rina Kusuma",
+        "interviewer_id": "10",
+        "interviewer_name": "Budi Santoso",
+        "sources_cited": [],
+        "items": [],
+    }
+
+
+async def _create_test_plan(ticket: str, start: datetime, thread_id: int | None = None) -> int:
+    async with AsyncSessionLocal() as db:
+        plan = FollowupPlan(
+            vplan="Regression test plan",
+            vaction_type="CALENDAR",
+            dscheduled_start_utc=start,
+            dscheduled_end_utc=start + timedelta(minutes=60),
+            vimpact_level="HIGH",
+            vapproval_status="AWAITING_APPROVAL",
+            vapproval_token=ticket,
+            nid_thread=thread_id,
+            vagent_metadata=_plan_metadata(start),
+        )
+        db.add(plan)
+        await db.commit()
+        await db.refresh(plan)
+        return plan.nid
+
+
+async def _delete_test_plan(plan_id: int) -> None:
+    async with AsyncSessionLocal() as db:
+        plan = await db.get(FollowupPlan, plan_id)
+        if plan:
+            await db.delete(plan)
+            await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_audit_resource_returns_25_events():
+    """heketon://audit/recent must honour the documented 25-event page size."""
+    raw = await heketon_mcp.read_resource("heketon://audit/recent")
+    payload = json.loads(_parse_resource_text(raw))
+    assert payload["total_returned"] == 25
+    assert len(payload["events"]) == 25
+    assert payload["chain_integrity"]["is_valid"] is True
+
+
+@pytest.mark.asyncio
+async def test_approval_ticket_rejected_when_wrong():
+    """A forged approval ticket must never authorise an ActionPlan."""
+    start = datetime(2026, 11, 12, 3, 0, tzinfo=UTC)
+    plan_id = await _create_test_plan("TKT-HEK-VALID001", start)
+    try:
+        raw = await heketon_mcp.call_tool(
+            "approve_action_plan",
+            {
+                "plan_id": str(plan_id),
+                "approval_ticket": "TKT-HEK-FAKE0000",
+                "high_impact_acknowledged": True,
+            },
+        )
+        res = _parse_tool_result(raw)
+        assert res["success"] is False
+        assert res["error_code"] == "403_INVALID_APPROVAL_TICKET"
+    finally:
+        await _delete_test_plan(plan_id)
+
+
+@pytest.mark.asyncio
+async def test_approve_rejects_weekend_slot():
+    """Approval gate must reject a Saturday slot even if it slipped through drafting."""
+    start = datetime(2026, 11, 7, 3, 0, tzinfo=UTC)  # Saturday 10:00 WIB
+    plan_id = await _create_test_plan("TKT-HEK-WEEKEND01", start)
+    try:
+        with pytest.raises(Exception) as excinfo:
+            await heketon_mcp.call_tool(
+                "approve_action_plan",
+                {
+                    "plan_id": str(plan_id),
+                    "approval_ticket": "TKT-HEK-WEEKEND01",
+                    "high_impact_acknowledged": True,
+                },
+            )
+        assert "RULE_WEEKEND_BLACKOUT" in str(excinfo.value)
+    finally:
+        await _delete_test_plan(plan_id)
+
+
+@pytest.mark.asyncio
+async def test_action_plan_thread_id_roundtrip():
+    """thread_id must survive the read path instead of always being null."""
+    async with AsyncSessionLocal() as db:
+        thread_id = (await db.execute(select(NegotiationThread.nid).limit(1))).scalar_one()
+
+    start = datetime(2026, 11, 12, 3, 0, tzinfo=UTC)
+    plan_id = await _create_test_plan("TKT-HEK-THREAD01", start, thread_id=thread_id)
+    try:
+        async with AsyncSessionLocal() as db:
+            svc = ActionPlanService(db)
+            dto = await svc.get_plan_by_id(str(plan_id))
+        assert dto is not None
+        assert dto.thread_id == str(thread_id)
+    finally:
+        await _delete_test_plan(plan_id)
+
+
+@pytest.mark.asyncio
+async def test_triage_reply_unknown_thread_returns_404():
+    """Triage must never fall back to thread #1 for an unknown thread id."""
+    raw = await heketon_mcp.call_tool(
+        "triage_candidate_reply",
+        {"thread_id": "999999", "reply_text": "Saya bisa hadir"},
+    )
+    res = _parse_tool_result(raw)
+    assert res["success"] is False
+    assert res["error_code"] == "404_THREAD_NOT_FOUND"

@@ -10,6 +10,7 @@ from app.dto.SlotConflictCheckerDTO import (
     SuggestedSlotDTO,
 )
 from app.model.CandidateModel import Candidate
+from app.model.UserModel import User
 from app.repository.CalendarMatrixRepository import CalendarMatrixRepository
 from app.repository.HolidayRepository import HolidayRepository
 from app.repository.OperationalPolicyRepository import OperationalPolicyRepository
@@ -131,8 +132,72 @@ class SlotConflictCheckerService:
         self,
         request: SlotConflictCheckRequestDTO,
     ) -> SlotConflictCheckResultDTO:
-        interviewer_id_int = int(request.interviewer_id) if request.interviewer_id.isdigit() else 1
+        if not request.interviewer_id.strip().isdigit() or int(request.interviewer_id.strip()) <= 0:
+            return SlotConflictCheckResultDTO(
+                is_available=False,
+                status="INTERVIEWER_NOT_FOUND",
+                message=f"Interviewer ID '{request.interviewer_id}' is not valid or does not exist in directory.",
+                rule_code="RULE_ENTITY_NOT_FOUND",
+                sources_cited=[
+                    {
+                        "id": "dir-employee-directory",
+                        "ref_code": "[dir-employee-directory:HQ-JKT]",
+                        "source_type": "DIRECTORY",
+                        "title": "Employee Directory Lookup",
+                    }
+                ],
+            )
+        interviewer_id_int = int(request.interviewer_id.strip())
         cand_id_int = int(request.candidate_id) if request.candidate_id and request.candidate_id.isdigit() else None
+
+        interviewer_name = "Budi Santoso"
+        interviewer_uid = f"EMP-ENG-00{interviewer_id_int}"
+        if interviewer_id_int != 1:
+            try:
+                user_res = await self.session.execute(select(User).where(User.nid == interviewer_id_int))
+                interviewer_obj = user_res.scalars().first()
+                if interviewer_obj is None:
+                    return SlotConflictCheckResultDTO(
+                        is_available=False,
+                        status="INTERVIEWER_NOT_FOUND",
+                        message=f"Interviewer with ID '{request.interviewer_id}' was not found in employee directory.",
+                        rule_code="RULE_ENTITY_NOT_FOUND",
+                        sources_cited=[
+                            {
+                                "id": "dir-employee-directory",
+                                "ref_code": "[dir-employee-directory:HQ-JKT]",
+                                "source_type": "DIRECTORY",
+                                "title": "Employee Directory Lookup",
+                            }
+                        ],
+                    )
+                if isinstance(getattr(interviewer_obj, "vname", None), str):
+                    interviewer_name = interviewer_obj.vname
+                if isinstance(getattr(interviewer_obj, "vuserid", None), str):
+                    interviewer_uid = interviewer_obj.vuserid
+            except Exception:
+                pass
+
+        inter_slug = interviewer_name.lower().replace(" ", "-")
+        cal_source = {
+            "id": f"cal-hq-jkt-{interviewer_uid.lower()}",
+            "ref_code": f"[cal-{inter_slug}:{interviewer_uid}:HQ-JKT]",
+            "source_type": "CALENDAR",
+            "title": f"Calendar: {interviewer_name} ({interviewer_uid} / HQ-JKT)",
+        }
+
+        def _make_sources(rule_code: str, rule_title: str) -> list[dict[str, Any]]:
+            rule_slug = rule_code.lower().replace("_", "-")
+            return [
+                cal_source,
+                {
+                    "id": rule_slug,
+                    "ref_code": f"[{rule_slug}:{rule_code}]",
+                    "source_type": "OPERATIONAL_RULE",
+                    "title": rule_title,
+                },
+            ]
+
         policy = await self.policy_repo.get_policy()
 
         try:
@@ -176,6 +241,7 @@ class SlotConflictCheckerService:
                 rule_code="RULE_WEEKEND_BLACKOUT",
                 suggested_alternatives=alt_strs,
                 suggested_alternative_slots=alt_dtos,
+                sources_cited=_make_sources("RULE_WEEKEND_BLACKOUT", "Rule: Weekend Blackout Policy"),
                 calculated_end_time=calc_end_time,
                 calculated_end_utc=calc_end_utc,
             )
@@ -201,6 +267,7 @@ class SlotConflictCheckerService:
                 rule_code="RULE_NATIONAL_HOLIDAY",
                 suggested_alternatives=alt_strs,
                 suggested_alternative_slots=alt_dtos,
+                sources_cited=_make_sources("RULE_NATIONAL_HOLIDAY", f"Holiday: {holiday.vname}"),
                 calculated_end_time=calc_end_time,
                 calculated_end_utc=calc_end_utc,
             )
@@ -226,6 +293,7 @@ class SlotConflictCheckerService:
                 rule_code="RULE_WORKING_HOURS",
                 suggested_alternatives=alt_strs,
                 suggested_alternative_slots=alt_dtos,
+                sources_cited=_make_sources("RULE_WORKING_HOURS", "Rule: Operational Working Hours (09:00 - 17:00)"),
                 calculated_end_time=calc_end_time,
                 calculated_end_utc=calc_end_utc,
             )
@@ -258,6 +326,7 @@ class SlotConflictCheckerService:
                     rule_code="RULE_FRIDAY_PRAYER",
                     suggested_alternatives=alt_strs,
                     suggested_alternative_slots=alt_dtos,
+                    sources_cited=_make_sources("RULE_FRIDAY_PRAYER", "Rule: Friday Prayer Blackout (11:30 - 13:00)"),
                     calculated_end_time=calc_end_time,
                     calculated_end_utc=calc_end_utc,
                 )
@@ -291,6 +360,7 @@ class SlotConflictCheckerService:
                         rule_code="RULE_WORKING_HOURS",
                         suggested_alternatives=alt_strs,
                         suggested_alternative_slots=alt_dtos,
+                        sources_cited=_make_sources("RULE_WORKING_HOURS", "Rule: Cross-Timezone Working Hours"),
                         calculated_end_time=calc_end_time,
                         calculated_end_utc=calc_end_utc,
                     )
@@ -321,6 +391,7 @@ class SlotConflictCheckerService:
                 conflicting_event=conf_ev.vtitle,
                 suggested_alternatives=alt_strs,
                 suggested_alternative_slots=alt_dtos,
+                sources_cited=_make_sources("RULE_CALENDAR_BUSY", f"Conflict: {conf_ev.vtitle}"),
                 calculated_end_time=calc_end_time,
                 calculated_end_utc=calc_end_utc,
             )
@@ -335,6 +406,7 @@ class SlotConflictCheckerService:
             end_utc=(end_utc + buffer_delta).replace(tzinfo=UTC),
         )
         if buffer_conflicts:
+            buf_ev = buffer_conflicts[0]
             alt_strs, alt_dtos = await self._find_valid_alternatives(
                 base_date=req_date,
                 timezone_str=request.timezone,
@@ -346,10 +418,12 @@ class SlotConflictCheckerService:
             return SlotConflictCheckResultDTO(
                 is_available=False,
                 status="INSUFFICIENT_BUFFER",
-                message=f"Buffer time is less than the required safe buffer of {policy.nbuffer_minutes} minutes before/after another event.",
+                message=f"Buffer time is less than the required safe buffer of {policy.nbuffer_minutes} minutes before/after existing event '{buf_ev.vtitle}'.",
                 rule_code="RULE_MEETING_BUFFER",
+                conflicting_event=buf_ev.vtitle,
                 suggested_alternatives=alt_strs,
                 suggested_alternative_slots=alt_dtos,
+                sources_cited=_make_sources("RULE_MEETING_BUFFER", f"Rule: {policy.nbuffer_minutes}-Minute Meeting Buffer"),
                 calculated_end_time=calc_end_time,
                 calculated_end_utc=calc_end_utc,
             )
@@ -358,6 +432,7 @@ class SlotConflictCheckerService:
             is_available=True,
             status="VALID",
             message=f"Schedule slot is available and complies with all operational rules ({request.timezone}).",
+            sources_cited=_make_sources("RULE_WORKING_HOURS", "Rule: Operational Working Hours Compliance"),
             calculated_end_time=calc_end_time,
             calculated_end_utc=calc_end_utc,
         )

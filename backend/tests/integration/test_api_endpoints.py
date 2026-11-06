@@ -116,6 +116,10 @@ async def test_candidate_crud_flow(client: AsyncClient):
     orig_res = await client.get(f"/api/v1/candidates/{cand_id}")
     assert orig_res.json()["data"]["status"] == "REJECTED"
 
+    # Clean up test candidates so database remains clean
+    await client.delete(f"/api/v1/candidates/{reapplied['id']}", headers={"X-Demo-Role": "HR"})
+    await client.delete(f"/api/v1/candidates/{cand_id}", headers={"X-Demo-Role": "HR"})
+
 
 # ------------------ Contact Endpoints ------------------ #
 async def test_contact_crud_flow(client: AsyncClient):
@@ -147,6 +151,10 @@ async def test_contact_crud_flow(client: AsyncClient):
     patch_res = await client.patch(f"/api/v1/contacts/{user_id}", json={"working_hours": "08:30 - 17:30"})
     assert patch_res.status_code == 200
     assert patch_res.json()["data"]["working_hours"] == "08:30 - 17:30"
+
+    # 4. Clean up test contact so tblm_user stays clean
+    del_res = await client.delete(f"/api/v1/contacts/{user_id}", headers={"X-Demo-Role": "ADMIN"})
+    assert del_res.status_code == 200
 
 
 # ------------------ Holiday Endpoints ------------------ #
@@ -181,11 +189,18 @@ async def test_operational_policy_endpoints(client: AsyncClient):
     assert policy["work_start_time"] == "09:00"
     assert policy["max_negotiation_rounds"] == 3
 
-    # 2. Update policy
+    # 2. Update policy (restore the original value afterwards so the shared dev DB
+    #    does not keep a mutated buffer that contradicts the documented default).
+    original_buffer = policy["buffer_minutes"]
     policy["buffer_minutes"] = 20
     put_res = await client.put("/api/v1/operationalRules", json=policy)
     assert put_res.status_code == 200
     assert put_res.json()["data"]["buffer_minutes"] == 20
+
+    policy["buffer_minutes"] = original_buffer
+    restore_res = await client.put("/api/v1/operationalRules", json=policy)
+    assert restore_res.status_code == 200
+    assert restore_res.json()["data"]["buffer_minutes"] == original_buffer
 
 
 # ------------------ Rubrics Endpoint ------------------ #

@@ -89,6 +89,16 @@ PRINSIP PENGUJIAN:
   - `status` mengembalikan `WEEKEND_BLOCKED`.
   - `rule_code`: `RULE_WEEKEND_BLACKOUT`.
 
+#### TC-04b: Penegakan Meeting Buffer 15 Menit & Validasi Jadwal Eksisting (RULE_MEETING_BUFFER)
+- **Tujuan**: Memastikan sistem mendeteksi konflik jadwal eksisting dan mewajibkan jeda penyangga minimal 15 menit sebelum/setelah rapat.
+- **Aksi MCP**:
+  - Cari jadwal sibuk pewawancara via `search_contacts(query="Budi Santoso")` (Budi Santoso `nid=10` memiliki agenda "Weekly Engineering Sync" Senin 2026-11-09 13:00–14:00 WIB).
+  - Panggil `check_slot_conflict(interviewer_id="10", date="2026-11-09", time="13:00", timezone="WIB")` (Tepat bentrok).
+  - Panggil `check_slot_conflict(interviewer_id="10", date="2026-11-09", time="14:05", timezone="WIB")` (Hanya 5 menit setelah selesai rapat, melanggar buffer 15 menit).
+- **Kriteria Keberhasilan (Pass)**:
+  - Pada jam 13:00 WIB: `status` = `CONFLICT_EXISTING_EVENT`, `conflicting_event` = `Weekly Engineering Sync`.
+  - Pada jam 14:05 WIB: `status` = `INSUFFICIENT_BUFFER`, `rule_code` = `RULE_MEETING_BUFFER`, `confifikasi_event` / `conflicting_event` = `Weekly Engineering Sync`.
+
 ---
 
 ### TEST SUITE 2: NEGOTIATION THREADS & STATE MANAGEMENT
@@ -186,9 +196,9 @@ PRINSIP PENGUJIAN:
 #### TC-11: Anti-Auto-Chain Cooldown Enforcement (> 2.000 ms)
 - **Tujuan**: Memastikan agen otomatis tidak dapat menyetujui tiket seketika tanpa jeda kognitif manusia.
 - **Aksi MCP**:
-  - Panggil `approve_action_plan` kurang dari 2 detik setelah triage plan dibuat.
+  - Panggil `approve_action_plan` kurang dari 2 detik setelah triage plan dibuat, atau kirim parameter `simulate_fast_chain=True` (atau `simulated_elapsed_ms=150`) jika terhambat latensi jaringan transport MCP.
 - **Kriteria Keberhasilan (Pass)**:
-  - Ditolak dengan status error `COOLDOWN_ACTIVE` / `Anti-Auto-Chain Violation`.
+  - Ditolak dengan `status: "COOLDOWN_ACTIVE"`, `error_code: "409_AUTO_CHAIN_BLOCKED"`, dan menyebutkan pelanggaran cooldown.
 
 #### TC-12: High-Impact Approval & Window Undo 60 Detik
 - **Tujuan**: Memastikan status beralih ke `APPROVED` dan menyediakan jendela pembatalan 60 detik.

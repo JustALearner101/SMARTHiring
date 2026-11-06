@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from app.dto.BaseDTO import BaseDTO
 
@@ -27,6 +27,7 @@ class ThreadMessageDTO(BaseDTO):
 
 class NegotiationThreadDTO(BaseDTO):
     id: str
+    thread_id: str | None = None
     candidate_id: str
     candidate_name: str
     candidate_channel: Literal["whatsapp", "email"]
@@ -47,3 +48,9 @@ class NegotiationThreadDTO(BaseDTO):
     messages: list[ThreadMessageDTO] = Field(default_factory=list)
     escalation_reason: str | None = None
     agreed_slot: str | None = None
+
+    @model_validator(mode="after")
+    def _sync_thread_id(self) -> "NegotiationThreadDTO":
+        if not self.thread_id and self.id:
+            self.thread_id = str(self.id)
+        return self

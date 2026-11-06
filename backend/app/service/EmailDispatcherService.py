@@ -119,7 +119,7 @@ class EmailDispatcherService:
                 SmartHiring AI Orchestrator
             </h1>
             <p style="margin: 8px 0 0 0; font-size: 14px; color: #e0e7ff;">
-                User Technical Interview Schedule Confirmation
+                Interview Schedule Confirmation
             </p>
         </div>
 
@@ -294,7 +294,7 @@ class EmailDispatcherService:
         ics_content = self._generate_ics(
             start_utc=cal_start,
             end_utc=cal_end,
-            summary=f"User Technical Interview: {recipient_name}",
+            summary=f"Technical Interview: {recipient_name}",
             description=content,
             meeting_link=meeting_link,
             recipient_email=to_email,

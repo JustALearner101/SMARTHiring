@@ -1,6 +1,7 @@
 import logging
 import time
 from datetime import UTC, datetime, timedelta
+from datetime import time as dt_time
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +18,7 @@ from app.dto.ActionPlanDTO import (
 from app.exception.CustomException import ConflictException, NotFoundException
 from app.model.FollowupModel import FollowupPlan
 from app.repository.ActionPlanRepository import ActionPlanRepository
+from app.repository.HolidayRepository import HolidayRepository
 from app.service.AuditLogService import AuditLogService
 
 logger = logging.getLogger(__name__)
@@ -28,6 +30,7 @@ class ActionPlanService:
 
         self.session = session
         self.action_plan_repo = ActionPlanRepository(session)
+        self.holiday_repo = HolidayRepository(session)
         self.audit_service = AuditLogService(session)
         self.executor_node = ExecutorNode(session)
 
@@ -199,6 +202,11 @@ class ActionPlanService:
 
         return ActionPlanDTO(
             id=str(plan.nid),
+            thread_id=(
+                str(plan.nid_thread)
+                if getattr(plan, "nid_thread", None)
+                else str(meta.get("thread_id") or plan.nid)
+            ),
             candidate_id=str(meta.get("candidate_id") or "1"),
             candidate_name=str(meta.get("candidate_name") or "Candidate"),
             candidate_position=str(meta.get("candidate_position") or "Position"),
@@ -233,7 +241,7 @@ class ActionPlanService:
             proposed_slot=slot_dto,
             sources_cited=sources_dtos,
             items=items_dtos,
-            created_at=plan.dcrea.isoformat() if plan.dcrea else now.isoformat(),
+            created_at=str(meta.get("created_at") or (plan.dcrea.astimezone(UTC).isoformat() if plan.dcrea else now.isoformat())),
             undo_expires_at=undo_exp,
             approval_ticket=plan.vapproval_token or meta.get("approval_ticket"),
             entity_resolution=meta.get("entity_resolution"),
@@ -359,38 +367,50 @@ class ActionPlanService:
             try:
                 st_utc = datetime.fromisoformat(start_utc_str)
                 st_wib = st_utc + timedelta(hours=7)
-                # Friday prayer blackout (11:30 - 13:00 WIB)
-                if st_wib.weekday() == 4:
-                    minute_of_day = st_wib.hour * 60 + st_wib.minute
-                    if 11 * 60 + 30 <= minute_of_day < 13 * 60:
-                        err_msg = (
-                            "Secondary Validator Rejection: Slot yang diajukan (Jumat 11:30 - 13:00 WIB) "
-                            "melanggar aturan operasional waktu ibadah sholat Jumat [rule-jumatan]."
-                        )
-                        await self.audit_service.log_event(
-                            event_type="VALIDATION_VIOLATION_BLOCKED",
-                            actor=request.approved_by,
-                            actor_type="AGENT",
-                            title="Approval Blocked by Secondary Validator",
-                            description=err_msg,
-                            metadata={"plan_id": p_id, "slot": slot_to_verify},
-                        )
-                        raise ConflictException(err_msg)
-                # Indonesian working hours (09:00 - 17:00 WIB)
-                if st_wib.hour < 9 or st_wib.hour >= 17:
-                    err_msg = (
-                        f"Secondary Validator Rejection: Slot pukul {st_wib.strftime('%H:%M')} WIB "
-                        "berada di luar jam kerja operasional (09:00 - 17:00 WIB) [rule-jam-kerja]."
+                duration = int(slot_to_verify.get("duration_minutes") or 60)
+                en_wib = st_wib + timedelta(minutes=duration)
+
+                violation: str | None = None
+                friday_start = st_wib.replace(hour=11, minute=30, second=0, microsecond=0)
+                friday_end = st_wib.replace(hour=13, minute=0, second=0, microsecond=0)
+
+                if st_wib.weekday() in (5, 6):
+                    violation = (
+                        f"Secondary Validator Rejection: Slot {st_wib.strftime('%A, %d %b %Y %H:%M')} WIB "
+                        "jatuh pada akhir pekan [RULE_WEEKEND_BLACKOUT]."
                     )
+                else:
+                    holiday = await self.holiday_repo.is_holiday(st_wib.date())
+                    if holiday:
+                        violation = (
+                            "Secondary Validator Rejection: Slot bertepatan dengan hari libur "
+                            f"'{holiday.vname}' [RULE_NATIONAL_HOLIDAY]."
+                        )
+                    elif (
+                        st_wib.weekday() == 4
+                        and st_wib < friday_end
+                        and en_wib > friday_start
+                    ):
+                        violation = (
+                            "Secondary Validator Rejection: Slot yang diajukan (Jumat 11:30 - 13:00 WIB) "
+                            "melanggar aturan operasional waktu ibadah sholat Jumat [RULE_FRIDAY_PRAYER]."
+                        )
+                    elif st_wib.time() < dt_time(9, 0) or en_wib.time() > dt_time(17, 0):
+                        violation = (
+                            f"Secondary Validator Rejection: Slot {st_wib.strftime('%H:%M')}-{en_wib.strftime('%H:%M')} WIB "
+                            "berada di luar jam kerja operasional (09:00 - 17:00 WIB) [RULE_WORKING_HOURS]."
+                        )
+
+                if violation:
                     await self.audit_service.log_event(
                         event_type="VALIDATION_VIOLATION_BLOCKED",
                         actor=request.approved_by,
                         actor_type="AGENT",
                         title="Approval Blocked by Secondary Validator",
-                        description=err_msg,
+                        description=violation,
                         metadata={"plan_id": p_id, "slot": slot_to_verify},
                     )
-                    raise ConflictException(err_msg)
+                    raise ConflictException(violation)
             except ConflictException:
                 raise
             except Exception as e:

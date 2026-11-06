@@ -90,7 +90,7 @@ class TestAgenticWorkflowsE2E:
         assert "Interview" in cal_event.vtitle
 
         # 3. Verify NegotiationThread updated to SCHEDULED
-        th_stmt = select(NegotiationThread).order_by(NegotiationThread.nid.desc())
+        th_stmt = select(NegotiationThread).where(NegotiationThread.nid_candidate == 1).order_by(NegotiationThread.nid.desc())
         thread = (await test_session.execute(th_stmt)).scalars().first()
         assert thread is not None
         assert thread.vstatus == "SCHEDULED"

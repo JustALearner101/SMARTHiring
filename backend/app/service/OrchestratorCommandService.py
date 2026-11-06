@@ -102,6 +102,8 @@ class OrchestratorCommandService:
                 "status": "NEEDS_CLARIFICATION",
                 "is_ambiguous": agent_state.get("is_ambiguous", False),
                 "message": msg,
+                "clarification_message": msg,
+                "secondary_validator_passed": False,
                 "similar_candidates": agent_state.get("similar_candidates", []),
                 "action_plan": None,
             }
@@ -110,6 +112,7 @@ class OrchestratorCommandService:
         if agent_state.get("is_disambiguation_needed", False):
             return {
                 "status": "CLARIFICATION_NEEDED",
+                "is_ambiguous": True,
                 "message": agent_state.get(
                     "disambiguation_message",
                     "Multiple contacts found. Please select the intended interviewer:",
@@ -186,6 +189,41 @@ class OrchestratorCommandService:
                 metadata={"raw_command": cmd, "sanitized_command": agent_state.get("sanitized_command")},
             )
 
+        # 3a. Entity Resolution Confidence Gate (TC-09)
+        entity_res = agent_state.get("entity_resolution") or {}
+        if entity_res:
+            confidence = float(entity_res.get("confidence") or 0)
+            if entity_res.get("match_type") == "AMBIGUOUS" or confidence < 0.85:
+                await self.audit_service.log_event(
+                    event_type="ENTITY_RESOLUTION_BLOCKED",
+                    actor="AI_ORCHESTRATOR",
+                    actor_type="AGENT",
+                    title="Plan Draft Blocked - Low Entity Confidence",
+                    description=(
+                        f"Resolusi entitas di bawah ambang batas "
+                        f"(confidence={confidence}, match_type={entity_res.get('match_type')})."
+                    ),
+                    metadata={"raw_command": cmd, "entity_resolution": entity_res},
+                )
+                return {
+                    "status": "NEEDS_CLARIFICATION",
+                    "is_ambiguous": True,
+                    "clarification_message": (
+                        f"Kandidat '{entity_res.get('requested_candidate')}' tidak dapat dipastikan "
+                        f"(confidence {confidence:.2f}, tipe {entity_res.get('match_type')}). "
+                        "Harap konfirmasi nama lengkap atau candidate_id sebelum jadwal dibuat."
+                    ),
+                    "message": (
+                        f"Kandidat '{entity_res.get('requested_candidate')}' tidak dapat dipastikan "
+                        f"(confidence {confidence:.2f}, tipe {entity_res.get('match_type')}). "
+                        "Harap konfirmasi nama lengkap atau candidate_id sebelum jadwal dibuat."
+                    ),
+                    "entity_resolution": entity_res,
+                    "secondary_validator_passed": False,
+                    "action_plan": None,
+                    "similar_candidates": [],
+                }
+
         # 3. Extract Agent Output
         slot_dict = agent_state.get("proposed_slot") or {}
         sources_list = agent_state.get("sources_cited") or []
@@ -224,11 +262,46 @@ class OrchestratorCommandService:
             "interviewer_timezone": agent_state.get("interviewer_timezone") or "WIB",
             "negotiation_round": agent_state.get("negotiation_round", current_round),
             "entity_resolution": agent_state.get("entity_resolution"),
+            "interviewer_resolution": agent_state.get("interviewer_resolution"),
         }
 
         # Generate official cryptographic approval ticket for human gate
         official_ticket = f"TKT-HEK-{secrets.token_hex(4).upper()}"
         agent_metadata["approval_ticket"] = official_ticket
+        agent_metadata["created_at"] = now.isoformat()
+        if not thread_id:
+            try:
+                from sqlalchemy import select as sa_select
+
+                from app.model.OrchestrationModel import NegotiationThread
+                th_stmt = (
+                    sa_select(NegotiationThread)
+                    .where(
+                        NegotiationThread.nid_candidate == int(cand_id),
+                        NegotiationThread.nid_interviewer == int(inter_id),
+                    )
+                    .order_by(NegotiationThread.nid.desc())
+                )
+                existing_th = (await self.session.execute(th_stmt)).scalars().first()
+                if existing_th and hasattr(existing_th, "nid") and isinstance(existing_th.nid, int):
+                    thread_id = existing_th.nid
+                else:
+                    new_th = NegotiationThread(
+                        nid_candidate=int(cand_id),
+                        nid_interviewer=int(inter_id),
+                        ncurrent_round=current_round,
+                        nmax_rounds=3,
+                        vstatus="NEGOTIATING",
+                        dlast_activity_at=now,
+                    )
+                    self.session.add(new_th)
+                    await self.session.flush()
+                    if isinstance(getattr(new_th, "nid", None), int):
+                        thread_id = new_th.nid
+            except Exception:
+                pass
+        if thread_id:
+            agent_metadata["thread_id"] = str(thread_id)
 
         # 4. Persist FollowupPlan with Full Agent Metadata
         plan_data: dict[str, Any] = {

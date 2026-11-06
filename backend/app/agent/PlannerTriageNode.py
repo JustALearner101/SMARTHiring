@@ -248,6 +248,7 @@ class PlannerTriageNode:
             not is_generic_siang
             and effective_input_tz in ("WITA", "WIT")
             and not re.search(r"\d{1,2}(?:[.:]\d{2})?\s*wib\b", cmd_lower)
+            and not re.search(r"(?:kandidat|candidate)\s+(?:di|in)\s+(?:wita|wit)\b", cmd_lower)
         ):
             p_parts = target_pref.split(":")
             req_h = int(p_parts[0])
@@ -337,7 +338,27 @@ class PlannerTriageNode:
                     "sunday": 6, "minggu": 6,
                 }
                 target_date = (now_wib + timedelta(days=2)).date()
-                for kw, target_wd in day_keywords.items():
+                negation_markers = (
+                    "kurang cocok", "tidak cocok", "tidak bisa", "ga bisa", "gak bisa", "gabisa",
+                    "berhalangan", "sibuk", "batal", "maaf", "sorry", "cannot", "can't", "not available",
+                )
+                clauses = re.split(r"[,.;?!]|\b(?:tapi|namun|melainkan|kalau|bisa|ganti|ubah|pindah|geser)\b", cmd_lower)
+                positive_wds: list[int] = []
+                fallback_wds: list[int] = []
+                for clause in clauses:
+                    is_negated_clause = any(neg in clause for neg in negation_markers)
+                    for m_day in re.finditer(r"\b(" + "|".join(re.escape(k) for k in day_keywords) + r")\b", clause):
+                        wd_val = day_keywords[m_day.group(1)]
+                        fallback_wds.append(wd_val)
+                        if not is_negated_clause:
+                            positive_wds.append(wd_val)
+                chosen_wd = positive_wds[-1] if positive_wds else (fallback_wds[-1] if fallback_wds else None)
+                if chosen_wd is not None:
+                    days_ahead = (chosen_wd - now_wib.weekday() + 7) % 7
+                    if days_ahead == 0 and not any(h in cmd_lower for h in ["hari ini", "today"]):
+                        days_ahead = 7
+                    target_date = (now_wib + timedelta(days=days_ahead)).date()
+                for kw, target_wd in ({} if chosen_wd is not None else day_keywords).items():
                     if kw in cmd_lower:
                         days_ahead = (target_wd - now_wib.weekday() + 7) % 7
                         if days_ahead == 0 and not any(h in cmd_lower for h in ["hari ini", "today"]):
@@ -394,13 +415,13 @@ class PlannerTriageNode:
                 ),
             },
             {
-                "id": "rule-friday-prayer-working-hours",
+                "id": "rule-friday-prayer",
                 "ref_code": "[rule-friday-prayer:RULE_FRIDAY_PRAYER]",
                 "source_type": "OPERATIONAL_RULE",
-                "title": "Rules for Friday Prayer & Work Hours",
+                "title": "Rule: Friday Prayer Blackout",
                 "detail": (
-                    "Compliance with active policies RULE_WORKING_HOURS (09:00 - 17:00 operational boundary, 15m buffer) "
-                    "and RULE_FRIDAY_PRAYER (11:30 - 13:00 WIB worship window)."
+                    "Compliance with active policies RULE_WORKING_HOURS (09:00 - 17:00 operational boundary, "
+                    "configured meeting buffer) and RULE_FRIDAY_PRAYER (11:30 - 13:00 WIB worship window)."
                 ),
             },
             {
@@ -515,7 +536,7 @@ class PlannerTriageNode:
         else:
             interviewer_text = (
                 f"Yth. {inter_name},\n\n"
-                f"Berikut undangan User Technical Interview bersama kandidat {clean_cand_name} ({cand_pos}):\n"
+                f"Berikut undangan Technical Interview bersama kandidat {clean_cand_name} ({cand_pos}):\n"
                 f"- Jadwal ({inter_tz}): {inter_slot_display}\n"
                 f"- Konversi Zona Waktu: {all_tz_display}\n"
                 f"- Durasi: {slot_dict.get('duration_minutes', 60)} Menit\n"
@@ -524,7 +545,7 @@ class PlannerTriageNode:
             )
             candidate_text = (
                 f"Halo {clean_cand_name},\n\n"
-                f"Kami mengundang Anda untuk mengikuti User Technical Interview posisi {cand_pos} bersama {inter_name}:\n"
+                f"Kami mengundang Anda untuk mengikuti sesi Technical Interview posisi {cand_pos} bersama {inter_name}:\n"
                 f"- Jadwal Waktu Lokal Anda ({cand_tz}): {cand_slot_display}\n"
                 f"- Konversi Zona Waktu: {all_tz_display}\n"
                 f"- Durasi: {slot_dict.get('duration_minutes', 60)} Menit\n"

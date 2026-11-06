@@ -41,7 +41,7 @@ class ExecutorNode:
         # 1. Book Calendar Event
         cal_event = CalendarEvent(
             nid_user=inter_id,
-            vtitle=slot.get("title", f"User Technical Interview: {cand_name}"),
+            vtitle=slot.get("title") or f"Technical Interview: {cand_name}",
             dscheduled_start_utc=start_utc,
             dscheduled_end_utc=end_utc,
             vevent_type="SCHEDULED_INTERVIEW",

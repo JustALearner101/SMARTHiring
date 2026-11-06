@@ -82,7 +82,6 @@ class ActionPlanRepository(BaseRepository[FollowupPlan]):
         Prevents race condition on concurrent approval requests.
         """
         target_status = "EXECUTED" if immediate else "APPROVED"
-        token = f"tok_appr_{plan_id}"
         stmt = (
             update(FollowupPlan)
             .where(
@@ -91,7 +90,6 @@ class ActionPlanRepository(BaseRepository[FollowupPlan]):
             )
             .values(
                 vapproval_status=target_status,
-                vapproval_token=token,
                 nid_approved_by=approved_by_id or 1,
                 dundo_deadline=undo_deadline,
                 dmodi=func.now(),

@@ -67,24 +67,35 @@ class ContextRetrieverNode:
             except Exception:
                 selected_interviewer = None
 
+        active_interviewers = await self.contact_repo.list_interviewers()
         if not selected_interviewer:
-            active_interviewers = await self.contact_repo.list_interviewers()
-            for user in active_interviewers:
-                u_name_lower = user.vname.lower().strip()
-                if u_name_lower in cmd_lower:
-                    selected_interviewer = user
-                    interviewer_matched = True
-                    break
-                # Check for first name match if unambiguous
-                name_tokens = u_name_lower.split()
-                if name_tokens and re.search(rf"\b{re.escape(name_tokens[0])}\b", cmd_lower):
-                    selected_interviewer = user
-                    interviewer_matched = True
-                    break
+            full_name_matches = [
+                user
+                for user in active_interviewers
+                if user.vname and user.vname.lower().strip() in cmd_lower
+            ]
+            if len(full_name_matches) > 1:
+                return {
+                    "status": "NEEDS_CLARIFICATION",
+                    "is_ambiguous": True,
+                    "clarification_message": (
+                        "Ditemukan beberapa interviewer yang cocok: "
+                        f"{', '.join(u.vname for u in full_name_matches)}. "
+                        "Harap sebutkan nama lengkap atau interviewer_id secara spesifik."
+                    ),
+                    "similar_candidates": [
+                        {"id": u.nid, "name": u.vname, "position": u.vposition}
+                        for u in full_name_matches
+                    ],
+                }
+            if len(full_name_matches) == 1:
+                selected_interviewer = full_name_matches[0]
+                interviewer_matched = True
 
-            if not selected_interviewer and active_interviewers:
-                budi_users = await self.contact_repo.find_ambiguous_names("Budi Santoso")
-                selected_interviewer = budi_users[0] if budi_users else active_interviewers[0]
+        interviewer_resolution = "MATCHED" if interviewer_matched else "DEFAULT"
+        if not selected_interviewer and active_interviewers:
+            budi_users = await self.contact_repo.find_ambiguous_names("Budi Santoso")
+            selected_interviewer = budi_users[0] if budi_users else active_interviewers[0]
 
         # ---------------------------------------------------------------------
         # 3. Dynamic Candidate Resolution (Anti-Silent-Substitution)
@@ -265,9 +276,25 @@ class ContextRetrieverNode:
                 "similar_candidates": similar,
             }
 
-        # If still no candidate and no candidate was specified in command at all, only then default to first
-        if not target_candidate and all_candidates and not user_specified_candidate:
+        # Default only for non-scheduling (meeting-notes) commands. Scheduling commands must
+        # never inherit an arbitrary "most recently modified" candidate.
+        if not target_candidate and all_candidates and not user_specified_candidate and is_notulen_cmd:
             target_candidate = all_candidates[0]
+
+        if not target_candidate and not is_notulen_cmd:
+            return {
+                "status": "NEEDS_CLARIFICATION",
+                "is_ambiguous": False,
+                "clarification_message": (
+                    "Tidak ada kandidat yang dapat diidentifikasi dari instruksi. "
+                    "Autonomous triage dihentikan untuk mencegah salah jadwal. "
+                    "Harap sebutkan nama kandidat atau candidate_id secara eksplisit."
+                ),
+                "similar_candidates": [
+                    {"id": c.nid, "name": c.vname, "position": c.vjob_position}
+                    for c in all_candidates[:3]
+                ],
+            }
 
         has_candidate = bool(candidate_matched or explicit_candidate_id or not is_notulen_cmd)
 
@@ -281,6 +308,7 @@ class ContextRetrieverNode:
         if selected_interviewer:
             updates.update({
                 "interviewer_id": selected_interviewer.nid,
+                "interviewer_resolution": interviewer_resolution,
                 "interviewer_userid": getattr(selected_interviewer, "vuserid", None) or f"USR-00{selected_interviewer.nid}",
                 "interviewer_name": selected_interviewer.vname,
                 "interviewer_email": selected_interviewer.vemail,
@@ -292,16 +320,24 @@ class ContextRetrieverNode:
 
         if target_candidate:
             req_name = extracted_cand_name or target_candidate.vname
-            is_exact = not extracted_cand_name or (
-                extracted_cand_name.lower().strip() == target_candidate.vname.lower().strip()
-            )
-            match_score = 1.0 if is_exact else 0.85
+            resolved_name = target_candidate.vname
+            if explicit_candidate_id or state.get("thread_id") or (extracted_cand_name and extracted_cand_name.lower().strip() == resolved_name.lower().strip()):
+                match_score, match_type = 1.0, "EXACT"
+
+
+
+            elif resolved_name.lower().strip() in cmd_lower:
+                match_score, match_type = 0.98, "EXACT"
+            elif extracted_cand_name and resolved_name.lower().strip() in extracted_cand_name.lower():
+                match_score, match_type = 0.92, "FUZZY"
+            else:
+                match_score, match_type = 0.86, "FUZZY"
             updates["entity_resolution"] = {
                 "requested_candidate": req_name,
                 "resolved_candidate_id": str(target_candidate.nid),
-                "resolved_name": target_candidate.vname,
+                "resolved_name": resolved_name,
                 "confidence": match_score,
-                "match_type": "EXACT" if match_score >= 0.95 else ("FUZZY" if match_score >= 0.85 else "AMBIGUOUS"),
+                "match_type": match_type,
             }
             updates.update({
                 "candidate_id": target_candidate.nid,
@@ -342,7 +378,28 @@ class ContextRetrieverNode:
                 day_keywords["minggu"] = 6
 
             day_matched = False
-            for kw, target_wd in day_keywords.items():
+            negation_markers = (
+                "kurang cocok", "tidak cocok", "tidak bisa", "ga bisa", "gak bisa", "gabisa",
+                "berhalangan", "sibuk", "batal", "maaf", "sorry", "cannot", "can't", "not available",
+            )
+            clauses = re.split(r"[,.;?!]|\b(?:tapi|namun|melainkan|kalau|bisa|ganti|ubah|pindah|geser)\b", cmd_lower)
+            positive_wds: list[int] = []
+            fallback_wds: list[int] = []
+            for clause in clauses:
+                is_negated_clause = any(neg in clause for neg in negation_markers)
+                for m_day in re.finditer(r"\b(" + "|".join(re.escape(k) for k in day_keywords) + r")\b", clause):
+                    wd_val = day_keywords[m_day.group(1)]
+                    fallback_wds.append(wd_val)
+                    if not is_negated_clause:
+                        positive_wds.append(wd_val)
+            chosen_wd = positive_wds[-1] if positive_wds else (fallback_wds[-1] if fallback_wds else None)
+            if chosen_wd is not None:
+                days_ahead = (chosen_wd - now_wib.weekday() + 7) % 7
+                if days_ahead == 0 and not any(h in cmd_lower for h in ["hari ini", "today"]):
+                    days_ahead = 7
+                target_date = (now_wib + timedelta(days=days_ahead)).date()
+                day_matched = True
+            for kw, target_wd in ({} if day_matched else day_keywords).items():
                 if re.search(rf"\b{re.escape(kw)}\b", cmd_lower):
                     days_ahead = (target_wd - now_wib.weekday() + 7) % 7
                     if days_ahead == 0 and not any(h in cmd_lower for h in ["hari ini", "today"]):

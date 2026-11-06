@@ -34,8 +34,18 @@ def register_heketon_mcp_resources_and_prompts(mcp: FastMCP) -> None:
                 {
                     "working_hours_local": f"{policy.work_start_time} - {policy.work_end_time} (WIB / WITA / WIT)",
                     "friday_prayer_blackout": f"{policy.friday_prayer_start} - {policy.friday_prayer_end} (Wajib diblokir untuk seluruh zona waktu)",
+                    "weekend_blackout": "Sabtu & Minggu diblokir penuh untuk seluruh interview scheduling [RULE_WEEKEND_BLACKOUT]",
+                    "national_holiday_policy": "Hari Libur Nasional & Cuti Bersama SKB 3 Menteri diblokir penuh [RULE_NATIONAL_HOLIDAY]",
                     "buffer_between_meetings": f"{policy.buffer_minutes} menit",
                     "max_negotiation_rounds": policy.max_negotiation_rounds,
+                    "supported_timezones": ["WIB", "WITA", "WIT"],
+                    "rules": [
+                        {"code": "RULE_WORKING_HOURS", "description": "Interviews must be scheduled between 09:00 and 17:00 in participants' local timezones."},
+                        {"code": "RULE_FRIDAY_PRAYER", "description": "Friday 11:30 - 13:00 local time is strictly blocked for Friday prayer."},
+                        {"code": "RULE_WEEKEND_BLACKOUT", "description": "Saturday and Sunday are non-working days; scheduling on weekends is prohibited."},
+                        {"code": "RULE_NATIONAL_HOLIDAY", "description": "Scheduling on official national holidays and collective leave days is prohibited."},
+                        {"code": "RULE_MEETING_BUFFER", "description": f"A minimum {policy.buffer_minutes}-minute buffer is required before and after any existing calendar event."},
+                    ],
                     "policy": policy.model_dump(),
                 },
                 indent=2,
@@ -98,7 +108,7 @@ def register_heketon_mcp_resources_and_prompts(mcp: FastMCP) -> None:
         async with AsyncSessionLocal() as db:
             svc = AuditLogService(db)
             paginated = await svc.list_audit_events(
-                params=PaginationParams(limit=25, page=1)
+                params=PaginationParams(page=1, page_size=25)
             )
             verification = await svc.verify_hash_chain()
             return json.dumps(

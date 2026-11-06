@@ -53,6 +53,7 @@ class NegotiationThreadService:
 
         return NegotiationThreadDTO(
             id=str(t.nid),
+            thread_id=str(t.nid),
             candidate_id=str(t.nid_candidate),
             candidate_name=cand_name,
             candidate_channel=cand_channel,  # type: ignore[arg-type]

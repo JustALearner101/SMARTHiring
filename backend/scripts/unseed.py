@@ -451,6 +451,89 @@ async def unseed_database(keep_admin: bool = False, dry_run: bool = False) -> No
         print("[NOTICE] Masih terdapat beberapa baris di tabel database.")
 
 
+async def unseed_keep_accounts(dry_run: bool = False) -> None:
+    """Purge transactional data, candidates, and pytest users while preserving real user accounts, permissions, and work calendar."""
+    mode_desc = "KEEP ACCOUNTS PURGE (Pembersihan Total Non-User & Sanitasi Pytest Users)"
+    if dry_run:
+        mode_desc = "DRY RUN (Pemeriksaan Saja)"
+
+    print("=" * 68)
+    print(" Heketon / SMARTHiring Database Unseeder")
+    print(f" Mode: {mode_desc}")
+    print("=" * 68)
+
+    clean_tables = [
+        "tblr_action_recipient",
+        "tblt_followup_plan",
+        "tblt_hr_decision",
+        "tblt_flag",
+        "tblt_summary_evidence",
+        "tblt_summary_point",
+        "tblt_transcript_segment",
+        "tblt_job",
+        "tblt_source_file",
+        "tblt_interview",
+        "tblt_thread_message",
+        "tblt_negotiation_thread",
+        "tblt_calendar_event",
+        "tblt_audit_log",
+        "tbl_log_system",
+        "tblm_holiday",
+        "tblm_candidate",
+        "tblm_competency",
+        "tblm_profile",
+    ]
+
+    async with AsyncSessionLocal() as session:
+        real_users_res = await session.execute(
+            text(
+                "SELECT nid, vusername, vname, vrole FROM tblm_user "
+                "WHERE nid IN (1, 7, 10, 11, 12) OR vusername IN ('hr.admin', 'busud', 'budi.santoso', 'budi.hartono', 'auditor.it') "
+                "ORDER BY nid;"
+            )
+        )
+        real_users = real_users_res.fetchall()
+        print("\n[Akun Utama yang Dijamin Tetap Terpelihara]:")
+        for u in real_users:
+            print(f"  - [PRESERVED] nid={u[0]}: {u[1]} ({u[2]} / {u[3]})")
+
+        dirty_users_res = await session.execute(
+            text("SELECT nid, vusername FROM tblm_user WHERE vusername ~ '^(bambang|interviewer)\\.[0-9a-f]{6}$';")
+        )
+        dirty_users = dirty_users_res.fetchall()
+        print(f"\n[Akun Sampah Pytest yang Terdeteksi]: {len(dirty_users)} akun ({[u[1] for u in dirty_users]})")
+
+        if dry_run:
+            print("\n[DRY RUN] Tidak ada data yang dihapus dari database.")
+            return
+
+        print("\nMemulai proses pembersihan tabel...")
+        tables_csv = ", ".join(clean_tables)
+        try:
+            await session.execute(text(f"TRUNCATE TABLE {tables_csv} RESTART IDENTITY CASCADE;"))
+            print(f"  [OK] Seluruh {len(clean_tables)} tabel transaksi, kandidat, dan holiday berhasil di-TRUNCATE (sequence di-reset).")
+        except Exception as e:
+            print(f"  TRUNCATE gagal ({e}), menjalankan fallback DELETE terurut...")
+            await session.rollback()
+            for tbl in clean_tables:
+                try:
+                    await session.execute(text(f"DELETE FROM {tbl};"))
+                    print(f"  [OK] {tbl} dibersihkan.")
+                except Exception as err:
+                    print(f"  [WARN] Gagal membersihkan {tbl}: {err}")
+
+        if dirty_users:
+            dirty_nids = [u[0] for u in dirty_users]
+            await session.execute(
+                text("DELETE FROM tblm_user WHERE nid = ANY(:nids);"),
+                {"nids": dirty_nids},
+            )
+            print(f"  [OK] {len(dirty_users)} akun sampah pytest dari tblm_user berhasil dihapus.")
+
+        await session.commit()
+        print("\n[SUCCESS] Pembersihan database dengan proteksi akun user selesai dengan sukses!")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Cabut data seeding dari database backend Heketon.")
     parser.add_argument(
@@ -471,6 +554,11 @@ def main() -> None:
         help="Safe purge: bersihkan data demo & transaksi, pertahankan akun hr.admin dan work calendar.",
     )
     parser.add_argument(
+        "--keep-accounts",
+        action="store_true",
+        help="Proteksi akun user: bersihkan transaksi & kandidat kotor, hapus pytest users, pertahankan akun asli (hr.admin, busud, budi.santoso, budi.hartono, auditor.it), permission, dan work calendar.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Tampilkan jumlah baris tiap tabel tanpa mengeksekusi penghapusan.",
@@ -478,7 +566,9 @@ def main() -> None:
     args = parser.parse_args()
 
     # Default to targeted if not explicitly asked for full purge or keep-admin
-    if args.all or args.keep_admin:
+    if args.keep_accounts:
+        asyncio.run(unseed_keep_accounts(dry_run=args.dry_run))
+    elif args.all or args.keep_admin:
         keep_admin_flag = args.keep_admin and not args.all
         asyncio.run(unseed_database(keep_admin=keep_admin_flag, dry_run=args.dry_run))
     else:

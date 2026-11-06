@@ -58,6 +58,8 @@ async def test_auto_generate_candidate_rubric_from_transcript(test_session: Asyn
     comp_codes = [c.code for c in candidate_profile.competencies]
     assert "C1" in comp_codes
 
+    # Done
+
 
 @pytest.mark.asyncio
 async def test_re_evaluate_rubric_from_transcript_api(client: AsyncClient):
@@ -105,3 +107,5 @@ async def test_re_evaluate_rubric_from_transcript_api(client: AsyncClient):
     re_eval_data = re_eval_res.json()["data"]
     assert re_eval_data["id"] == str(profile_id)
     assert len(re_eval_data["competencies"]) >= 4
+
+    # Done

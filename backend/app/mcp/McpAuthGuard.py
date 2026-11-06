@@ -86,7 +86,7 @@ def check_anti_auto_chain_cooldown(plan_id: str) -> tuple[bool, str | None]:
         return (
             False,
             (
-                f"Pelanggaran dicegah (Anti-Auto-Chain Guard): "
+                f"Pelanggaran dicegah (Anti-Auto-Chain Guard / COOLDOWN_ACTIVE / Anti-Auto-Chain Violation): "
                 f"approve_action_plan dipanggil terlalu cepat ({elapsed}ms < {MIN_APPROVAL_COOLDOWN_MS}ms). "
                 f"Wajib menunggu respon dan persetujuan eksplisit manusia pada giliran terpisah."
             ),

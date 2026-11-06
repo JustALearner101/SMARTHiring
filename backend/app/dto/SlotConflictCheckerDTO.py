@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -33,11 +33,13 @@ class SlotConflictCheckResultDTO(BaseDTO):
         "INSUFFICIENT_BUFFER",
         "NATIONAL_HOLIDAY",
         "WEEKEND_BLOCKED",
+        "INTERVIEWER_NOT_FOUND",
     ]
     message: str
     rule_code: str | None = None
     conflicting_event: str | None = None
     suggested_alternatives: list[str] = Field(default_factory=list)
     suggested_alternative_slots: list[SuggestedSlotDTO] = Field(default_factory=list)
+    sources_cited: list[dict[str, Any]] = Field(default_factory=list)
     calculated_end_time: str | None = None
     calculated_end_utc: str | None = None

@@ -1,7 +1,7 @@
 import asyncio
 from datetime import UTC, date, datetime, time, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.core.AppSecurity import get_password_hash
 from app.db.DatabaseSession import AsyncSessionLocal
@@ -181,10 +181,11 @@ async def seed_data() -> None:
         print("  [Permissions] Matriks hak akses (Role x Visibility Class) berhasil diselaraskan.")
 
         # -------------------------------------------------------------
-        # 4. Seed Candidates (Rina Kusuma & Ahmad Fauzi)
+        # 4. Seed Candidates (Deterministic ATS Profiles 1..12)
         # -------------------------------------------------------------
         candidates_to_seed = [
             {
+                "nid": 1,
                 "vcandidate_code": "CAND-2026-001",
                 "vname": "Rina Kusuma",
                 "vemail": "rina.kusuma@example.com",
@@ -199,7 +200,158 @@ async def seed_data() -> None:
                 "nexpected_salary": 28_000_000,
             },
             {
+                "nid": 2,
                 "vcandidate_code": "CAND-2026-002",
+                "vname": "Siti Rahayu",
+                "vemail": "siti.rahayu@example.com",
+                "vphone_number": "+6281234567891",
+                "vpreferred_channel": "whatsapp",
+                "vjob_position": "Lead QA Engineer",
+                "vstatus": "SCREENING",
+                "vtimezone": "WIB",
+                "vresume_url": "https://storage.smarthiring.ai/resumes/siti-rahayu.pdf",
+                "vnotes": "QA Automation lead with Cypress, Playwright, and Pytest experience.",
+                "ncurrent_salary": 20_000_000,
+                "nexpected_salary": 26_000_000,
+            },
+            {
+                "nid": 3,
+                "vcandidate_code": "CAND-2026-003",
+                "vname": "Siti Aminah",
+                "vemail": "siti.aminah@example.com",
+                "vphone_number": "+6281234567892",
+                "vpreferred_channel": "email",
+                "vjob_position": "Frontend Developer",
+                "vstatus": "SCREENING",
+                "vtimezone": "WIB",
+                "vresume_url": "https://storage.smarthiring.ai/resumes/siti-aminah.pdf",
+                "vnotes": "Vue.js & Tailwind CSS specialist with 3 years experience.",
+                "ncurrent_salary": 14_000_000,
+                "nexpected_salary": 18_000_000,
+            },
+            {
+                "nid": 4,
+                "vcandidate_code": "CAND-2026-004",
+                "vname": "Budi Pratama",
+                "vemail": "budi.pratama@example.com",
+                "vphone_number": "+6281234567893",
+                "vpreferred_channel": "whatsapp",
+                "vjob_position": "DevOps Engineer",
+                "vstatus": "SCREENING",
+                "vtimezone": "WIB",
+                "vresume_url": "https://storage.smarthiring.ai/resumes/budi-pratama.pdf",
+                "vnotes": "Kubernetes, Terraform, and Tencent Cloud infrastructure engineer.",
+                "ncurrent_salary": 24_000_000,
+                "nexpected_salary": 30_000_000,
+            },
+            {
+                "nid": 5,
+                "vcandidate_code": "CAND-2026-005",
+                "vname": "Dewi Lestari",
+                "vemail": "dewi.lestari@example.com",
+                "vphone_number": "+6281234567894",
+                "vpreferred_channel": "email",
+                "vjob_position": "Product Designer",
+                "vstatus": "SCREENING",
+                "vtimezone": "WITA",
+                "vresume_url": "https://storage.smarthiring.ai/resumes/dewi.pdf",
+                "vnotes": "UI/UX lead specializing in design systems and accessibility.",
+                "ncurrent_salary": 19_000_000,
+                "nexpected_salary": 25_000_000,
+            },
+            {
+                "nid": 6,
+                "vcandidate_code": "CAND-2026-006",
+                "vname": "Fajar Nugraha",
+                "vemail": "fajar.nugraha@example.com",
+                "vphone_number": "+6281234567895",
+                "vpreferred_channel": "whatsapp",
+                "vjob_position": "Data Engineer",
+                "vstatus": "SCREENING",
+                "vtimezone": "WIT",
+                "vresume_url": "https://storage.smarthiring.ai/resumes/fajar.pdf",
+                "vnotes": "Big Data pipelines using Spark, Airflow, and PostgreSQL.",
+                "ncurrent_salary": 21_000_000,
+                "nexpected_salary": 27_000_000,
+            },
+            {
+                "nid": 7,
+                "vcandidate_code": "CAND-2026-007",
+                "vname": "Maya Putri",
+                "vemail": "maya.putri@example.com",
+                "vphone_number": "+6281234567896",
+                "vpreferred_channel": "whatsapp",
+                "vjob_position": "Mobile Developer",
+                "vstatus": "SCREENING",
+                "vtimezone": "WIB",
+                "vresume_url": "https://storage.smarthiring.ai/resumes/maya.pdf",
+                "vnotes": "React Native and Flutter cross-platform developer.",
+                "ncurrent_salary": 16_000_000,
+                "nexpected_salary": 20_000_000,
+            },
+            {
+                "nid": 8,
+                "vcandidate_code": "CAND-2026-008",
+                "vname": "Rizky Pratama",
+                "vemail": "rizky.pratama@example.com",
+                "vphone_number": "+6281234567897",
+                "vpreferred_channel": "email",
+                "vjob_position": "Security Analyst",
+                "vstatus": "SCREENING",
+                "vtimezone": "WIB",
+                "vresume_url": "https://storage.smarthiring.ai/resumes/rizky.pdf",
+                "vnotes": "AppSec and SOC analyst with CEH & CompTIA Security+.",
+                "ncurrent_salary": 23_000_000,
+                "nexpected_salary": 29_000_000,
+            },
+            {
+                "nid": 9,
+                "vcandidate_code": "CAND-2026-009",
+                "vname": "Nadia Safitri",
+                "vemail": "nadia.safitri@example.com",
+                "vphone_number": "+6281234567898",
+                "vpreferred_channel": "whatsapp",
+                "vjob_position": "Scrum Master",
+                "vstatus": "SCREENING",
+                "vtimezone": "WIB",
+                "vresume_url": "https://storage.smarthiring.ai/resumes/nadia.pdf",
+                "vnotes": "Agile coach and certified Scrum Master (PSM II).",
+                "ncurrent_salary": 20_000_000,
+                "nexpected_salary": 25_000_000,
+            },
+            {
+                "nid": 10,
+                "vcandidate_code": "CAND-2026-010",
+                "vname": "Bayu Setiawan",
+                "vemail": "bayu.setiawan@example.com",
+                "vphone_number": "+6281234567899",
+                "vpreferred_channel": "email",
+                "vjob_position": "Cloud Architect",
+                "vstatus": "SCREENING",
+                "vtimezone": "WITA",
+                "vresume_url": "https://storage.smarthiring.ai/resumes/bayu.pdf",
+                "vnotes": "Multi-cloud architecture specialist with FinOps focus.",
+                "ncurrent_salary": 32_000_000,
+                "nexpected_salary": 40_000_000,
+            },
+            {
+                "nid": 11,
+                "vcandidate_code": "CAND-2026-011",
+                "vname": "Eko Prasetyo",
+                "vemail": "eko.prasetyo@example.com",
+                "vphone_number": "+6281234567800",
+                "vpreferred_channel": "whatsapp",
+                "vjob_position": "Site Reliability Engineer",
+                "vstatus": "SCREENING",
+                "vtimezone": "WIB",
+                "vresume_url": "https://storage.smarthiring.ai/resumes/eko.pdf",
+                "vnotes": "Observability and high-availability systems engineer.",
+                "ncurrent_salary": 25_000_000,
+                "nexpected_salary": 31_000_000,
+            },
+            {
+                "nid": 12,
+                "vcandidate_code": "CAND-2026-012",
                 "vname": "Ahmad Fauzi",
                 "vemail": "ahmad.fauzi@example.com",
                 "vphone_number": "+6281987654321",
@@ -398,9 +550,30 @@ async def seed_data() -> None:
         # 6. Seed Holidays
         # -------------------------------------------------------------
         holidays_to_seed = [
+            {"dholiday_date": date(2026, 1, 1), "vname": "Tahun Baru 2026 Masehi", "vtype": "NATIONAL_HOLIDAY"},
+            {"dholiday_date": date(2026, 1, 16), "vname": "Isra Mikraj Nabi Muhammad SAW", "vtype": "NATIONAL_HOLIDAY"},
+            {"dholiday_date": date(2026, 2, 16), "vname": "Cuti Bersama Tahun Baru Imlek", "vtype": "COLLECTIVE_LEAVE"},
+            {"dholiday_date": date(2026, 2, 17), "vname": "Tahun Baru Imlek 2577 Kongzili", "vtype": "NATIONAL_HOLIDAY"},
+            {"dholiday_date": date(2026, 3, 20), "vname": "Cuti Bersama Hari Suci Nyepi", "vtype": "COLLECTIVE_LEAVE"},
+            {"dholiday_date": date(2026, 3, 21), "vname": "Hari Suci Nyepi Tahun Baru Saka 1948", "vtype": "NATIONAL_HOLIDAY"},
+            {"dholiday_date": date(2026, 3, 22), "vname": "Hari Raya Idul Fitri 1447 H", "vtype": "NATIONAL_HOLIDAY"},
+            {"dholiday_date": date(2026, 3, 23), "vname": "Hari Raya Idul Fitri 1447 H", "vtype": "NATIONAL_HOLIDAY"},
+            {"dholiday_date": date(2026, 3, 24), "vname": "Cuti Bersama Hari Raya Idul Fitri", "vtype": "COLLECTIVE_LEAVE"},
+            {"dholiday_date": date(2026, 4, 3), "vname": "Wafat Yesus Kristus", "vtype": "NATIONAL_HOLIDAY"},
+            {"dholiday_date": date(2026, 4, 5), "vname": "Hari Kebangkitan Yesus Kristus (Paskah)", "vtype": "NATIONAL_HOLIDAY"},
+            {"dholiday_date": date(2026, 5, 1), "vname": "Hari Buruh Internasional", "vtype": "NATIONAL_HOLIDAY"},
+            {"dholiday_date": date(2026, 5, 14), "vname": "Kenaikan Yesus Kristus", "vtype": "NATIONAL_HOLIDAY"},
+            {"dholiday_date": date(2026, 5, 15), "vname": "Cuti Bersama Kenaikan Yesus Kristus", "vtype": "COLLECTIVE_LEAVE"},
+            {"dholiday_date": date(2026, 5, 27), "vname": "Hari Raya Idul Adha 1447 H", "vtype": "NATIONAL_HOLIDAY"},
+            {"dholiday_date": date(2026, 5, 28), "vname": "Cuti Bersama Hari Raya Idul Adha", "vtype": "COLLECTIVE_LEAVE"},
+            {"dholiday_date": date(2026, 5, 31), "vname": "Hari Raya Waisak 2570 BE", "vtype": "NATIONAL_HOLIDAY"},
+            {"dholiday_date": date(2026, 6, 1), "vname": "Hari Lahir Pancasila", "vtype": "NATIONAL_HOLIDAY"},
+            {"dholiday_date": date(2026, 6, 16), "vname": "Tahun Baru Islam 1448 H", "vtype": "NATIONAL_HOLIDAY"},
+            {"dholiday_date": date(2026, 8, 17), "vname": "Hari Kemerdekaan RI", "vtype": "NATIONAL_HOLIDAY"},
+            {"dholiday_date": date(2026, 8, 25), "vname": "Maulid Nabi Muhammad SAW", "vtype": "NATIONAL_HOLIDAY"},
+            {"dholiday_date": date(2026, 12, 24), "vname": "Cuti Bersama Hari Raya Natal", "vtype": "COLLECTIVE_LEAVE"},
             {"dholiday_date": date(2026, 12, 25), "vname": "Hari Raya Natal", "vtype": "NATIONAL_HOLIDAY"},
             {"dholiday_date": date(2026, 12, 26), "vname": "Cuti Bersama Natal", "vtype": "COLLECTIVE_LEAVE"},
-            {"dholiday_date": date(2026, 5, 1), "vname": "Hari Buruh Internasional", "vtype": "NATIONAL_HOLIDAY"},
         ]
         for h in holidays_to_seed:
             existing_h = (
@@ -423,30 +596,41 @@ async def seed_data() -> None:
         ).scalars().first()
 
         if budi_user and rina_cand:
-            # Seed Calendar Event for Budi
+            # Seed deterministic weekday Calendar Events for Budi Santoso
             now = datetime.now(UTC)
-            ev_start = now.replace(minute=0, second=0, microsecond=0) + timedelta(days=1, hours=1)
-            ev_end = ev_start + timedelta(hours=1)
-            existing_ev = (
-                await session.execute(
-                    select(CalendarEvent).where(
-                        CalendarEvent.nid_user == budi_user.nid,
-                        CalendarEvent.vtitle == "Weekly Engineering Sync",
+            weekday_events = [
+                (
+                    "Weekly Engineering Sync",
+                    datetime(2026, 11, 9, 6, 0, tzinfo=UTC),  # Monday 13:00 WIB
+                    datetime(2026, 11, 9, 7, 0, tzinfo=UTC),  # Monday 14:00 WIB
+                ),
+                (
+                    "Architecture Design Review",
+                    datetime(2026, 11, 11, 3, 0, tzinfo=UTC),  # Wednesday 10:00 WIB
+                    datetime(2026, 11, 11, 4, 0, tzinfo=UTC),  # Wednesday 11:00 WIB
+                ),
+            ]
+            for ev_title, ev_start, ev_end in weekday_events:
+                existing_ev = (
+                    await session.execute(
+                        select(CalendarEvent).where(
+                            CalendarEvent.nid_user == budi_user.nid,
+                            CalendarEvent.vtitle == ev_title,
+                        )
                     )
-                )
-            ).scalars().first()
-            if not existing_ev:
-                session.add(
-                    CalendarEvent(
-                        nid_user=budi_user.nid,
-                        vtitle="Weekly Engineering Sync",
-                        dscheduled_start_utc=ev_start,
-                        dscheduled_end_utc=ev_end,
-                        vevent_type="TEAM_MEETING",
-                        vrule_code="[cal-budi-sync]",
+                ).scalars().first()
+                if not existing_ev:
+                    session.add(
+                        CalendarEvent(
+                            nid_user=budi_user.nid,
+                            vtitle=ev_title,
+                            dscheduled_start_utc=ev_start,
+                            dscheduled_end_utc=ev_end,
+                            vevent_type="TEAM_MEETING",
+                            vrule_code="[cal-budi-santoso:EMP-ENG-001:HQ-JKT]",
+                        )
                     )
-                )
-                print("  [CalendarEvent] Weekly Engineering Sync untuk Budi Santoso dibuat.")
+                    print(f"  [CalendarEvent] {ev_title} untuk Budi Santoso dibuat.")
 
             # Seed Negotiation Thread
             existing_thread = (
@@ -481,7 +665,7 @@ async def seed_data() -> None:
                         vchannel="whatsapp",
                         vcontent="Halo Kak Rina Kusuma! Selamat, Anda lolos seleksi awal. Kami mengundang sesi interview teknis bersama Pak Budi Santoso via Google Meet. Apakah jadwal Rabu 10:00 WIB sesuai?",
                         vproposed_slot="Rabu, 10:00 WIB",
-                        vsource_citation="[cal-budi-01]",
+                        vsource_citation="[cal-budi-santoso:EMP-ENG-001:HQ-JKT]",
                     )
                 )
                 session.add(
@@ -497,6 +681,97 @@ async def seed_data() -> None:
                     )
                 )
                 print("  [NegotiationThread] Thread negosiasi awal Rina x Budi dibuat.")
+
+            siti_cand = (
+                await session.execute(select(Candidate).where(Candidate.vcandidate_code == "CAND-2026-002"))
+            ).scalars().first()
+            if budi_user and siti_cand:
+                existing_th2 = (
+                    await session.execute(
+                        select(NegotiationThread).where(
+                            NegotiationThread.nid_candidate == siti_cand.nid,
+                            NegotiationThread.nid_interviewer == budi_user.nid,
+                        )
+                    )
+                ).scalars().first()
+                if not existing_th2:
+                    th2 = NegotiationThread(
+                        nid_candidate=siti_cand.nid,
+                        nid_interviewer=budi_user.nid,
+                        ncurrent_round=1,
+                        nmax_rounds=3,
+                        vstatus="NEGOTIATING",
+                        ddeadline_at=now + timedelta(days=3),
+                        dlast_activity_at=now,
+                    )
+                    session.add(th2)
+                    await session.flush()
+                    session.add(
+                        ThreadMessage(
+                            nid_thread=th2.nid,
+                            nround_number=1,
+                            vsender_role="AI_ORCHESTRATOR",
+                            vsender_name="SmartHiring AI Orchestrator",
+                            vchannel="whatsapp",
+                            vcontent="Halo Kak Siti Rahayu! Kami mengundang Anda untuk sesi interview teknis QA Lead. Apakah jadwal Senin 10:00 WIB sesuai?",
+                            vproposed_slot="Senin, 10:00 WIB",
+                            vsource_citation="[cal-budi-santoso:EMP-ENG-001:HQ-JKT]",
+                        )
+                    )
+                    print("  [NegotiationThread] Thread negosiasi Siti Rahayu x Budi Santoso dibuat.")
+
+            budi_hartono = (
+                await session.execute(select(User).where(User.vusername == "budi.hartono"))
+            ).scalars().first()
+            dewi_cand = (
+                await session.execute(select(Candidate).where(Candidate.vcandidate_code == "CAND-2026-005"))
+            ).scalars().first()
+            if budi_hartono and dewi_cand:
+                existing_th3 = (
+                    await session.execute(
+                        select(NegotiationThread).where(
+                            NegotiationThread.nid_candidate == dewi_cand.nid,
+                            NegotiationThread.nid_interviewer == budi_hartono.nid,
+                        )
+                    )
+                ).scalars().first()
+                if not existing_th3:
+                    th3 = NegotiationThread(
+                        nid_candidate=dewi_cand.nid,
+                        nid_interviewer=budi_hartono.nid,
+                        ncurrent_round=2,
+                        nmax_rounds=3,
+                        vstatus="NEGOTIATING",
+                        ddeadline_at=now + timedelta(days=2),
+                        dlast_activity_at=now,
+                    )
+                    session.add(th3)
+                    await session.flush()
+                    session.add(
+                        ThreadMessage(
+                            nid_thread=th3.nid,
+                            nround_number=1,
+                            vsender_role="AI_ORCHESTRATOR",
+                            vsender_name="SmartHiring AI Orchestrator",
+                            vchannel="email",
+                            vcontent="Dear Dewi Lestari, we invite you to an interview with VP of Finance Budi Hartono on Tuesday at 11:00 WITA.",
+                            vproposed_slot="Selasa, 11:00 WITA",
+                            vsource_citation="[cal-budi-hartono:EMP-FIN-001:HQ-JKT]",
+                        )
+                    )
+                    session.add(
+                        ThreadMessage(
+                            nid_thread=th3.nid,
+                            nround_number=2,
+                            vsender_role="CANDIDATE",
+                            vsender_name="Dewi Lestari",
+                            vchannel="email",
+                            vcontent="Dear team, Tuesday 11:00 WITA works perfectly for me. Thank you!",
+                            vproposed_slot="Selasa, 11:00 WITA",
+                            bis_rejection=False,
+                        )
+                    )
+                    print("  [NegotiationThread] Thread negosiasi Dewi Lestari x Budi Hartono dibuat.")
 
         # -------------------------------------------------------------
         # 8. Seed Sample Interview Session with Transcripts & Rubric Points
@@ -606,6 +881,75 @@ async def seed_data() -> None:
                         )
                     )
                 print("  [Interview] Sesi wawancara komprehensif Rina Kusuma berhasil dibuat.")
+
+        # -------------------------------------------------------------
+        # 9. Seed 25 Hash-Chained Audit Logs (Pillar 5 RECORD)
+        # -------------------------------------------------------------
+        from app.service.AuditLogService import AuditLogService
+        audit_svc = AuditLogService(session)
+        audit_events = [
+            ("POLICY_UPDATE", "SYSTEM", "ORCHESTRATOR", "Operational Rules Configured", "Working hours 09:00-17:00, Friday prayer blackout 11:30-13:00 WIB initialized."),
+            ("HOLIDAY_SYNC", "SYSTEM", "ORCHESTRATOR", "National Holidays Synchronized", "24 Indonesian national holidays & cuti bersama loaded from SKB 3 Menteri."),
+            ("SECURITY_INITIALIZATION", "ADMIN", "HUMAN", "RBAC Matrix Verified", "Permissions configured: HR (full recruitment), INTERVIEWER (salary-blind), ADMIN (audit-read)."),
+            ("GUARDRAIL_SCAN", "AI_ORCHESTRATOR", "AGENT", "Prompt Injection Scanner Active", "Guardrail ruleset loaded: prompt injection scan enabled for all inputs."),
+            ("CANDIDATE_ATS_SYNC", "HR_ADMIN", "HUMAN", "ATS Pipeline Synchronized", "12 candidate profiles registered into ATS database."),
+            ("CALENDAR_SYNC", "SYSTEM", "ORCHESTRATOR", "Calendar Availability Cached", "Work calendars synced for Jakarta HQ and Regional branches."),
+            ("TRIAGE_INITIATED", "AI_ORCHESTRATOR", "AGENT", "Scheduling Triage Started", "Candidate Rina Kusuma interview negotiation round 1 initialized."),
+            ("SLOT_VERIFICATION", "AI_ORCHESTRATOR", "AGENT", "Slot Availability Verified", "Checked Wednesday 10:00 WIB against Budi Santoso schedule: no conflict."),
+            ("SOURCE_CITED", "AI_ORCHESTRATOR", "AGENT", "Sources Provenance Verified", "Cited sources: [cal-budi-sync], [RULE_WORKING_HOURS], [RULE_FRIDAY_PRAYER]."),
+            ("MESSAGE_DISPATCHED", "AI_ORCHESTRATOR", "AGENT", "Invitation Sent via WhatsApp", "Initial slot offer sent to candidate Rina Kusuma."),
+            ("CANDIDATE_RESPONSE", "CANDIDATE", "HUMAN", "Reschedule Request Received", "Candidate requested move from Wednesday to Thursday 14:00 WIB."),
+            ("CONFLICT_DETECTED", "AI_ORCHESTRATOR", "AGENT", "Blackout Verification", "Thursday 14:00 WIB checked: compliant with working hours."),
+            ("TRIAGE_ROUND_2", "AI_ORCHESTRATOR", "AGENT", "Round 2 Proposal Prepared", "Updated draft plan generated for Thursday 14:00 WIB."),
+            ("SECONDARY_VALIDATION", "SECONDARY_VALIDATOR", "AGENT", "Dual-Control Validation Passed", "Validated by secondary model: no rule violations."),
+            ("APPROVAL_REQUESTED", "AI_ORCHESTRATOR", "AGENT", "Human Approval Gate Opened", "ActionPlan #1 submitted for HR approval (Two-Turn Gate)."),
+            ("HIGH_IMPACT_FLAGGED", "AI_ORCHESTRATOR", "AGENT", "High Impact Confirmed", "External WhatsApp message flagged for mandatory human authorization."),
+            ("APPROVAL_GRANTED", "HR_ADMIN", "HUMAN", "Action Plan Approved", "HR Lead Siti Rahma approved interview booking."),
+            ("UNDO_BUFFER_OPENED", "AI_ORCHESTRATOR", "AGENT", "60-Second Undo Buffer Active", "Execution delayed by 60-second safety window."),
+            ("UNDO_WINDOW_EXPIRED", "SYSTEM", "ORCHESTRATOR", "Undo Window Concluded", "60 seconds elapsed without user revocation."),
+            ("CALENDAR_BOOKED", "AI_ORCHESTRATOR", "AGENT", "Calendar Event Finalized", "Interview booked in Budi Santoso official calendar."),
+            ("EMAIL_DISPATCHED", "EMAIL_DISPATCHER", "ORCHESTRATOR", "Confirmation Email Sent", "ICS calendar invite delivered to interviewer and candidate."),
+            ("WHATSAPP_DISPATCHED", "WHATSAPP_DISPATCHER", "ORCHESTRATOR", "WhatsApp Confirmation Delivered", "Final schedule confirmed to candidate via WhatsApp."),
+            ("RUBRIC_EVALUATION", "INTERVIEWER", "HUMAN", "Interview Rubric Scored", "Budi Santoso scored technical competencies C1-C4."),
+            ("HR_DECISION_RECORDED", "HR_ADMIN", "HUMAN", "Selection Decision Finalized", "HR decision PROCEED recorded for candidate Rina Kusuma."),
+            ("AUDIT_CHAIN_VERIFIED", "AUDITOR", "HUMAN", "Chain of Custody Audit Completed", "Audit log hash-chain integrity verified with zero tampering detected."),
+        ]
+        for ev_type, actor, actor_type, title, desc in audit_events:
+            await audit_svc.log_event(
+                event_type=ev_type,
+                actor=actor,
+                actor_type=actor_type,
+                title=title,
+                description=desc,
+                metadata={"seeded": True, "compliance_pillar": "Pillar 5 (RECORD)"},
+            )
+        print("  [AuditLog] 25 cryptographic hash-chained audit events seeded.")
+
+        # Synchronize PostgreSQL identity / serial sequences to prevent unique constraint collisions
+        sync_tables = [
+            "tblm_candidate",
+            "tblm_user",
+            "tblt_negotiation_thread",
+            "tblt_thread_message",
+            "tblm_holiday",
+            "tblt_audit_log",
+            "tblm_profile",
+            "tblm_competency",
+            "tblt_calendar_event",
+            "tblt_interview",
+            "tblt_job",
+            "tblt_source_file",
+        ]
+        for tbl in sync_tables:
+            try:
+                await session.execute(
+                    text(
+                        f"SELECT setval(pg_get_serial_sequence('{tbl}', 'nid'), COALESCE((SELECT MAX(nid) FROM {tbl}), 1));"
+                    )
+                )
+            except Exception:
+                pass
+        print("  [Sequence] Serial sequence values synchronized with MAX(nid).")
 
         # Simpan seluruh transaksi ke database
         await session.commit()
