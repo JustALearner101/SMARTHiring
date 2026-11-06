@@ -16,8 +16,16 @@ class SecondaryValidatorNode:
         wita_str = updated_slot.get("formatted_wita", "")
         wit_str = updated_slot.get("formatted_wit", "")
         all_tz = f"{wib_str} = {wita_str} = {wit_str}"
-        inter_primary = wita_str if inter_tz == "WITA" else (wit_str if inter_tz == "WIT" else wib_str)
-        cand_primary = wita_str if cand_tz == "WITA" else (wit_str if cand_tz == "WIT" else wib_str)
+        inter_primary = (
+            wita_str
+            if inter_tz == "WITA"
+            else (wit_str if inter_tz == "WIT" else wib_str)
+        )
+        cand_primary = (
+            wita_str
+            if cand_tz == "WITA"
+            else (wit_str if cand_tz == "WIT" else wib_str)
+        )
         loc = updated_slot.get("location_type", "Google Meet")
         dur = updated_slot.get("duration_minutes", 60)
 
@@ -33,14 +41,18 @@ class SecondaryValidatorNode:
                     lines = []
                     for line in preview.split("\n"):
                         if line.startswith("- Jadwal Waktu Lokal Anda"):
-                            lines.append(f"- Jadwal Waktu Lokal Anda ({cand_tz}): {cand_primary}")
+                            lines.append(
+                                f"- Jadwal Waktu Lokal Anda ({cand_tz}): {cand_primary}"
+                            )
                         elif line.startswith("- Konversi Zona Waktu:"):
                             lines.append(f"- Konversi Zona Waktu: {all_tz}")
                         else:
                             lines.append(line)
                     new_preview = "\n".join(lines)
                 else:
-                    new_preview = f"{preview}\n\nJadwal ({cand_tz}): {cand_primary} ({all_tz})"
+                    new_preview = (
+                        f"{preview}\n\nJadwal ({cand_tz}): {cand_primary} ({all_tz})"
+                    )
             else:
                 if "- Jadwal (" in preview:
                     lines = []
@@ -50,7 +62,9 @@ class SecondaryValidatorNode:
                         elif line.startswith("- Konversi Zona Waktu:"):
                             lines.append(f"- Konversi Zona Waktu: {all_tz}")
                         elif line.startswith("- Jadwal Follow-Up"):
-                            lines.append(f"- Jadwal Follow-Up ({inter_tz}): {inter_primary} ({all_tz})")
+                            lines.append(
+                                f"- Jadwal Follow-Up ({inter_tz}): {inter_primary} ({all_tz})"
+                            )
                         else:
                             lines.append(line)
                     new_preview = "\n".join(lines)
@@ -117,7 +131,9 @@ class SecondaryValidatorNode:
                 }
                 for s in (state.get("sources_cited") or [])
             ]
-            items = cls._sync_items_with_slot(state.get("items") or [], updated_slot, inter_tz, cand_tz)
+            items = cls._sync_items_with_slot(
+                state.get("items") or [], updated_slot, inter_tz, cand_tz
+            )
             return {
                 "proposed_slot": updated_slot,
                 "sources_cited": sources,
@@ -141,7 +157,11 @@ class SecondaryValidatorNode:
 
         if is_friday_prayer_conflict:
             # Shift to safe Friday afternoon slot from available_slots, or default to 14:15 / 14:30 WIB
-            fri_pm = [s for s in (state.get("available_slots") or []) if s.get("time_str", "00:00") >= "13:30"]
+            fri_pm = [
+                s
+                for s in (state.get("available_slots") or [])
+                if s.get("time_str", "00:00") >= "13:30"
+            ]
             if fri_pm:
                 target_fri = fri_pm[0]
                 adjusted_start_utc = datetime.fromisoformat(target_fri["start_utc"])
@@ -182,7 +202,9 @@ class SecondaryValidatorNode:
                 }
                 for s in (state.get("sources_cited") or [])
             ]
-            items = cls._sync_items_with_slot(state.get("items") or [], updated_slot, inter_tz, cand_tz)
+            items = cls._sync_items_with_slot(
+                state.get("items") or [], updated_slot, inter_tz, cand_tz
+            )
             return {
                 "proposed_slot": updated_slot,
                 "sources_cited": sources,
@@ -208,14 +230,20 @@ class SecondaryValidatorNode:
         inter_time = start_utc + inter_offset
         inter_end_time = inter_time + duration_delta
 
-        is_cand_out = cand_time.time() < time(9, 0) or cand_end_time.time() > time(17, 0)
-        is_inter_out = inter_time.time() < time(9, 0) or inter_end_time.time() > time(17, 0)
+        is_cand_out = cand_time.time() < time(9, 0) or cand_end_time.time() > time(
+            17, 0
+        )
+        is_inter_out = inter_time.time() < time(9, 0) or inter_end_time.time() > time(
+            17, 0
+        )
 
         if is_cand_out or is_inter_out:
             adjusted_date = wib_time.date()
             # If candidate is in WIT, 14:00 WIB = 16:00 WIT is mutually compatible (within 09:00 - 17:00 for both)
             adjusted_hour = 14 if cand_tz == "WIT" else 10
-            adjusted_wib = datetime.combine(adjusted_date, time(adjusted_hour, 0), tzinfo=UTC)
+            adjusted_wib = datetime.combine(
+                adjusted_date, time(adjusted_hour, 0), tzinfo=UTC
+            )
             adjusted_start_utc = adjusted_wib - timedelta(hours=7)
             adjusted_end_utc = adjusted_start_utc + duration_delta
             adjusted_wita = adjusted_wib + timedelta(hours=1)
@@ -255,7 +283,9 @@ class SecondaryValidatorNode:
                 }
                 for s in (state.get("sources_cited") or [])
             ]
-            items = cls._sync_items_with_slot(state.get("items") or [], updated_slot, inter_tz, cand_tz)
+            items = cls._sync_items_with_slot(
+                state.get("items") or [], updated_slot, inter_tz, cand_tz
+            )
             return {
                 "proposed_slot": updated_slot,
                 "sources_cited": sources,
@@ -269,12 +299,17 @@ class SecondaryValidatorNode:
 
         available_slots = state.get("available_slots") or []
         slot_time_str = wib_time.strftime("%H:%M")
-        matching_slot = next((s for s in available_slots if s.get("time_str") == slot_time_str), None)
+        matching_slot = next(
+            (s for s in available_slots if s.get("time_str") == slot_time_str), None
+        )
         if available_slots and not matching_slot:
-            after_slots = [s for s in available_slots if s.get("time_str", "00:00") >= slot_time_str]
+            after_slots = [
+                s
+                for s in available_slots
+                if s.get("time_str", "00:00") >= slot_time_str
+            ]
             nearest_slot = after_slots[0] if after_slots else available_slots[0]
             n_start_utc = datetime.fromisoformat(nearest_slot["start_utc"])
-            n_end_utc = datetime.fromisoformat(nearest_slot["end_utc"])
             n_wib = n_start_utc + timedelta(hours=7)
             n_wita = n_start_utc + timedelta(hours=8)
             n_wit = n_start_utc + timedelta(hours=9)
@@ -282,9 +317,12 @@ class SecondaryValidatorNode:
                 **slot,
                 "start_utc": nearest_slot["start_utc"],
                 "end_utc": nearest_slot["end_utc"],
-                "formatted_wib": nearest_slot.get("formatted_wib") or f"{n_wib.strftime('%A, %d %b %Y, %H:%M')} WIB",
-                "formatted_wita": nearest_slot.get("formatted_wita") or f"{n_wita.strftime('%A, %d %b %Y, %H:%M')} WITA",
-                "formatted_wit": nearest_slot.get("formatted_wit") or f"{n_wit.strftime('%A, %d %b %Y, %H:%M')} WIT",
+                "formatted_wib": nearest_slot.get("formatted_wib")
+                or f"{n_wib.strftime('%A, %d %b %Y, %H:%M')} WIB",
+                "formatted_wita": nearest_slot.get("formatted_wita")
+                or f"{n_wita.strftime('%A, %d %b %Y, %H:%M')} WITA",
+                "formatted_wit": nearest_slot.get("formatted_wit")
+                or f"{n_wit.strftime('%A, %d %b %Y, %H:%M')} WIT",
             }
             notes = (
                 f"Secondary Validator Passed (Auto-Remediation Applied): Proposed slot at {slot_time_str} WIB "
@@ -302,7 +340,9 @@ class SecondaryValidatorNode:
                 }
                 for s in (state.get("sources_cited") or [])
             ]
-            items = cls._sync_items_with_slot(state.get("items") or [], updated_slot, inter_tz, cand_tz)
+            items = cls._sync_items_with_slot(
+                state.get("items") or [], updated_slot, inter_tz, cand_tz
+            )
             return {
                 "proposed_slot": updated_slot,
                 "sources_cited": sources,
@@ -318,10 +358,14 @@ class SecondaryValidatorNode:
         wit_time = start_utc + timedelta(hours=9)
         updated_slot = {
             **slot,
-            "formatted_wita": slot.get("formatted_wita") or f"{wita_time.strftime('%A, %d %b %Y, %H:%M')} WITA",
-            "formatted_wit": slot.get("formatted_wit") or f"{wit_time.strftime('%A, %d %b %Y, %H:%M')} WIT",
+            "formatted_wita": slot.get("formatted_wita")
+            or f"{wita_time.strftime('%A, %d %b %Y, %H:%M')} WITA",
+            "formatted_wit": slot.get("formatted_wit")
+            or f"{wit_time.strftime('%A, %d %b %Y, %H:%M')} WIT",
         }
-        items = cls._sync_items_with_slot(state.get("items") or [], updated_slot, inter_tz, cand_tz)
+        items = cls._sync_items_with_slot(
+            state.get("items") or [], updated_slot, inter_tz, cand_tz
+        )
 
         conflict_prefix = ""
         if state.get("slot_conflict_detected"):

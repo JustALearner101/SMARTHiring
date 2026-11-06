@@ -52,7 +52,11 @@ class SlotConflictCheckerService:
             cand_stmt = select(Candidate).where(Candidate.nid == cand_id_int)
             candidate_obj = (await self.session.execute(cand_stmt)).scalars().first()
 
-        candidate_tz = candidate_obj.vtimezone if candidate_obj and candidate_obj.vtimezone else timezone_str
+        candidate_tz = (
+            candidate_obj.vtimezone
+            if candidate_obj and candidate_obj.vtimezone
+            else timezone_str
+        )
         cand_tz_offset = TZ_OFFSETS.get(candidate_tz, TZ_OFFSETS["WIB"])
 
         candidate_times = [
@@ -68,7 +72,7 @@ class SlotConflictCheckerService:
 
         # Check up to 14 days ahead (including same day for alternative slots)
         curr_d = base_date
-        for day_offset in range(0, 15):
+        for day_offset in range(15):
             check_date = curr_d + timedelta(days=day_offset)
 
             # Skip weekends (5=Saturday, 6=Sunday)
@@ -88,7 +92,9 @@ class SlotConflictCheckerService:
                     continue
 
                 # Check Friday prayer
-                if check_date.weekday() == 4 and not (dt_local_end.time() <= f_start or t_candidate >= f_end):
+                if check_date.weekday() == 4 and not (
+                    dt_local_end.time() <= f_start or t_candidate >= f_end
+                ):
                     continue
 
                 # Check Candidate working hours if in different timezone
@@ -132,7 +138,10 @@ class SlotConflictCheckerService:
         self,
         request: SlotConflictCheckRequestDTO,
     ) -> SlotConflictCheckResultDTO:
-        if not request.interviewer_id.strip().isdigit() or int(request.interviewer_id.strip()) <= 0:
+        if (
+            not request.interviewer_id.strip().isdigit()
+            or int(request.interviewer_id.strip()) <= 0
+        ):
             return SlotConflictCheckResultDTO(
                 is_available=False,
                 status="INTERVIEWER_NOT_FOUND",
@@ -148,13 +157,19 @@ class SlotConflictCheckerService:
                 ],
             )
         interviewer_id_int = int(request.interviewer_id.strip())
-        cand_id_int = int(request.candidate_id) if request.candidate_id and request.candidate_id.isdigit() else None
+        cand_id_int = (
+            int(request.candidate_id)
+            if request.candidate_id and request.candidate_id.isdigit()
+            else None
+        )
 
         interviewer_name = "Budi Santoso"
         interviewer_uid = f"EMP-ENG-00{interviewer_id_int}"
         if interviewer_id_int != 1:
             try:
-                user_res = await self.session.execute(select(User).where(User.nid == interviewer_id_int))
+                user_res = await self.session.execute(
+                    select(User).where(User.nid == interviewer_id_int)
+                )
                 interviewer_obj = user_res.scalars().first()
                 if interviewer_obj is None:
                     return SlotConflictCheckResultDTO(
@@ -257,7 +272,9 @@ class SlotConflictCheckerService:
                 rule_code="RULE_WEEKEND_BLACKOUT",
                 suggested_alternatives=alt_strs,
                 suggested_alternative_slots=alt_dtos,
-                sources_cited=_make_sources("RULE_WEEKEND_BLACKOUT", "Rule: Weekend Blackout Policy"),
+                sources_cited=_make_sources(
+                    "RULE_WEEKEND_BLACKOUT", "Rule: Weekend Blackout Policy"
+                ),
                 calculated_end_time=calc_end_time,
                 calculated_end_utc=calc_end_utc,
             )
@@ -267,7 +284,11 @@ class SlotConflictCheckerService:
         # ---------------------------------------------------------------------
         holiday = await self.holiday_repo.is_holiday(req_date)
         if holiday:
-            h_type = "Collective Leave" if holiday.vtype == "COLLECTIVE_LEAVE" else "National Holiday"
+            h_type = (
+                "Collective Leave"
+                if holiday.vtype == "COLLECTIVE_LEAVE"
+                else "National Holiday"
+            )
             alt_strs, alt_dtos = await self._find_valid_alternatives(
                 base_date=req_date,
                 timezone_str=request.timezone,
@@ -283,7 +304,9 @@ class SlotConflictCheckerService:
                 rule_code="RULE_NATIONAL_HOLIDAY",
                 suggested_alternatives=alt_strs,
                 suggested_alternative_slots=alt_dtos,
-                sources_cited=_make_sources("RULE_NATIONAL_HOLIDAY", f"Holiday: {holiday.vname}"),
+                sources_cited=_make_sources(
+                    "RULE_NATIONAL_HOLIDAY", f"Holiday: {holiday.vname}"
+                ),
                 calculated_end_time=calc_end_time,
                 calculated_end_utc=calc_end_utc,
             )
@@ -309,7 +332,10 @@ class SlotConflictCheckerService:
                 rule_code="RULE_WORKING_HOURS",
                 suggested_alternatives=alt_strs,
                 suggested_alternative_slots=alt_dtos,
-                sources_cited=_make_sources("RULE_WORKING_HOURS", "Rule: Operational Working Hours (09:00 - 17:00)"),
+                sources_cited=_make_sources(
+                    "RULE_WORKING_HOURS",
+                    "Rule: Operational Working Hours (09:00 - 17:00)",
+                ),
                 calculated_end_time=calc_end_time,
                 calculated_end_utc=calc_end_utc,
             )
@@ -342,7 +368,10 @@ class SlotConflictCheckerService:
                     rule_code="RULE_FRIDAY_PRAYER",
                     suggested_alternatives=alt_strs,
                     suggested_alternative_slots=alt_dtos,
-                    sources_cited=_make_sources("RULE_FRIDAY_PRAYER", "Rule: Friday Prayer Blackout (11:30 - 13:00)"),
+                    sources_cited=_make_sources(
+                        "RULE_FRIDAY_PRAYER",
+                        "Rule: Friday Prayer Blackout (11:30 - 13:00)",
+                    ),
                     calculated_end_time=calc_end_time,
                     calculated_end_utc=calc_end_utc,
                 )
@@ -376,7 +405,9 @@ class SlotConflictCheckerService:
                         rule_code="RULE_WORKING_HOURS",
                         suggested_alternatives=alt_strs,
                         suggested_alternative_slots=alt_dtos,
-                        sources_cited=_make_sources("RULE_WORKING_HOURS", "Rule: Cross-Timezone Working Hours"),
+                        sources_cited=_make_sources(
+                            "RULE_WORKING_HOURS", "Rule: Cross-Timezone Working Hours"
+                        ),
                         calculated_end_time=calc_end_time,
                         calculated_end_utc=calc_end_utc,
                     )
@@ -407,7 +438,9 @@ class SlotConflictCheckerService:
                 conflicting_event=conf_ev.vtitle,
                 suggested_alternatives=alt_strs,
                 suggested_alternative_slots=alt_dtos,
-                sources_cited=_make_sources("RULE_CALENDAR_BUSY", f"Conflict: {conf_ev.vtitle}"),
+                sources_cited=_make_sources(
+                    "RULE_CALENDAR_BUSY", f"Conflict: {conf_ev.vtitle}"
+                ),
                 calculated_end_time=calc_end_time,
                 calculated_end_utc=calc_end_utc,
             )
@@ -439,7 +472,10 @@ class SlotConflictCheckerService:
                 conflicting_event=buf_ev.vtitle,
                 suggested_alternatives=alt_strs,
                 suggested_alternative_slots=alt_dtos,
-                sources_cited=_make_sources("RULE_MEETING_BUFFER", f"Rule: {policy.nbuffer_minutes}-Minute Meeting Buffer"),
+                sources_cited=_make_sources(
+                    "RULE_MEETING_BUFFER",
+                    f"Rule: {policy.nbuffer_minutes}-Minute Meeting Buffer",
+                ),
                 calculated_end_time=calc_end_time,
                 calculated_end_utc=calc_end_utc,
             )
@@ -448,7 +484,9 @@ class SlotConflictCheckerService:
             is_available=True,
             status="VALID",
             message=f"Schedule slot is available and complies with all operational rules ({request.timezone}).",
-            sources_cited=_make_sources("RULE_WORKING_HOURS", "Rule: Operational Working Hours Compliance"),
+            sources_cited=_make_sources(
+                "RULE_WORKING_HOURS", "Rule: Operational Working Hours Compliance"
+            ),
             calculated_end_time=calc_end_time,
             calculated_end_utc=calc_end_utc,
         )

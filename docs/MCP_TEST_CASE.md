@@ -1,5 +1,5 @@
 # HEKETON ACCOUNTABLE MCP SERVER — TEST CASE SPECIFICATION
-**Document ID**: `HEK-MCP-TC-2026-v1.0`  
+**Document ID**: `HEK-MCP-TC-2026-v1.1`  
 **Target Environment**: Tencent Cloud WorkBuddy AI / MCP Clients  
 **Testing Methodology**: Independent Blackbox Agent Evaluation (Zero Codebase Access)
 
@@ -101,7 +101,7 @@ PRINSIP PENGUJIAN:
   - Panggil `check_slot_conflict(interviewer_id="10", date="2026-11-09", time="14:05", timezone="WIB")` (Hanya 5 menit setelah selesai rapat, melanggar buffer 15 menit).
 - **Kriteria Keberhasilan (Pass)**:
   - Pada jam 13:00 WIB: `status` = `CONFLICT_EXISTING_EVENT`, `conflicting_event` = `Weekly Engineering Sync`.
-  - Pada jam 14:05 WIB: `status` = `INSUFFICIENT_BUFFER`, `rule_code` = `RULE_MEETING_BUFFER`, `confifikasi_event` / `conflicting_event` = `Weekly Engineering Sync`.
+  - Pada jam 14:05 WIB: `status` = `INSUFFICIENT_BUFFER`, `rule_code` = `RULE_MEETING_BUFFER`, `conflicting_event` = `Weekly Engineering Sync`.
 
 ---
 
@@ -228,3 +228,43 @@ PRINSIP PENGUJIAN:
     - Status mencerminkan `HR_DECISION_RECORDED` atau `DECISION_RECORDED`.
     - Tercipta log pada `heketon://audit/recent` yang mendokumentasikan keputusan oleh aktor HR (`hr.lead@company.com`).
   - Skema tool MCP bersih dan tidak lagi mengekspos parameter usang `caller_role_override`.
+
+---
+
+### TEST SUITE 6: WORKBUDDY-CENTRIC DETERMINISTIC TOOLS (v1.1 ARCHITECTURE)
+
+#### TC-14: Validasi Jadwal Pra-Draf Deterministic Tanpa Side-Effect (`validate_schedule`)
+- **Tujuan**: Memastikan WorkBuddy AI dapat melakukan pra-validasi jadwal secara deterministik (zero-LLM, zero side-effect) sebelum menyusun rencana aksi. Mengidentifikasi pelanggaran jam kerja (09:00–17:00), blackout salat Jumat (11:30–13:00), akhir pekan, libur nasional, bentrok kalender, dan kepatuhan buffer 15 menit, serta menyediakan slot alternatif valid.
+- **Aksi MCP**:
+  1. *Uji Pelanggaran Salat Jumat*: Panggil `validate_schedule(start_time="2026-11-13T12:00:00+07:00", duration_minutes=60, interviewer_id=10)`.
+  2. *Uji Pelanggaran Buffer*: Panggil `validate_schedule(start_time="2026-11-09T14:05:00+07:00", duration_minutes=30, interviewer_id=10)` (Budi Santoso memiliki agenda 13:00–14:00).
+  3. *Uji Jadwal Valid*: Panggil `validate_schedule(start_time="2026-11-10T10:00:00+07:00", duration_minutes=60, candidate_id=12, interviewer_id=10)`.
+- **Kriteria Keberhasilan (Pass)**:
+  - Pada uji salat Jumat:
+    - `is_valid: false`
+    - `violations` memuat objek dengan `rule_id: "RULE_FRIDAY_PRAYER"`
+    - `suggestions` menyediakan maksimal 3 alternatif slot valid di luar jendela salat Jumat.
+  - Pada uji buffer:
+    - `is_valid: false`
+    - `conflicts` memuat deteksi pelanggaran buffer 15 menit (`RULE_MEETING_BUFFER`)
+    - `suggestions` menyarankan waktu setelah buffer aman (misal 14:15 atau slot berikutnya).
+  - Pada uji jadwal valid:
+    - `is_valid: true`, `violations: []`, `conflicts: []`
+    - `sources_cited` lengkap menyertakan referensi aturan operasional, kalender, dan kontak.
+
+#### TC-15: Pembuatan Draf Rencana Aksi Terstruktur & Tiket Persetujuan (`draft_action_plan`)
+- **Tujuan**: Memastikan pembuatan draft Action Plan terstruktur menghasilkan tiket persetujuan kriptografis (`TKT-HEK-XXXX`), menyusun 3 item aksi terstruktur (kandidat, pewawancara, kalender), mengaktifkan anti-auto-chain cooldown, dan menegakkan pertahanan berlapis (defense-in-depth) di sisi server jika jadwal melanggar aturan atau bentrok.
+- **Aksi MCP**:
+  1. *Uji Defense-in-Depth*: Panggil `draft_action_plan(title="Technical Interview", candidate_id=12, interviewer_id=10, start_time="2026-11-13T12:00:00+07:00")`.
+  2. *Uji Happy Path*: Panggil `draft_action_plan(title="Technical Interview Frontend", candidate_id=12, interviewer_id=10, start_time="2026-11-10T10:00:00+07:00", duration_minutes=60, location_type="GOOGLE_MEET")`.
+  3. *Verifikasi Hasil Draf*: Periksa atribut `approval_ticket`, `items`, `sources_cited`, dan status `AWAITING_APPROVAL`.
+- **Kriteria Keberhasilan (Pass)**:
+  - Pada uji defense-in-depth:
+    - Server menolak pembuatan draf dengan `status: "REJECTED_OPERATIONAL_RULE"` atau `REJECTED_CALENDAR_CONFLICT`.
+    - Tidak ada rencana aksi atau tiket approval yang diterbitkan.
+  - Pada uji happy path:
+    - `status: "DRAFT_CREATED"` dan rencana aksi berstatus `AWAITING_APPROVAL`.
+    - `approval_ticket` diterbitkan dengan format terstandarisasi `TKT-HEK-XXXX`.
+    - `items` memuat 3 item lengkap: 1 item kalender, 1 pesan WhatsApp/email kandidat, 1 notifikasi pewawancara.
+    - `confirmation_card_ready: true` dengan format kartu konfirmasi Who, What, When, Where, Sources Cited untuk WorkBuddy UI.
+    - Timestamp draf tercatat di memory server untuk menegakkan Anti-Auto-Chain cooldown saat pemanggilan `approve_action_plan`.

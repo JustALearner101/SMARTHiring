@@ -279,47 +279,45 @@ async def test_tc11_simulate_fast_chain_cooldown():
 
 @pytest.mark.asyncio
 async def test_tc13_temuan_03_10_interviewer_rbac_and_analyzer():
-    """Verify INTERVIEWER salary lock token, non-empty competency_points, and technical evaluation recording."""
-    # 1. Salary redaction token
+    """Verify HR-Only by default access: salary accessible to HR, and decision recording."""
+    from app.db.DatabaseSession import AsyncSessionLocal
+    from app.service.InterviewSessionService import InterviewSessionService
+
+    # 1. Salary transparently accessible to authoritative HR Lead
     raw_cand = await heketon_mcp.call_tool(
         "get_candidate_profile",
-        {"candidate_query": "12", "caller_role_override": "INTERVIEWER"},
+        {"candidate_query": "12"},
     )
     res_cand = _parse(raw_cand)
-    assert res_cand["candidate"]["expected_salary"] == "[CONFIDENTIAL_SALARY_LOCKED]"
-    assert res_cand["candidate"]["current_salary"] == "[CONFIDENTIAL_SALARY_LOCKED]"
+    assert res_cand["caller_role"] == "HR"
+    assert res_cand["candidate"]["expected_salary"] == 24000000
+    assert res_cand["candidate"]["current_salary"] == 18000000
 
-    # 2. analyze_interview_session returns non-empty competency_points for INTERVIEWER
-    raw_an = await heketon_mcp.call_tool(
-        "analyze_interview_session",
-        {
-            "candidate_id": "12",
-            "session_id": "1",
-            "consent_status": "GRANTED",
-            "caller_role_override": "INTERVIEWER",
-        },
-    )
-    res_an = _parse(raw_an)
-    assert res_an["success"] is True
-    assert res_an["job_status"] == "COMPLETED"
-    assert len(res_an["competency_points"]) >= 1
+    # 2. Setup fresh interview session to record decision
+    async with AsyncSessionLocal() as session:
+        int_svc = InterviewSessionService(session)
+        created_session = await int_svc.upload_interview_file(
+            filename="remediation_interview.mp3",
+            content=b"\xff\xfb\x90\x44\x00" + b"\x00" * 300,
+            candidate_id="1",
+            profile_id="1",
+            consent_status="GRANTED",
+            notes="Evaluasi teknis kandidat.",
+        )
+        fresh_id = str(created_session.id)
 
-    # 3. record_interview_decision allows INTERVIEWER technical evaluation
+    # 3. record_interview_decision records recruitment decision by HR
     raw_dec = await heketon_mcp.call_tool(
         "record_interview_decision",
         {
-            "session_id": "1",
-            "recommendation": "HIRE",
-            "technical_score": 88,
+            "interview_id": fresh_id,
+            "decision": "ADVANCE",
             "notes": "Kandidat sangat menguasai arsitektur backend dan distributed systems.",
-            "caller_role_override": "INTERVIEWER",
         },
     )
     res_dec = _parse(raw_dec)
     assert res_dec["success"] is True
-    assert res_dec["status"] == "TECHNICAL_EVALUATION_RECORDED"
-    assert res_dec["recommendation"] == "HIRE"
-    assert res_dec["salary_access"] == "[CONFIDENTIAL_SALARY_LOCKED]"
+    assert res_dec["decision"] == "ADVANCE"
 
 
 @pytest.mark.asyncio

@@ -306,6 +306,7 @@ class PlannerTriageNode:
 
         if chosen_slot_data:
             start_utc_dt = datetime.fromisoformat(chosen_slot_data["start_utc"])
+            target_date = (start_utc_dt + timedelta(hours=7)).date()
             wib_t = start_utc_dt + timedelta(hours=7)
             wita_t = start_utc_dt + timedelta(hours=8)
             wit_t = start_utc_dt + timedelta(hours=9)
