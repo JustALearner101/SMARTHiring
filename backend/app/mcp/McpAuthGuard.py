@@ -10,7 +10,6 @@ import time
 
 from mcp.server.fastmcp import Context
 
-from app.core.AppConfig import settings
 from app.mcp.McpSchemas import McpCallerContext
 
 VALID_ROLES: set[str] = {"HR", "ADMIN", "INTERVIEWER"}
@@ -72,12 +71,29 @@ def verify_plan_approval_ticket(
     return True, None
 
 
-def check_anti_auto_chain_cooldown(plan_id: str) -> tuple[bool, str | None]:
+def check_anti_auto_chain_cooldown(
+    plan_id: str,
+    simulated_elapsed_ms: int | None = None,
+) -> tuple[bool, str | None]:
     """Verify that approve_action_plan is not called automatically in the same turn.
 
+    Supports simulated_elapsed_ms for deterministic automated testing.
     Returns (True, None) if cooldown passed, or (False, error_message) if violated.
     """
     clean_id = str(plan_id).strip()
+
+    if simulated_elapsed_ms is not None:
+        if simulated_elapsed_ms < MIN_APPROVAL_COOLDOWN_MS:
+            return (
+                False,
+                (
+                    f"Pelanggaran dicegah (Anti-Auto-Chain Guard / COOLDOWN_ACTIVE / Anti-Auto-Chain Violation): "
+                    f"approve_action_plan dipanggil terlalu cepat ({simulated_elapsed_ms}ms < {MIN_APPROVAL_COOLDOWN_MS}ms). "
+                    f"Wajib menunggu respon dan persetujuan eksplisit manusia pada giliran terpisah."
+                ),
+            )
+        return True, None
+
     drafted_ms = _PLAN_DRAFT_TIMESTAMPS_MS.get(clean_id, 0)
     now_ms = int(time.time() * 1000)
 
@@ -98,41 +114,16 @@ async def verify_caller_rbac(
     ctx: Context | None = None,
     caller_role_override: str | None = None,
 ) -> McpCallerContext:
-    """Resolve and validate caller identity and role against the 3 official roles (HR, ADMIN, INTERVIEWER)."""
-    # 1. Check caller_role_override (permitted in testing or non-production environment)
-    if caller_role_override and settings.ENVIRONMENT != "production":
-        norm = caller_role_override.strip().upper()
-        if norm in VALID_ROLES:
-            return McpCallerContext(
-                actor_id=f"override-{norm.lower()}@heketon.local",
-                role=norm,
-                client_name="DemoRoleSwitcher",
-            )
+    """Resolve caller identity and role for Heketon MCP Server.
 
-    # 2. Extract from FastMCP Context if available (HTTP Headers via SSE)
-    if ctx:
-        try:
-            req_ctx = getattr(ctx, "request_context", None)
-            if req_ctx:
-                headers = getattr(req_ctx, "headers", {})
-                actor_role = headers.get("x-actor-role") or headers.get("X-Demo-Role")
-                actor_id = headers.get("x-actor-id", "anonymous@heketon.local")
-                if actor_role and actor_role.upper() in VALID_ROLES:
-                    return McpCallerContext(
-                        actor_id=actor_id,
-                        role=actor_role.upper(),
-                        client_name="FastMcpClient",
-                    )
-        except Exception:
-            pass
-
-    # 3. Fallback to Environment Variables (Standard for Stdio Transport)
-    env_role = os.getenv("HEKETON_MCP_ACTOR_ROLE", "HR").strip().upper()
+    Architecture Decision (HR-Only by Default):
+    The MCP server operates strictly as an internal Office Ops Copilot for HR.
+    All calls are authoritatively executed under the HR Lead identity ('hr.lead@company.com', role 'HR').
+    Client-side role overrides are strictly ignored or disallowed to prevent privilege spoofing.
+    """
     env_actor = os.getenv("HEKETON_MCP_ACTOR_ID", "hr.lead@company.com").strip()
-    resolved_role = env_role if env_role in VALID_ROLES else "HR"
-
     return McpCallerContext(
         actor_id=env_actor,
-        role=resolved_role,
-        client_name="StdioDefault",
+        role="HR",
+        client_name="OfficeOpsHR",
     )

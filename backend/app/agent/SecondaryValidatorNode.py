@@ -140,11 +140,19 @@ class SecondaryValidatorNode:
                 is_friday_prayer_conflict = True
 
         if is_friday_prayer_conflict:
-            # Shift to safe Friday afternoon slot: 14:00 WIB (07:00 UTC)
-            adjusted_date = wib_time.date()
-            adjusted_wib = datetime.combine(adjusted_date, time(14, 0), tzinfo=UTC)
-            adjusted_start_utc = adjusted_wib - timedelta(hours=7)
-            adjusted_end_utc = adjusted_start_utc + duration_delta
+            # Shift to safe Friday afternoon slot from available_slots, or default to 14:15 / 14:30 WIB
+            fri_pm = [s for s in (state.get("available_slots") or []) if s.get("time_str", "00:00") >= "13:30"]
+            if fri_pm:
+                target_fri = fri_pm[0]
+                adjusted_start_utc = datetime.fromisoformat(target_fri["start_utc"])
+                adjusted_end_utc = datetime.fromisoformat(target_fri["end_utc"])
+                adjusted_wib = adjusted_start_utc + timedelta(hours=7)
+            else:
+                adjusted_date = wib_time.date()
+                adjusted_wib = datetime.combine(adjusted_date, time(14, 15), tzinfo=UTC)
+                adjusted_start_utc = adjusted_wib - timedelta(hours=7)
+                adjusted_end_utc = adjusted_start_utc + duration_delta
+
             adjusted_wita = adjusted_wib + timedelta(hours=1)
             adjusted_wit = adjusted_wib + timedelta(hours=2)
 
@@ -160,7 +168,7 @@ class SecondaryValidatorNode:
             notes = (
                 "Secondary Validator Passed (Auto-Remediation Applied): Initial Friday slot at 11:30 - 13:00 WIB rejected because it overlaps "
                 "with Friday prayer blackout hours [RULE_FRIDAY_PRAYER]. Slot automatically adjusted to "
-                "14:00 WIB in accordance with company operational policy."
+                f"{adjusted_wib.strftime('%H:%M')} WIB in accordance with company operational policy and 15-minute buffer."
             )
 
             sources = [
@@ -255,6 +263,53 @@ class SecondaryValidatorNode:
                 "secondary_validator_passed": True,
                 "validator_action": "AUTO_SHIFTED",
                 "validator_rule": "RULE_WORKING_HOURS",
+                "validator_notes": notes,
+                "status": "PENDING APPROVAL",
+            }
+
+        available_slots = state.get("available_slots") or []
+        slot_time_str = wib_time.strftime("%H:%M")
+        matching_slot = next((s for s in available_slots if s.get("time_str") == slot_time_str), None)
+        if available_slots and not matching_slot:
+            after_slots = [s for s in available_slots if s.get("time_str", "00:00") >= slot_time_str]
+            nearest_slot = after_slots[0] if after_slots else available_slots[0]
+            n_start_utc = datetime.fromisoformat(nearest_slot["start_utc"])
+            n_end_utc = datetime.fromisoformat(nearest_slot["end_utc"])
+            n_wib = n_start_utc + timedelta(hours=7)
+            n_wita = n_start_utc + timedelta(hours=8)
+            n_wit = n_start_utc + timedelta(hours=9)
+            updated_slot = {
+                **slot,
+                "start_utc": nearest_slot["start_utc"],
+                "end_utc": nearest_slot["end_utc"],
+                "formatted_wib": nearest_slot.get("formatted_wib") or f"{n_wib.strftime('%A, %d %b %Y, %H:%M')} WIB",
+                "formatted_wita": nearest_slot.get("formatted_wita") or f"{n_wita.strftime('%A, %d %b %Y, %H:%M')} WITA",
+                "formatted_wit": nearest_slot.get("formatted_wit") or f"{n_wit.strftime('%A, %d %b %Y, %H:%M')} WIT",
+            }
+            notes = (
+                f"Secondary Validator Passed (Auto-Remediation Applied): Proposed slot at {slot_time_str} WIB "
+                f"conflicts with existing calendar events or violates the required 15-minute buffer [RULE_MEETING_BUFFER]. "
+                f"Slot automatically adjusted to nearest conflict-free slot at {updated_slot.get('formatted_wib')}."
+            )
+            sources = [
+                {
+                    **s,
+                    "detail": (
+                        f"Available slot verified at {updated_slot.get('formatted_wib', '')} ({inter_tz}) without conflicts."
+                        if s.get("id") == "src-01" or s.get("source_type") == "CALENDAR"
+                        else s.get("detail", "")
+                    ),
+                }
+                for s in (state.get("sources_cited") or [])
+            ]
+            items = cls._sync_items_with_slot(state.get("items") or [], updated_slot, inter_tz, cand_tz)
+            return {
+                "proposed_slot": updated_slot,
+                "sources_cited": sources,
+                "items": items,
+                "secondary_validator_passed": True,
+                "validator_action": "AUTO_SHIFTED",
+                "validator_rule": "RULE_MEETING_BUFFER",
                 "validator_notes": notes,
                 "status": "PENDING APPROVAL",
             }

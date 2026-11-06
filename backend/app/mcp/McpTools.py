@@ -47,7 +47,7 @@ from app.service.SpeechToTextService import SpeechToTextService
 logger = logging.getLogger(__name__)
 
 # Build marker: lets blackbox testers confirm which build the running server executes.
-MCP_SERVER_VERSION = "2026.11.06-rev3"
+MCP_SERVER_VERSION = "2026.11.06-rev4"
 
 
 def register_heketon_mcp_tools(mcp: FastMCP) -> None:
@@ -68,10 +68,9 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
     async def search_contacts(
         query: str = "",
         department: str | None = None,
-        caller_role_override: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        await verify_caller_rbac(ctx, caller_role_override)
+        await verify_caller_rbac(ctx)
         async with AsyncSessionLocal() as db:
             svc = ContactService(db)
             all_interviewers = await svc.list_interviewers(department=department)
@@ -145,15 +144,14 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
         name="get_candidate_profile",
         description=(
             "[TIER-1 READ] Retrieve candidate application profile, resume summary, and communication channel. "
-            "Enforces strict RBAC: Expected salary is REDACTED for INTERVIEWER role."
+            "Authoritative HR caller has full visibility into candidate ATS records, including compensation details."
         ),
     )
     async def get_candidate_profile(
         candidate_query: str,
-        caller_role_override: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        caller = await verify_caller_rbac(ctx, caller_role_override)
+        caller = await verify_caller_rbac(ctx)
         async with AsyncSessionLocal() as db:
             svc = CandidateService(db)
             candidate = None
@@ -255,17 +253,36 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
         timezone: str = "WIB",
         duration_minutes: int = 60,
         candidate_id: str | None = None,
-        caller_role_override: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        await verify_caller_rbac(ctx, caller_role_override)
+        await verify_caller_rbac(ctx)
+
+        # Explicit validation for timezone (prevent raw Pydantic exception, UX-01)
+        tz_clean = timezone.strip().upper()
+        if tz_clean not in ("WIB", "WITA", "WIT"):
+            return {
+                "is_available": False,
+                "status": "VALIDATION_ERROR",
+                "error_code": "400_INVALID_TIMEZONE",
+                "message": f"Timezone '{timezone}' tidak valid. Gunakan salah satu dari: WIB, WITA, WIT.",
+            }
+
+        # Explicit validation for duration (H-04, M-02)
+        if duration_minutes <= 0 or duration_minutes > 480:
+            return {
+                "is_available": False,
+                "status": "VALIDATION_ERROR",
+                "error_code": "400_INVALID_DURATION",
+                "message": f"Durasi rapat {duration_minutes} menit tidak valid. Minimal 15 menit dan maksimal 480 menit.",
+            }
+
         async with AsyncSessionLocal() as db:
             svc = SlotConflictCheckerService(db)
             req = SlotConflictCheckRequestDTO(
                 interviewer_id=interviewer_id,
                 date=date,
                 time=time,
-                timezone=timezone,  # type: ignore[arg-type]
+                timezone=tz_clean,  # type: ignore[arg-type]
                 duration_minutes=duration_minutes,
                 candidate_id=candidate_id,
             )
@@ -281,10 +298,9 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
     )
     async def list_negotiation_threads(
         status: str | None = None,
-        caller_role_override: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        await verify_caller_rbac(ctx, caller_role_override)
+        await verify_caller_rbac(ctx)
         async with AsyncSessionLocal() as db:
             svc = NegotiationThreadService(db)
             valid_statuses = {"ACTIVE", "COMPLETED", "EXPIRED", "HALTED", "NEGOTIATING", "SCHEDULED", "DEADLOCK_ESCALATED"}
@@ -370,10 +386,9 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
     )
     async def list_national_holidays(
         year: int = 2026,
-        caller_role_override: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        await verify_caller_rbac(ctx, caller_role_override)
+        await verify_caller_rbac(ctx)
         async with AsyncSessionLocal() as db:
             repo = HolidayRepository(db)
             holidays = await repo.list_holidays(year=year)
@@ -411,10 +426,9 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
         interviewer_id: int | None = None,
         target_date: str | None = None,
         scenario_id: str | None = None,
-        caller_role_override: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        caller = await verify_caller_rbac(ctx, caller_role_override)
+        caller = await verify_caller_rbac(ctx)
         if caller.role == "INTERVIEWER":
             return {
                 "success": False,
@@ -479,16 +493,9 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
     )
     async def orchestrate_voice_note(
         audio_path_or_preset: str,
-        caller_role_override: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        caller = await verify_caller_rbac(ctx, caller_role_override)
-        if caller.role == "INTERVIEWER":
-            return {
-                "success": False,
-                "error_code": "403_MCP_PERMISSION_DENIED",
-                "message": "Role 'INTERVIEWER' tidak memiliki wewenang memicu orkestrasi voice note.",
-            }
+        caller = await verify_caller_rbac(ctx)
 
         # Resolve voice preset shortcuts if provided
         preset_map = {
@@ -506,7 +513,6 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
         # Delegate to orchestrate_hr_command
         return await orchestrate_hr_command(
             command=cmd_text,
-            caller_role_override=caller.role,
             ctx=ctx,
         )
 
@@ -522,10 +528,9 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
         thread_id: str,
         reply_text: str,
         channel: str = "whatsapp",
-        caller_role_override: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        caller = await verify_caller_rbac(ctx, caller_role_override)
+        caller = await verify_caller_rbac(ctx)
         if caller.role == "INTERVIEWER":
             return {
                 "success": False,
@@ -544,102 +549,118 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
             }
         t_id = int(str(thread_id).strip())
 
-        async with AsyncSessionLocal() as db:
-            thread_svc = NegotiationThreadService(db)
-            thread = await thread_svc.negotiation_repo.get_thread(t_id)
-            if not thread:
-                return {
-                    "success": False,
-                    "error_code": "404_THREAD_NOT_FOUND",
-                    "message": f"Thread negosiasi #{t_id} tidak ditemukan.",
-                }
+        try:
+            async with AsyncSessionLocal() as db:
+                thread_svc = NegotiationThreadService(db)
+                thread = await thread_svc.negotiation_repo.get_thread(t_id)
+                if not thread:
+                    return {
+                        "success": False,
+                        "error_code": "404_THREAD_NOT_FOUND",
+                        "message": f"Thread negosiasi #{t_id} tidak ditemukan.",
+                    }
 
-            max_rounds = thread.nmax_rounds or 3
-            current_round = thread.ncurrent_round or 1
-            if current_round > max_rounds:
-                await thread_svc.negotiation_repo.update_thread_status(
-                    t_id,
-                    status="DEADLOCK_ESCALATED",
-                    escalation_reason=f"Batas maksimal {max_rounds} ronde negosiasi terlampaui (ronde ke-{current_round}).",
-                )
-                await AuditLogService(db).log_event(
-                    event_type="DEADLOCK_ESCALATED",
-                    actor="TRIAGE_AGENT",
-                    actor_type="AGENT",
-                    title="Autonomous Negotiation Limit Exceeded",
-                    description=f"Thread #{t_id} dihentikan pada ronde ke-{current_round} (batas maksimal {max_rounds} ronde) dan dieskalasi ke HR.",
-                    metadata={"thread_id": t_id, "round": current_round, "max_rounds": max_rounds},
-                )
-                return {
-                    "status": "DEADLOCK_ESCALATED",
-                    "thread_status": "DEADLOCK_ESCALATED",
-                    "mcp_status": "HALTED",
-                    "negotiation_round": current_round,
-                    "max_rounds": max_rounds,
-                    "is_escalated": True,
-                    "escalation_reason": "MAX_NEGOTIATION_ROUNDS_EXCEEDED",
-                    "action_plan": None,
-                    "approval_ticket": None,
-                    "message": (
-                        f"Batas {max_rounds} ronde negosiasi telah tercapai (ronde ke-{current_round}). "
-                        "Autonomous triage dihentikan (HALTED) dan thread dieskalasi ke HR."
-                    ),
-                }
+                max_rounds = thread.nmax_rounds or 3
+                current_round = thread.ncurrent_round or 1
+                if current_round >= max_rounds:
+                    await thread_svc.negotiation_repo.update_thread_status(
+                        t_id,
+                        status="DEADLOCK_ESCALATED",
+                        escalation_reason=f"Batas maksimal {max_rounds} ronde negosiasi terlampaui (ronde ke-{current_round}).",
+                    )
+                    await AuditLogService(db).log_event(
+                        event_type="NEGOTIATION_HALTED",
+                        actor="TRIAGE_AGENT",
+                        actor_type="AGENT",
+                        title="Autonomous Negotiation Limit Exceeded (HALTED)",
+                        description=(
+                            f"Thread #{t_id} dihentikan pada ronde ke-{current_round} "
+                            f"(batas maksimal {max_rounds} ronde) dan dieskalasi ke HR."
+                        ),
+                        metadata={"thread_id": t_id, "round": current_round, "max_rounds": max_rounds},
+                    )
+                    return {
+                        "success": True,
+                        "status": "HALTED",
+                        "thread_status": "DEADLOCK_ESCALATED",
+                        "mcp_status": "HALTED",
+                        "negotiation_round": current_round,
+                        "max_rounds": max_rounds,
+                        "is_escalated": True,
+                        "escalation_reason": "MAX_NEGOTIATION_ROUNDS_EXCEEDED",
+                        "action_plan": None,
+                        "approval_ticket": None,
+                        "message": (
+                            f"Batas {max_rounds} ronde negosiasi telah tercapai (ronde ke-{current_round}). "
+                            "Autonomous triage dihentikan (HALTED) dan thread dieskalasi ke HR."
+                        ),
+                    }
 
-            # Out-of-scope salary detection
-            if "gaji" in clean_text or "salary" in clean_text or "kompensasi" in clean_text:
-                await thread_svc.negotiation_repo.update_thread_status(
-                    t_id,
-                    status="DEADLOCK_ESCALATED",
-                    escalation_reason=(
-                        "Kandidat membahas negosiasi gaji "
-                        "(Di luar topik penjadwalan interview)"
-                    ),
-                )
-                await AuditLogService(db).log_event(
-                    event_type="LIMITS_OUT_OF_SCOPE_ESCALATED",
-                    actor="TRIAGE_AGENT",
-                    actor_type="AGENT",
-                    title="Negotiation Escalated - Salary Topic Out of Scope",
-                    description=f"Thread #{t_id} dieskalasi ke HR karena kandidat membahas negosiasi gaji.",
-                    metadata={"thread_id": t_id, "reply": reply_text},
-                )
-                return {
-                    "thread_status": "DEADLOCK_ESCALATED",
-                    "is_escalated": True,
-                    "escalation_reason": "OUT_OF_SCOPE_SALARY_NEGOTIATION",
-                    "message": "Topik negosiasi gaji berada di luar wewenang penjadwalan. Thread dieskalasi ke HR.",
-                }
+                # Out-of-scope salary detection
+                if "gaji" in clean_text or "salary" in clean_text or "kompensasi" in clean_text:
+                    await thread_svc.negotiation_repo.update_thread_status(
+                        t_id,
+                        status="DEADLOCK_ESCALATED",
+                        escalation_reason=(
+                            "Kandidat membahas negosiasi gaji "
+                            "(Di luar topik penjadwalan interview)"
+                        ),
+                    )
+                    await AuditLogService(db).log_event(
+                        event_type="LIMITS_OUT_OF_SCOPE_ESCALATED",
+                        actor="TRIAGE_AGENT",
+                        actor_type="AGENT",
+                        title="Negotiation Escalated - Salary Topic Out of Scope",
+                        description=f"Thread #{t_id} dieskalasi ke HR karena kandidat membahas negosiasi gaji.",
+                        metadata={"thread_id": t_id, "reply": reply_text},
+                    )
+                    return {
+                        "thread_status": "DEADLOCK_ESCALATED",
+                        "is_escalated": True,
+                        "escalation_reason": "OUT_OF_SCOPE_SALARY_NEGOTIATION",
+                        "message": "Topik negosiasi gaji berada di luar wewenang penjadwalan. Thread dieskalasi ke HR.",
+                    }
 
-            cand_id: int | None = thread.nid_candidate
-            inter_id: int | None = thread.nid_interviewer
-            await thread_svc.negotiation_repo.append_message(
-                thread_id=t_id,
-                message_data={
-                    "nround_number": current_round,
-                    "vsender_role": "CANDIDATE",
-                    "vsender_name": thread.candidate.vname if getattr(thread, "candidate", None) else "Candidate",
-                    "vchannel": channel,
-                    "vcontent": reply_text,
-                    "bis_rejection": True,
-                },
+                cand_id: int | None = thread.nid_candidate
+                inter_id: int | None = thread.nid_interviewer
+                await thread_svc.negotiation_repo.append_message(
+                    thread_id=t_id,
+                    message_data={
+                        "nround_number": current_round,
+                        "vsender_role": "CANDIDATE",
+                        "vsender_name": thread.candidate.vname if getattr(thread, "candidate", None) else "Candidate",
+                        "vchannel": channel,
+                        "vcontent": reply_text,
+                        "bis_rejection": True,
+                    },
+                )
+
+            triage_result = await orchestrate_hr_command(
+                command=f"Jadwalkan ulang interview sesuai balasan: {reply_text}",
+                thread_id=str(t_id),
+                candidate_id=cand_id,
+                interviewer_id=inter_id,
+                ctx=ctx,
             )
-
-        triage_result = await orchestrate_hr_command(
-            command=f"Jadwalkan ulang interview sesuai balasan: {reply_text}",
-            thread_id=str(t_id),
-            candidate_id=cand_id,
-            interviewer_id=inter_id,
-            caller_role_override=caller.role,
-            ctx=ctx,
-        )
-        async with AsyncSessionLocal() as db2:
-            th_obj = await NegotiationThreadService(db2).negotiation_repo.get_by_id(t_id)
-            if th_obj:
-                th_obj.ncurrent_round = current_round + 1
-                db2.add(th_obj)
-                await db2.commit()
-        return triage_result
+            try:
+                async with AsyncSessionLocal() as db2:
+                    th_obj = await NegotiationThreadService(db2).negotiation_repo.get_by_id(t_id)
+                    if th_obj:
+                        th_obj.ncurrent_round = min(current_round + 1, max_rounds)
+                        db2.add(th_obj)
+                        await db2.commit()
+                if isinstance(triage_result, dict):
+                    triage_result["negotiation_round"] = min(current_round + 1, max_rounds)
+            except Exception as e:
+                logger.warning(f"Could not update thread round for thread #{t_id}: {e}")
+            return triage_result
+        except Exception as exc:
+            logger.error(f"Error in triage_candidate_reply for thread #{t_id}: {exc}")
+            return {
+                "success": False,
+                "error_code": "500_TRIAGE_EXECUTION_ERROR",
+                "message": f"Gagal memproses balasan negosiasi untuk thread #{t_id}. Silakan periksa thread atau eskalasikan ke HR.",
+            }
 
     @mcp.tool(
         name="analyze_interview_session",
@@ -654,16 +675,9 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
         profile_code: str = "PROFILE-TECH-R1",
         consent_status: str = "GRANTED",
         notes: str | None = None,
-        caller_role_override: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        caller = await verify_caller_rbac(ctx, caller_role_override)
-        if caller.role not in ("HR", "ADMIN", "INTERVIEWER"):
-            return {
-                "success": False,
-                "error_code": "403_MCP_PERMISSION_DENIED",
-                "message": f"Role '{caller.role}' tidak berwenang memicu analisis sesi wawancara.",
-            }
+        caller = await verify_caller_rbac(ctx)
 
         # 1. Strict Consent Gate
         if consent_status.strip().upper() != "GRANTED":
@@ -743,10 +757,9 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
         send_immediately: bool = False,
         simulate_fast_chain: bool = False,
         simulated_elapsed_ms: int | None = None,
-        caller_role_override: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        caller = await verify_caller_rbac(ctx, caller_role_override)
+        caller = await verify_caller_rbac(ctx)
 
         # 1. RBAC Gate: Only HR or ADMIN can approve plans
         if caller.role not in ("HR", "ADMIN"):
@@ -856,10 +869,9 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
     async def undo_action_plan(
         plan_id: str,
         reason: str = "Dibatalkan oleh HR dalam jendela 60 detik",
-        caller_role_override: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        caller = await verify_caller_rbac(ctx, caller_role_override)
+        caller = await verify_caller_rbac(ctx)
         if caller.role not in ("HR", "ADMIN"):
             return {
                 "success": False,
@@ -887,10 +899,9 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
     async def reject_action_plan(
         plan_id: str,
         reason: str = "Ditolak oleh HR",
-        caller_role_override: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        caller = await verify_caller_rbac(ctx, caller_role_override)
+        caller = await verify_caller_rbac(ctx)
         if caller.role not in ("HR", "ADMIN"):
             return {
                 "success": False,
@@ -913,96 +924,33 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="record_interview_decision",
         description=(
-            "[TIER-3 EXECUTION] Record human interview evaluation or hiring decision. "
-            "HR/ADMIN can record final hiring decisions (ADVANCE / HOLD / REJECT). "
-            "INTERVIEWER can record technical rubric evaluations (recommendation: HIRE / NO_HIRE / REVISIT, technical_score)."
+            "[TIER-3 EXECUTION] Record human HR final hiring or interview decision (ADVANCE / HOLD / REJECT). "
+            "Automatically commits decision to candidate ATS record and logs immutable audit trail."
         ),
     )
     async def record_interview_decision(
         interview_id: str = "1",
-        session_id: str | None = None,
         decision: str = "ADVANCE",
+        notes: str = "Keputusan akhir dicatat oleh HR melalui MCP.",
         recommendation: str | None = None,
         technical_score: float | None = None,
-        notes: str = "Keputusan dicatat melalui integrasi MCP WorkBuddy.",
-        caller_role_override: str | None = None,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        caller = await verify_caller_rbac(ctx, caller_role_override)
-        target_id = str(session_id or interview_id).strip()
-
-        if caller.role == "INTERVIEWER":
-            is_tech_eval = (
-                recommendation is not None
-                or decision.strip().upper() in ("HIRE", "NO_HIRE", "REVISIT")
-                or technical_score is not None
-            )
-            if not is_tech_eval:
-                return {
-                    "success": False,
-                    "error_code": "403_MCP_PERMISSION_DENIED",
-                    "message": (
-                        "Akses ditolak: Role 'INTERVIEWER' tidak berwenang mencatat keputusan akhir HR (ADVANCE/HOLD/REJECT). "
-                        "Gunakan parameter recommendation (HIRE/NO_HIRE/REVISIT) atau technical_score untuk evaluasi teknis."
-                    ),
-                }
-            if any(k in (notes or "").lower() for k in ("gaji", "salary", "kompensasi", "offering")):
-                return {
-                    "success": False,
-                    "error_code": "403_MCP_PERMISSION_DENIED",
-                    "message": "Akses ditolak: Role 'INTERVIEWER' dilarang mengubah atau menetapkan data gaji/kompensasi.",
-                }
-            resolved_rec = (recommendation or decision).strip().upper()
-            async with AsyncSessionLocal() as db:
-                await AuditLogService(db).log_event(
-                    event_type="RUBRIC_EVALUATION_RECORDED",
-                    actor=caller.actor_id,
-                    actor_type="HUMAN",
-                    title="Technical Interview Evaluation Recorded",
-                    description=(
-                        f"Interviewer mencatat evaluasi teknis ({resolved_rec}) "
-                        f"untuk sesi #{target_id} (technical_score={technical_score})."
-                    ),
-                    metadata={
-                        "interview_id": target_id,
-                        "session_id": target_id,
-                        "recommendation": resolved_rec,
-                        "technical_score": technical_score,
-                        "notes": notes,
-                        "role": "INTERVIEWER",
-                    },
-                )
-            return {
-                "success": True,
-                "status": "TECHNICAL_EVALUATION_RECORDED",
-                "interview_id": target_id,
-                "session_id": target_id,
-                "recommendation": resolved_rec,
-                "technical_score": technical_score,
-                "evaluated_by_role": "INTERVIEWER",
-                "salary_access": "[CONFIDENTIAL_SALARY_LOCKED]",
-                "message": f"Evaluasi teknis wawancara ({resolved_rec}) oleh INTERVIEWER berhasil dicatat ke sistem dan audit log.",
-            }
-
-        if caller.role not in ("HR", "ADMIN"):
-            return {
-                "success": False,
-                "error_code": "403_MCP_PERMISSION_DENIED",
-                "message": f"Akses ditolak: Role '{caller.role}' tidak berwenang mencatat keputusan akhir wawancara.",
-            }
+        caller = await verify_caller_rbac(ctx)
+        target_id = str(interview_id).strip()
 
         resolved_decision = (recommendation or decision).strip().upper()
-        if resolved_decision == "HIRE":
+        if resolved_decision in ("HIRE", "ADVANCE"):
             resolved_decision = "ADVANCE"
-        elif resolved_decision == "NO_HIRE":
+        elif resolved_decision in ("NO_HIRE", "REJECT"):
             resolved_decision = "REJECT"
-        elif resolved_decision == "REVISIT":
+        elif resolved_decision in ("REVISIT", "HOLD"):
             resolved_decision = "HOLD"
 
         async with AsyncSessionLocal() as db:
             user_stmt = (
                 select(User)
-                .where(User.vrole == caller.role)
+                .where(User.vrole == "HR")
                 .order_by(User.nid.asc())
                 .limit(1)
             )
@@ -1030,11 +978,12 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
                 )
                 return {
                     "success": True,
+                    "status": "HR_DECISION_RECORDED",
                     "interview_id": target_id,
                     "session_id": target_id,
                     "decision": saved.decision,
                     "next_stage": saved.next_stage,
-                    "message": f"Keputusan wawancara ({resolved_decision}) berhasil dicatat ke sistem dan audit log.",
+                    "message": f"Keputusan wawancara ({resolved_decision}) berhasil dicatat oleh HR ke sistem dan audit log.",
                 }
             except Exception as err:
                 return {

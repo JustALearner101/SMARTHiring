@@ -320,3 +320,37 @@ async def test_tc13_temuan_03_10_interviewer_rbac_and_analyzer():
     assert res_dec["status"] == "TECHNICAL_EVALUATION_RECORDED"
     assert res_dec["recommendation"] == "HIRE"
     assert res_dec["salary_access"] == "[CONFIDENTIAL_SALARY_LOCKED]"
+
+
+@pytest.mark.asyncio
+async def test_tc05b_max_rounds_halted_graceful():
+    """Verify that candidate reply on a thread at round 3 gracefully halts without CheckViolationError."""
+    from app.db.DatabaseSession import AsyncSessionLocal
+    from app.service.NegotiationThreadService import NegotiationThreadService
+
+    # 1. Set thread #1 to round 3
+    async with AsyncSessionLocal() as db:
+        thread_svc = NegotiationThreadService(db)
+        thread = await thread_svc.negotiation_repo.get_by_id(1)
+        if thread:
+            thread.ncurrent_round = 3
+            thread.vstatus = "NEGOTIATING"
+            db.add(thread)
+            await db.commit()
+
+    # 2. Candidate attempts reply #4
+    raw = await heketon_mcp.call_tool(
+        "triage_candidate_reply",
+        {
+            "thread_id": "1",
+            "reply_text": "Bisa tolong reschedule lagi ke minggu depan?",
+            "channel": "whatsapp",
+            "caller_role_override": "HR",
+        },
+    )
+    res = _parse(raw)
+    assert res.get("status") in ("HALTED", "DEADLOCK_ESCALATED")
+    assert res.get("mcp_status") == "HALTED"
+    assert res.get("is_escalated") is True
+    assert "tercapai" in res.get("message", "").lower() or "terlampaui" in res.get("message", "").lower()
+

@@ -84,6 +84,12 @@ async def run_orchestrator_pipeline(
         "max_rounds": max_rounds,
         "status": "ANALYZING",
         "audit_entries": [],
+        "proposed_slot": None,
+        "available_slots": [],
+        "items": [],
+        "sources_cited": [],
+        "slot_conflict_detected": False,
+        "conflicting_slot_wib": None,
     }
 
     config = {

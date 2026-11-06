@@ -66,9 +66,9 @@ class SlotConflictCheckerService:
         alternatives_str: list[str] = []
         alternatives_dto: list[SuggestedSlotDTO] = []
 
-        # Check up to 14 days ahead
+        # Check up to 14 days ahead (including same day for alternative slots)
         curr_d = base_date
-        for day_offset in range(1, 15):
+        for day_offset in range(0, 15):
             check_date = curr_d + timedelta(days=day_offset)
 
             # Skip weekends (5=Saturday, 6=Sunday)
@@ -200,15 +200,31 @@ class SlotConflictCheckerService:
 
         policy = await self.policy_repo.get_policy()
 
+        # ---------------------------------------------------------------------
+        # 0. INPUT VALIDATION: Duration, Date & Time Integrity
+        # ---------------------------------------------------------------------
+        if request.duration_minutes <= 0 or request.duration_minutes > 480:
+            return SlotConflictCheckResultDTO(
+                is_available=False,
+                status="VALIDATION_ERROR",
+                message=f"Durasi rapat {request.duration_minutes} menit tidak valid. Minimal 15 menit dan maksimal 480 menit.",
+                rule_code="RULE_INPUT_VALIDATION",
+            )
+
         try:
             req_date = date.fromisoformat(request.date)
             parts = request.time.split(":")
-            req_time = time(int(parts[0]), int(parts[1]))
-        except (ValueError, IndexError):
+            h = int(parts[0])
+            m = int(parts[1]) if len(parts) > 1 else 0
+            if not (0 <= h <= 23 and 0 <= m <= 59):
+                raise ValueError("Time out of range")
+            req_time = time(h, m)
+        except (ValueError, IndexError, TypeError):
             return SlotConflictCheckResultDTO(
                 is_available=False,
-                status="OUTSIDE_WORKING_HOURS",
-                message="Invalid date or time format. Please provide YYYY-MM-DD for date and HH:MM for time.",
+                status="VALIDATION_ERROR",
+                message="Format tanggal atau jam tidak valid. Gunakan format YYYY-MM-DD untuk tanggal dan HH:MM (00:00 - 23:59) untuk jam.",
+                rule_code="RULE_INPUT_VALIDATION",
             )
 
         tz_offset = TZ_OFFSETS.get(request.timezone, TZ_OFFSETS["WIB"])
