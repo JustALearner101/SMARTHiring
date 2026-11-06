@@ -53,6 +53,7 @@ async def seed_data() -> None:
 
         users_to_seed = [
             {
+                "nid": 1,
                 "vuserid": "EMP-HR-001",
                 "vname": "Siti Rahma (HR Lead)",
                 "vusername": "hr.admin",
@@ -67,6 +68,7 @@ async def seed_data() -> None:
                 "vstatus": "ACTIVE",
             },
             {
+                "nid": 10,
                 "vuserid": "EMP-ENG-001",
                 "vname": "Budi Santoso",
                 "vusername": "budi.santoso",
@@ -81,6 +83,7 @@ async def seed_data() -> None:
                 "vstatus": "ACTIVE",
             },
             {
+                "nid": 11,
                 "vuserid": "EMP-FIN-002",
                 "vname": "Budi Hartono",
                 "vusername": "budi.hartono",
@@ -95,6 +98,7 @@ async def seed_data() -> None:
                 "vstatus": "ACTIVE",
             },
             {
+                "nid": 4,
                 "vuserid": "EMP-AUD-001",
                 "vname": "Hendra Wijaya (System Admin)",
                 "vusername": "auditor.it",

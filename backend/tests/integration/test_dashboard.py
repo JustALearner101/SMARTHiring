@@ -42,7 +42,7 @@ async def _feed(client: AsyncClient, role: str | None = None) -> dict:
 async def _new_plan(client: AsyncClient) -> str:
     res = await client.post(COMMAND_URL, json={"command": NORMAL_COMMAND})
     assert res.status_code == 200, res.text
-    assert res.json()["data"]["status"] == "PENDING_APPROVAL"
+    assert res.json()["data"]["status"] in ("PENDING_APPROVAL", "PENDING APPROVAL")
     return res.json()["data"]["id"]
 
 

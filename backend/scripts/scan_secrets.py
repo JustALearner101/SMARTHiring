@@ -24,7 +24,7 @@ SECRET_PATTERNS = [
     ),
     (
         "High Entropy API Secret",
-        re.compile(r"""(?:api[_-]?key|secret[_-]?key|auth[_-]?token|password|passwd|smtp_pass(?:word)?)\s*[:=]\s*['"]([a-zA-Z0-9_\-\.]{20,})['"]""", re.IGNORECASE),
+        re.compile(r"""(?:api[_-]?key|secret[_-]?key|auth[_-]?token|password|passwd|smtp_pass(?:word)?)\s*[:=]\s*['"]?([a-zA-Z0-9_\-\.]{20,})['"]?""", re.IGNORECASE),
     ),
 ]
 
@@ -47,6 +47,7 @@ FALSE_POSITIVE_HINTS = [
     "http://localhost",
     "sha256", "checksum", "integrity",
     "test_jwt_secret", "secret-key",
+    "settings.", "formData", "form_data", "os.getenv", "os.environ",
 ]
 
 def scan_file(file_path: Path, rel_path: str):
@@ -74,12 +75,13 @@ def scan_file(file_path: Path, rel_path: str):
                         continue
                     
                     masked = val[:4] + "..." + val[-4:] if len(val) > 8 else "***"
+                    sanitized_sample = line_str.replace(val, masked)[:120]
                     findings.append({
                         "file": rel_path,
                         "line": idx,
                         "type": pat_name,
                         "preview": masked,
-                        "sample": line_str[:120],
+                        "sample": sanitized_sample,
                     })
     except Exception:
         pass
@@ -119,13 +121,14 @@ def scan_git_history():
                     if any(h in val.lower() for h in ["example", "placeholder", "test", "your-", "secret"]):
                         continue
                     masked = val[:4] + "..." + val[-4:] if len(val) > 8 else "***"
+                    sanitized_sample = line_str.replace(val, masked)[:120]
                     findings.append({
                         "commit": current_commit,
                         "file": current_file,
                         "line": idx,
                         "type": pat_name,
                         "preview": masked,
-                        "sample": line_str[:120],
+                        "sample": sanitized_sample,
                     })
     return findings
 

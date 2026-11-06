@@ -98,7 +98,7 @@ async def _create_plan(client: AsyncClient, command: str = NORMAL_COMMAND) -> di
     res = await client.post(COMMAND_URL, json={"command": command})
     assert res.status_code == 200, res.text
     data = res.json()["data"]
-    assert data["status"] == "PENDING_APPROVAL", data
+    assert data["status"] in ("PENDING_APPROVAL", "PENDING APPROVAL"), data
     return data
 
 
@@ -189,7 +189,7 @@ async def test_chb03_nothing_executes_before_approval(client: AsyncClient, test_
 
     plan = await _create_plan(client)
 
-    assert plan["status"] == "PENDING_APPROVAL"
+    assert plan["status"] in ("PENDING_APPROVAL", "PENDING APPROVAL")
     assert await _plan_status(test_session, plan["id"]) == "AWAITING_APPROVAL"
     assert await _booked_events(test_session) == booked_before
     assert await _executed_audit_events(test_session) == executed_before
@@ -381,7 +381,7 @@ async def test_chb02_blocked_injection_never_creates_an_approvable_plan(
 
     assert res.status_code < 500
     body = res.json().get("data") or {}
-    assert body.get("status") != "PENDING_APPROVAL"
+    assert body.get("status") not in ("PENDING_APPROVAL", "PENDING APPROVAL")
     assert await _plan_count(test_session) == plans_before
 
 

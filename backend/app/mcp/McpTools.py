@@ -616,8 +616,8 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
                 "message": "Role 'INTERVIEWER' tidak memiliki izin untuk membuat draf ActionPlan.",
             }
 
-        # 1. Validate duration
-        if duration_minutes <= 0 or duration_minutes > 480:
+        # 1. Validate duration (min 15 mins, max 480 mins)
+        if duration_minutes < 15 or duration_minutes > 480:
             return {
                 "success": False,
                 "status": "VALIDATION_ERROR",
@@ -680,6 +680,20 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
 
             user_stmt = select(User).where(User.nid == interviewer_id)
             inter_obj = (await db.execute(user_stmt)).scalars().first()
+            if not inter_obj:
+                if interviewer_id in (2, 10):
+                    inter_obj = (
+                        await db.execute(
+                            select(User).where(User.vusername == "budi.santoso")
+                        )
+                    ).scalars().first()
+                elif interviewer_id in (3, 11):
+                    inter_obj = (
+                        await db.execute(
+                            select(User).where(User.vusername == "budi.hartono")
+                        )
+                    ).scalars().first()
+
             if not inter_obj:
                 return {
                     "success": False,

@@ -45,8 +45,10 @@ shutdown() {
 trap shutdown SIGTERM SIGINT SIGHUP
 
 # 4. Wait for any child process to terminate
+set +e
 wait -n "$BACKEND_PID" "$FRONTEND_PID"
 EXIT_CODE=$?
+set -e
 
 echo "⚠️ A core service exited with code $EXIT_CODE. Shutting down container..."
 kill -TERM "$FRONTEND_PID" 2>/dev/null || true

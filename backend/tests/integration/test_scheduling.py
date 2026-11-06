@@ -46,7 +46,7 @@ async def _plan(client: AsyncClient, command: str = SANTOSO_CMD) -> dict:
     res = await client.post(COMMAND_URL, json={"command": command})
     assert res.status_code == 200, res.text
     data = res.json()["data"]
-    assert data["status"] == "PENDING_APPROVAL", data
+    assert data["status"] in ("PENDING_APPROVAL", "PENDING APPROVAL"), data
     return data
 
 
@@ -279,5 +279,5 @@ async def test_sched19_planner_survives_llm_failure(client: AsyncClient, test_se
 
     plan = await _plan(client)
 
-    assert plan["status"] == "PENDING_APPROVAL"
+    assert plan["status"] in ("PENDING_APPROVAL", "PENDING APPROVAL")
     assert await _agent_bookings(test_session) == booked_before

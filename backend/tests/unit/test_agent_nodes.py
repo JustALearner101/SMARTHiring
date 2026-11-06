@@ -76,8 +76,8 @@ class TestSecondaryValidatorNode:
             "interviewer_timezone": "WIB",
             "proposed_slot": {
                 "title": "Interview Rina",
-                "start_utc": "2026-10-30T04:30:00+00:00",  # 11:30 WIB
-                "end_utc": "2026-10-30T05:30:00+00:00",
+                "start_utc": "2026-11-13T04:30:00+00:00",  # 11:30 WIB (Friday)
+                "end_utc": "2026-11-13T05:30:00+00:00",
                 "duration_minutes": 60,
             },
         }
@@ -94,8 +94,8 @@ class TestSecondaryValidatorNode:
             "interviewer_timezone": "WIB",
             "proposed_slot": {
                 "title": "Interview Rina",
-                "start_utc": "2026-10-29T13:00:00+00:00",  # 20:00 WIB
-                "end_utc": "2026-10-29T14:00:00+00:00",
+                "start_utc": "2026-11-12T13:00:00+00:00",  # 20:00 WIB (Thursday)
+                "end_utc": "2026-11-12T14:00:00+00:00",
                 "duration_minutes": 60,
             },
         }

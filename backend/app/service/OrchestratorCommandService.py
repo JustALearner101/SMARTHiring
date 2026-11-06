@@ -395,7 +395,7 @@ class OrchestratorCommandService:
         thread = await self.thread_repo.get_thread(thread_id)
         if thread and thread.vstatus in ("DEADLOCK_ESCALATED", "HALTED", "COMPLETED"):
             return {
-                "status": "HALTED",
+                "status": thread.vstatus,
                 "thread_status": thread.vstatus,
                 "is_escalated": True,
                 "escalation_reason": "THREAD_ALREADY_HALTED",
