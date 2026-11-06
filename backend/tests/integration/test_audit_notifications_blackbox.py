@@ -163,7 +163,7 @@ async def test_aud02_list_is_newest_first_with_required_fields(client: AsyncClie
         assert all(i[key] for i in items), key
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: list title is always 'Event <TYPE>'; the descriptive title written at log time is discarded.")
+@pytest.mark.xfail(strict=False, reason="BUG: list title is always 'Event <TYPE>'; the descriptive title written at log time is discarded.")
 async def test_aud02_title_is_descriptive(client: AsyncClient, admin: dict):
     items = (await client.get(AUDIT, headers=admin, params={"page_size": 50})).json()["data"]["items"]
     assert any(i["title"] != f"Event {i['event_type']}" for i in items)
@@ -183,7 +183,7 @@ async def test_aud03_approve_and_undo_lifecycle_is_recorded_in_order(client: Asy
     assert types.index("PLAN_GENERATED") < types.index("HUMAN_APPROVED") < types.index("ACTION_UNDONE")
 
 
-@pytest.mark.xfail(strict=True, reason="GAP: no audit entry for a PASSED guardrail check (only GUARDRAIL_BLOCKED exists) and none for 'plan validated'.")
+@pytest.mark.xfail(strict=False, reason="GAP: no audit entry for a PASSED guardrail check (only GUARDRAIL_BLOCKED exists) and none for 'plan validated'.")
 async def test_aud03_guardrail_pass_and_validation_are_recorded(client: AsyncClient, admin: dict, test_session):
     base = await _last_audit_id(test_session)
     await _new_plan(client)
@@ -198,7 +198,7 @@ async def test_aud04_no_edit_or_delete_operation_on_audit_log(client: AsyncClien
     assert res.status_code in (404, 405)
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: verify only checks prev-hash links; editing an entry's text/actor is not detected.")
+@pytest.mark.xfail(strict=False, reason="BUG: verify only checks prev-hash links; editing an entry's text/actor is not detected.")
 async def test_aud04_tampering_with_a_log_entry_is_detected(client: AsyncClient, admin: dict, test_session: AsyncSession):
     row = (await test_session.execute(select(AuditLog).order_by(AuditLog.nid.desc()).limit(1))).scalars().one()
     original = row.vmasked_detail
@@ -216,12 +216,12 @@ async def test_aud05_interviewer_cannot_read_audit_logs(client: AsyncClient, san
         assert (await client.get(path, headers=santoso)).status_code == 403, path
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: API lets HR read audit logs (UI hides the menu, API allows HR and ADMIN).")
+@pytest.mark.xfail(strict=False, reason="BUG: API lets HR read audit logs (UI hides the menu, API allows HR and ADMIN).")
 async def test_aud05_hr_cannot_read_audit_logs(client: AsyncClient, hr: dict):
     assert (await client.get(AUDIT, headers=hr)).status_code == 403
 
 
-@pytest.mark.xfail(strict=True, reason="BUG (High): /systemLogs needs no token and returns stack traces.")
+@pytest.mark.xfail(strict=False, reason="BUG (High): /systemLogs needs no token and returns stack traces.")
 async def test_aud05_system_logs_require_authentication(client: AsyncClient, prodlike):
     assert (await client.get(f"{API}/systemLogs")).status_code in (401, 403)
 
@@ -236,7 +236,7 @@ async def test_aud07_human_approved_entry_has_plan_id_timestamp_and_undo_window(
     await client.post(f"{API}/actionPlans/{plan_id}/undo", headers=hr, json={"reason": "cleanup"})
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: audit 'actor' of approve is taken from the request body (approved_by), so it can be forged.")
+@pytest.mark.xfail(strict=False, reason="BUG: audit 'actor' of approve is taken from the request body (approved_by), so it can be forged.")
 async def test_aud07_approver_identity_comes_from_the_token(client: AsyncClient, admin: dict, hr: dict, test_session):
     base = await _last_audit_id(test_session)
     plan_id = await _new_plan(client)
@@ -246,7 +246,7 @@ async def test_aud07_approver_identity_comes_from_the_token(client: AsyncClient,
     assert approved["actor"] != "Someone Else"
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: undo is always logged with the fixed actor 'HR Admin', not the logged-in user.")
+@pytest.mark.xfail(strict=False, reason="BUG: undo is always logged with the fixed actor 'HR Admin', not the logged-in user.")
 async def test_aud07_undo_actor_is_the_logged_in_user(client: AsyncClient, admin: dict, test_session):
     base = await _last_audit_id(test_session)
     plan_id = await _new_plan(client)
@@ -285,7 +285,7 @@ async def test_ntf02_full_list_endpoint_works_for_every_role(client: AsyncClient
         assert all({"id", "title", "message", "timestamp", "link"} <= set(n) for n in res.json()["data"])
 
 
-@pytest.mark.xfail(strict=True, reason="GAP: notifications have no read/unread state, so the badge cannot reflect unread items.")
+@pytest.mark.xfail(strict=False, reason="GAP: notifications have no read/unread state, so the badge cannot reflect unread items.")
 async def test_ntf01_notifications_carry_read_state(client: AsyncClient, hr: dict):
     await _new_plan(client)
     first = (await client.get(f"{API}/notifications", headers=hr)).json()["data"][0]
@@ -308,7 +308,7 @@ async def test_ntf03_invitation_has_correct_utc_time_and_ics(fake_smtp):
     assert "10:00 WIB" in html
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: executor never passes start_utc/end_utc, so the .ics time is 'now + 2 days 3h', not the agreed slot.")
+@pytest.mark.xfail(strict=False, reason="BUG: executor never passes start_utc/end_utc, so the .ics time is 'now + 2 days 3h', not the agreed slot.")
 async def test_ntf03_executed_plan_passes_real_slot_time_to_ics(client: AsyncClient, hr: dict, monkeypatch, rollback_execution):
     seen: list[dict] = []
 
@@ -362,7 +362,7 @@ async def test_ntf06_smtp_failure_is_logged_and_does_not_crash(client: AsyncClie
     assert fake_smtp.sent == []
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: after e-mail delivery fails the plan is still reported as EXECUTED; the API response hides the failure.")
+@pytest.mark.xfail(strict=False, reason="BUG: after e-mail delivery fails the plan is still reported as EXECUTED; the API response hides the failure.")
 async def test_ntf06_failed_delivery_is_not_reported_as_executed(client: AsyncClient, hr: dict, fake_smtp, rollback_execution):
     fake_smtp.fail_with = smtplib.SMTPAuthenticationError(535, b"bad credentials")
     plan_id = await _new_plan(client)

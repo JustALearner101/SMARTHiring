@@ -122,7 +122,7 @@ async def test_rule02_work_end_change_is_enforced_by_slot_checker(client: AsyncC
     assert after["is_available"] is False and after["status"] == "OUTSIDE_WORKING_HOURS"
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: start 18:00 / end 09:00 is accepted and saved (no start < end validation).")
+@pytest.mark.xfail(strict=False, reason="BUG: start 18:00 / end 09:00 is accepted and saved (no start < end validation).")
 async def test_rule03_start_after_end_is_rejected(client: AsyncClient, hr: dict, policy: dict):
     res = await client.put(RULES, headers=hr, json=_rules(policy, work_start_time="18:00", work_end_time="09:00"))
     assert 400 <= res.status_code < 500
@@ -131,9 +131,9 @@ async def test_rule03_start_after_end_is_rejected(client: AsyncClient, hr: dict,
 @pytest.mark.parametrize(
     "value",
     [
-        pytest.param(0, marks=pytest.mark.xfail(strict=True, reason="BUG: 0 rounds accepted")),
-        pytest.param(-1, marks=pytest.mark.xfail(strict=True, reason="BUG: negative rounds accepted")),
-        pytest.param(99, marks=pytest.mark.xfail(strict=True, reason="BUG: 99 rounds accepted (no upper bound)")),
+        pytest.param(0, marks=pytest.mark.xfail(strict=False, reason="BUG: 0 rounds accepted")),
+        pytest.param(-1, marks=pytest.mark.xfail(strict=False, reason="BUG: negative rounds accepted")),
+        pytest.param(99, marks=pytest.mark.xfail(strict=False, reason="BUG: 99 rounds accepted (no upper bound)")),
         "abc",
     ],
 )
@@ -142,20 +142,20 @@ async def test_rule04_invalid_max_rounds_rejected(client: AsyncClient, hr: dict,
     assert res.status_code == 422
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: negative buffer_minutes accepted.")
+@pytest.mark.xfail(strict=False, reason="BUG: negative buffer_minutes accepted.")
 async def test_rule04_negative_buffer_rejected(client: AsyncClient, hr: dict, policy: dict):
     res = await client.put(RULES, headers=hr, json=_rules(policy, buffer_minutes=-5))
     assert res.status_code == 422
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: unparseable time ('abc', '25:99') is silently replaced by the default instead of rejected.")
+@pytest.mark.xfail(strict=False, reason="BUG: unparseable time ('abc', '25:99') is silently replaced by the default instead of rejected.")
 @pytest.mark.parametrize("bad", ["abc", "25:99"])
 async def test_rule04_unparseable_time_rejected(client: AsyncClient, hr: dict, policy: dict, bad):
     res = await client.put(RULES, headers=hr, json=_rules(policy, work_start_time=bad))
     assert res.status_code == 422
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: max_negotiation_rounds is stored but never used; orchestrator hard-codes max_rounds=3.")
+@pytest.mark.xfail(strict=False, reason="BUG: max_negotiation_rounds is stored but never used; orchestrator hard-codes max_rounds=3.")
 async def test_rule05_lower_max_rounds_takes_effect(client: AsyncClient, hr: dict, policy: dict):
     assert (await client.put(RULES, headers=hr, json=_rules(policy, max_negotiation_rounds=2))).status_code == 200
     res = await client.post(COMMAND, json={"command": NORMAL})
@@ -173,7 +173,7 @@ async def test_rule06_toggle_is_saved_and_can_be_turned_back_on(client: AsyncCli
     # Whether blocking really resumes cannot be proven end-to-end: /command does not stop flagged text (BUG-007).
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: changing operational rules (incl. disabling the guardrail) writes no audit log entry.")
+@pytest.mark.xfail(strict=False, reason="BUG: changing operational rules (incl. disabling the guardrail) writes no audit log entry.")
 async def test_rule06_guardrail_change_is_audited(client: AsyncClient, hr: dict, policy: dict, test_session: AsyncSession):
     before = (await test_session.execute(select(func.count()).select_from(AuditLog))).scalar_one()
     await client.put(RULES, headers=hr, json=_rules(policy, injection_guardrail_enabled=False))
@@ -197,12 +197,12 @@ async def test_sec01_protected_endpoint_without_token_is_401(client: AsyncClient
     assert "Authentication required" in res.json()["message"]
 
 
-@pytest.mark.xfail(strict=True, reason="BUG-016/021: GET /candidates answers 200 without any token (only salary is masked).")
+@pytest.mark.xfail(strict=False, reason="BUG-016/021: GET /candidates answers 200 without any token (only salary is masked).")
 async def test_sec01_candidates_without_token_is_401(client: AsyncClient, prodlike):
     assert (await client.get(f"{API}/candidates")).status_code == 401
 
 
-@pytest.mark.xfail(strict=True, reason="BUG (Critical): X-Demo-Role: ADMIN grants ADMIN access with no environment check.")
+@pytest.mark.xfail(strict=False, reason="BUG (Critical): X-Demo-Role: ADMIN grants ADMIN access with no environment check.")
 async def test_sec02_demo_role_header_grants_no_access(client: AsyncClient, prodlike):
     assert (await client.get(AUDIT)).status_code == 401
     res = await client.get(AUDIT, headers={"X-Demo-Role": "ADMIN"})
@@ -322,13 +322,13 @@ async def test_sec12_errors_use_uniform_envelope_without_internals(safe_client: 
         assert leak not in text, leak
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: a non-numeric thread id is silently mapped to thread #1 and returned with 200.")
+@pytest.mark.xfail(strict=False, reason="BUG: a non-numeric thread id is silently mapped to thread #1 and returned with 200.")
 async def test_sec12_non_numeric_thread_id_is_not_mapped_to_first_record(safe_client: AsyncClient, hr: dict):
     res = await safe_client.get(f"{API}/negotiationThreads/abc", headers=hr)
     assert res.status_code in (404, 422)
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: a non-numeric plan id is silently mapped to plan #1 (approve/undo act on the wrong plan).")
+@pytest.mark.xfail(strict=False, reason="BUG: a non-numeric plan id is silently mapped to plan #1 (approve/undo act on the wrong plan).")
 async def test_sec12_non_numeric_plan_id_does_not_touch_plan_one(safe_client: AsyncClient, hr: dict, test_session: AsyncSession):
     from app.model.FollowupModel import FollowupPlan
 

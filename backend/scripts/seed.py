@@ -871,6 +871,54 @@ async def seed_data() -> None:
                         )
                     )
 
+                c2 = (
+                    await session.execute(
+                        select(Competency).where(Competency.nid_profile == tech_profile.nid, Competency.vcode == "C2")
+                    )
+                ).scalars().first()
+                if c2:
+                    sp2 = SummaryPoint(
+                        nid_competency=c2.nid,
+                        nid_job=job.nid,
+                        vcoverage_status="COVERED",
+                        vverification_status="VERIFIED",
+                        vcontent="Kandidat mahir dalam database profiling, indexing PostgreSQL, serta caching Redis berkinerja tinggi.",
+                    )
+                    session.add(sp2)
+                    await session.flush()
+
+                    session.add(
+                        SummaryEvidence(
+                            nid_summary_point=sp2.nid,
+                            nid_transcript=seg2.nid,
+                            vquote="Kami memisahkan database per service dan mengoptimalkan caching dengan Redis sehingga latensi p99 turun drastis ke bawah 120ms.",
+                        )
+                    )
+
+                c3 = (
+                    await session.execute(
+                        select(Competency).where(Competency.nid_profile == tech_profile.nid, Competency.vcode == "C3")
+                    )
+                ).scalars().first()
+                if c3:
+                    sp3 = SummaryPoint(
+                        nid_competency=c3.nid,
+                        nid_job=job.nid,
+                        vcoverage_status="COVERED",
+                        vverification_status="VERIFIED",
+                        vcontent="Kandidat menunjukkan komunikasi yang jelas dan kemampuan artikulasi teknis yang lugas.",
+                    )
+                    session.add(sp3)
+                    await session.flush()
+
+                    session.add(
+                        SummaryEvidence(
+                            nid_summary_point=sp3.nid,
+                            nid_transcript=seg2.nid,
+                            vquote="Kami memisahkan database per service dan mengoptimalkan caching dengan Redis.",
+                        )
+                    )
+
                 hr_user = (
                     await session.execute(select(User).where(User.vusername == "hr.admin"))
                 ).scalars().first()
