@@ -30,6 +30,24 @@ const nextConfig: NextConfig = {
       { source: "/health", destination: `${backendUrl}/health` },
     ];
   },
+  async headers() {
+    return [
+      {
+        source: "/mcp/:path*",
+        headers: [
+          { key: "Cache-Control", value: "no-cache, no-transform" },
+          { key: "X-Accel-Buffering", value: "no" },
+        ],
+      },
+      {
+        source: "/api/mcp/:path*",
+        headers: [
+          { key: "Cache-Control", value: "no-cache, no-transform" },
+          { key: "X-Accel-Buffering", value: "no" },
+        ],
+      },
+    ];
+  },
   async redirects() {
     return DISABLED_ROUTE_PREFIXES.flatMap((prefix) => [
       { source: prefix, destination: "/", permanent: false },

@@ -13,6 +13,7 @@ import os
 from fastapi import FastAPI
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.mcp.McpResources import register_heketon_mcp_resources_and_prompts
 from app.mcp.McpTools import register_heketon_mcp_tools
@@ -81,13 +82,39 @@ register_heketon_mcp_tools(heketon_mcp)
 register_heketon_mcp_resources_and_prompts(heketon_mcp)
 
 
+class SseHeadersMiddleware:
+    """Inject no-transform and no-buffering headers to prevent Cloudflare/Nginx/proxy buffering."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http":
+            async def custom_send(message: dict) -> None:
+                if message["type"] == "http.response.start":
+                    headers = [
+                        (k, v)
+                        for k, v in message.get("headers", [])
+                        if k.lower() not in (b"cache-control", b"x-accel-buffering")
+                    ]
+                    headers.append((b"cache-control", b"no-cache, no-transform"))
+                    headers.append((b"x-accel-buffering", b"no"))
+                    message["headers"] = headers
+                await send(message)
+
+            await self.app(scope, receive, custom_send)
+        else:
+            await self.app(scope, receive, send)
+
+
 def mount_mcp_on_fastapi(app: FastAPI) -> None:
     """Mount endpoint MCP (SSE / Streamable HTTP) pada aplikasi FastAPI utama di /mcp dan /api/mcp."""
-    mcp_asgi_app = heketon_mcp.sse_app(mount_path="/mcp")
+    # Mount tanpa mount_path agar FastMCP tidak menduplikasi prefix (misal /mcp/mcp/messages)
+    mcp_asgi_app = SseHeadersMiddleware(heketon_mcp.sse_app())
     app.mount("/mcp", mcp_asgi_app, name="heketon_mcp_server")
 
     # Secondary mount under /api/mcp for direct proxy compatibility
-    mcp_api_app = heketon_mcp.sse_app(mount_path="/api/mcp")
+    mcp_api_app = SseHeadersMiddleware(heketon_mcp.sse_app())
     app.mount("/api/mcp", mcp_api_app, name="heketon_mcp_server_api")
 
 
