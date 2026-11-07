@@ -33,14 +33,17 @@ services:
   # Unified Application Container (Next.js 16 Frontend + FastAPI Backend)
   # ----------------------------------------------------------------------------
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-Heketon}
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
-        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
+    # Use pre-built Docker image from Docker Hub (recommended for VM/production servers):
+    image: ${DOCKER_IMAGE:-tar01/heketon:latest}
+    # To build locally from source code instead, uncomment the build block below:
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    #   args:
+    #     NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-Heketon}
+    #     NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
+    #     NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+    #     NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
     container_name: heketon-app
     restart: unless-stopped
     depends_on:
