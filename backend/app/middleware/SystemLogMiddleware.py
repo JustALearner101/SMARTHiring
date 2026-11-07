@@ -8,7 +8,7 @@ from starlette.responses import Response
 from app.repository.SystemLogRepository import SystemLogRepository
 
 MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
-EXCLUDED_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
+EXCLUDED_PATHS = {"/health", "/docs", "/openapi.json", "/redoc", "/mcp", "/api/mcp"}
 
 
 class SystemLogMiddleware(BaseHTTPMiddleware):

@@ -83,15 +83,30 @@ register_heketon_mcp_resources_and_prompts(heketon_mcp)
 
 
 class SseHeadersMiddleware:
-    """Inject no-transform and no-buffering headers to prevent Cloudflare/Nginx/proxy buffering."""
+    """Inject no-transform/no-buffer headers, normalize trailing slash, and prevent duplicate response start."""
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "http":
+            # 1. Hindari 307 Temporary Redirect pada endpoint POST messages
+            path = scope.get("path", "")
+            if path in ("/mcp/messages", "/messages", "/api/mcp/messages"):
+                scope["path"] = path + "/"
+                if "raw_path" in scope:
+                    scope["raw_path"] = scope["path"].encode()
+
+            response_started = False
+
             async def custom_send(message: dict) -> None:
+                nonlocal response_started
                 if message["type"] == "http.response.start":
+                    # 2. Cegah sinyal http.response.start ganda dari FastMCP trailing return Response()
+                    if response_started:
+                        return
+                    response_started = True
+
                     headers = [
                         (k, v)
                         for k, v in message.get("headers", [])
