@@ -8,12 +8,14 @@ interface UndoBufferBannerProps {
   initialSeconds?: number;
   onUndo: () => void;
   onDispatchImmediately: () => void;
+  isDispatching?: boolean;
 }
 
 export default function UndoBufferBanner({
   initialSeconds = 60,
   onUndo,
   onDispatchImmediately,
+  isDispatching = false,
 }: UndoBufferBannerProps) {
   const [secondsLeft, setSecondsLeft] = useState(initialSeconds);
   const deadlineRef = useRef<number | null>(null);
@@ -68,8 +70,9 @@ export default function UndoBufferBanner({
                 Grace Period: 60-Second Undo Buffer Active
               </h3>
               <span className="rounded-md bg-warning-500 px-2 py-0.5 text-[10px] font-mono font-bold text-white shadow-2xs">
-                {String(Math.floor(secondsLeft / 60)).padStart(2, "0")}:
-                {String(secondsLeft % 60).padStart(2, "0")} Tersisa
+                {isDispatching || secondsLeft <= 0
+                  ? "Mengirim..."
+                  : `${String(Math.floor(secondsLeft / 60)).padStart(2, "0")}:${String(secondsLeft % 60).padStart(2, "0")} Tersisa`}
               </span>
             </div>
             <p className="mt-0.5 text-xs text-gray-600 dark:text-gray-300">
@@ -84,8 +87,9 @@ export default function UndoBufferBanner({
             variant="outline"
             size="md"
             onClick={onUndo}
+            disabled={isDispatching}
             startIcon={<CloseIcon className="text-error-500" />}
-            className="border-error-300 text-error-600 hover:bg-error-50 hover:border-error-400 dark:border-error-500/30 dark:hover:bg-error-500/15"
+            className="border-error-300 text-error-600 hover:bg-error-50 hover:border-error-400 dark:border-error-500/30 dark:hover:bg-error-500/15 disabled:opacity-50"
           >
             Undo Action Plan
           </Button>
@@ -94,9 +98,11 @@ export default function UndoBufferBanner({
             variant="primary"
             size="md"
             onClick={onDispatchImmediately}
-            startIcon={<BoltIcon className="text-white" />}
+            disabled={isDispatching}
+            startIcon={<BoltIcon className={isDispatching ? "animate-spin text-white" : "text-white"} />}
+            className="disabled:opacity-50"
           >
-            Send Now (Skip 60s)
+            {isDispatching ? "Mengirim..." : "Send Now (Skip 60s)"}
           </Button>
         </div>
       </div>

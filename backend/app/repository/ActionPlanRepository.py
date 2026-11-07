@@ -76,22 +76,28 @@ class ActionPlanRepository(BaseRepository[FollowupPlan]):
         undo_deadline: datetime | None = None,
         immediate: bool = False,
     ) -> FollowupPlan | None:
-        """Atomically approve an ActionPlan if and only if it is currently AWAITING_APPROVAL.
+        """Atomically approve an ActionPlan.
 
-        Returns None if already approved, executed, undone, or not found.
+        If immediate is False:
+            Transitions from 'AWAITING_APPROVAL' -> 'APPROVED' (with undo_deadline set).
+        If immediate is True:
+            Transitions from 'AWAITING_APPROVAL' or 'APPROVED' -> 'EXECUTED' (clearing undo_deadline).
+
+        Returns None if already executed, undone, or not found.
         Prevents race condition on concurrent approval requests.
         """
         target_status = "EXECUTED" if immediate else "APPROVED"
+        allowed_statuses = ["AWAITING_APPROVAL", "APPROVED"] if immediate else ["AWAITING_APPROVAL"]
         stmt = (
             update(FollowupPlan)
             .where(
                 FollowupPlan.nid == plan_id,
-                FollowupPlan.vapproval_status == "AWAITING_APPROVAL",
+                FollowupPlan.vapproval_status.in_(allowed_statuses),
             )
             .values(
                 vapproval_status=target_status,
                 nid_approved_by=approved_by_id or 1,
-                dundo_deadline=undo_deadline,
+                dundo_deadline=undo_deadline if not immediate else None,
                 dmodi=func.now(),
             )
             .returning(FollowupPlan)

@@ -87,6 +87,17 @@ class CalendarMatrixRepository(BaseRepository[CalendarEvent]):
         tz_offset_hours = 8 if timezone_str == "WITA" else (9 if timezone_str == "WIT" else 7)
         buffer_delta = timedelta(minutes=buffer_minutes)
 
+        # Fetch all events on target date in ONE single query to avoid 17 sequential DB round-trips
+        day_start_utc = datetime.combine(target_date, time(0, 0)).replace(tzinfo=UTC) - timedelta(hours=tz_offset_hours)
+        day_end_utc = datetime.combine(target_date, time(23, 59, 59)).replace(tzinfo=UTC) - timedelta(hours=tz_offset_hours)
+        existing_events = list(
+            await self.find_conflicts(
+                user_id,
+                day_start_utc - buffer_delta,
+                day_end_utc + buffer_delta,
+            )
+        )
+
         available_slots: list[dict[str, Any]] = []
 
         for c_time in candidate_times:
@@ -108,13 +119,26 @@ class CalendarMatrixRepository(BaseRepository[CalendarEvent]):
             if local_end_time > time(17, 0):
                 continue
 
-            # Check conflicts against database calendar events with buffer enforcement
-            conflicts = await self.find_conflicts(
-                user_id,
-                slot_start_utc - buffer_delta,
-                slot_end_utc + buffer_delta,
-            )
-            if not conflicts:
+            # In-memory conflict check against existing events with buffer enforcement
+            slot_buf_start = slot_start_utc - buffer_delta
+            slot_buf_end = slot_end_utc + buffer_delta
+            has_conflict = False
+            for ev in existing_events:
+                ev_start = (
+                    ev.dscheduled_start_utc.replace(tzinfo=UTC)
+                    if ev.dscheduled_start_utc.tzinfo is None
+                    else ev.dscheduled_start_utc
+                )
+                ev_end = (
+                    ev.dscheduled_end_utc.replace(tzinfo=UTC)
+                    if ev.dscheduled_end_utc.tzinfo is None
+                    else ev.dscheduled_end_utc
+                )
+                if ev_start < slot_buf_end and ev_end > slot_buf_start:
+                    has_conflict = True
+                    break
+
+            if not has_conflict:
                 wib_dt = slot_start_utc + timedelta(hours=7)
                 wita_dt = slot_start_utc + timedelta(hours=8)
                 wit_dt = slot_start_utc + timedelta(hours=9)

@@ -107,6 +107,10 @@ function normalizePlan(plan: ActionPlan): ActionPlan {
 export interface CommandInput {
   command: string;
   scenario_id?: string | null;
+  candidate_id?: number | null;
+  interviewer_id?: number | null;
+  thread_id?: number | null;
+  target_date?: string | null;
 }
 
 export async function listPresetScenarios(): Promise<PresetScenario[]> {

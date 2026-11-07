@@ -64,9 +64,11 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="search_contacts",
         description=(
-            "[TIER-1 READ] Search interviewer and employee directory by name or department. "
+            "[TIER-1 READ] Search internal interviewer and employee directory (HRIS) by name or department. "
             "Returns contact IDs, timezones (WIB/WITA/WIT), roles, and flags ambiguity when "
-            "multiple contacts share the same name (e.g. 'Dua Pak Budi')."
+            "multiple contacts share the same name (e.g. 'Dua Pak Budi'). "
+            "CRITICAL BOUNDARY: DO NOT use this tool for job applicants or candidates. "
+            "To search or resolve candidate/applicant profiles from ATS, call 'get_candidate_profile'."
         ),
     )
     async def search_contacts(
@@ -133,7 +135,7 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
                     f"Harap mintakan klarifikasi kepada pengguna untuk memilih salah satu kontak yang tepat."
                 )
 
-            return {
+            res_payload: dict[str, Any] = {
                 "found": len(filtered) > 0,
                 "confidence": 0.5 if is_ambiguous else (1.0 if filtered else 0.0),
                 "match_type": "AMBIGUOUS"
@@ -162,12 +164,20 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
                     for u in filtered
                 ],
             }
+            if len(filtered) == 0:
+                res_payload["hint"] = (
+                    "Kontak tidak ditemukan di direktori karyawan internal. "
+                    "Jika Anda mencari kandidat/pelamar kerja eksternal, gunakan tool 'get_candidate_profile(candidate_query=...)'."
+                )
+            return res_payload
 
     @mcp.tool(
         name="get_candidate_profile",
         description=(
-            "[TIER-1 READ] Retrieve candidate application profile, resume summary, and communication channel. "
-            "Authoritative HR caller has full visibility into candidate ATS records, including compensation details."
+            "[TIER-1 READ] Search or retrieve candidate application profile, resume summary, and communication channel from ATS. "
+            "Accepts candidate name (e.g. 'Rina Kusuma') or numeric ID (e.g. '1' or 'CAND-2026-001'). "
+            "PRIMARY tool for resolving candidate/applicant information. "
+            "CRITICAL BOUNDARY: DO NOT use 'search_contacts' for candidates. Authoritative HR caller has full visibility into candidate ATS records."
         ),
     )
     async def get_candidate_profile(
@@ -256,6 +266,10 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
                     "matched_candidates": [],
                     "caller_role": caller.role,
                     "message": f"Kandidat '{candidate_query}' tidak ditemukan di sistem ATS.",
+                    "hint": (
+                        "Kandidat tidak ditemukan di database ATS pelamar. "
+                        "Jika orang yang Anda maksud adalah pegawai atau pewawancara internal kantor, gunakan tool 'search_contacts(query=...)'."
+                    ),
                     "candidate": None,
                 }
 
@@ -284,9 +298,10 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="check_slot_conflict",
         description=(
-            "[TIER-1 READ] Pre-flight calendar availability check. Verifies Indonesian working hours "
-            "(09:00 - 17:00), Friday prayer blackout (11:30 - 13:00 WIB/WITA/WIT), weekend blackout, "
-            "national holidays, existing calendar events, and minimum 15-minute meeting buffer (RULE_MEETING_BUFFER)."
+            "[TIER-1 READ] Granular calendar availability checker by discrete date ('YYYY-MM-DD') and time ('HH:MM'). "
+            "Verifies Indonesian working hours (09:00 - 17:00), Friday prayer blackout (11:30 - 13:00 WIB/WITA/WIT), "
+            "weekend blackout, national holidays, existing calendar events, and minimum 15-minute meeting buffer (RULE_MEETING_BUFFER). "
+            "NOTE: For end-to-end /schedule-triage with ISO-8601 timestamps, prefer 'validate_schedule'."
         ),
     )
     async def check_slot_conflict(
@@ -335,7 +350,8 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="validate_schedule",
         description=(
-            "[TIER-1 READ] Pre-flight deterministic schedule validator (zero side-effects, zero LLM). "
+            "[TIER-1 READ] PRIMARY deterministic schedule validator for /schedule-triage (zero side-effects, zero LLM). "
+            "Takes ISO-8601 start_time (e.g. '2026-11-13T13:30:00+07:00'), candidate_id, and interviewer_id. "
             "Evaluates operational rules (09:00-17:00 working hours, 11:30-13:00 Friday prayer blackout, "
             "weekends, national holidays) and calendar conflicts / 15-minute buffers for interviewer and candidate. "
             "Returns is_valid, violations, conflicts, up to 3 suggestion slots, and sources_cited."
@@ -444,7 +460,8 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
         name="list_negotiation_threads",
         description=(
             "[TIER-1 READ] List ongoing candidate negotiation threads, current triage round "
-            "(max 3 rounds), and recent WhatsApp/Email message history."
+            "(max 3 rounds), and recent WhatsApp/Email message history. "
+            "Use this tool to discover active thread IDs before calling 'triage_candidate_reply'."
         ),
     )
     async def list_negotiation_threads(
@@ -493,7 +510,8 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
         name="verify_audit_chain",
         description=(
             "[TIER-1 READ] Verify cryptographic SHA-256 hash-chain integrity of append-only audit logs. "
-            "Demonstrates tamper-evidence and chain-of-custody compliance for Pillar 5 (RECORD)."
+            "Demonstrates tamper-evidence and chain-of-custody compliance for Pillar 5 (RECORD). "
+            "Use when requested to verify audit logs or demonstrate non-repudiation."
         ),
     )
     async def verify_audit_chain(
@@ -508,8 +526,9 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="get_operational_rules",
         description=(
-            "[TIER-1 READ] Retrieve authoritative operational scheduling rules: working hours (09:00 - 17:00), "
-            "Friday prayer blackout (11:30 - 13:00), weekend blackout (Saturday/Sunday), the configured meeting buffer, and max negotiation rounds."
+            "[TIER-1 READ] Retrieve authoritative company operational scheduling policies: working hours (09:00 - 17:00), "
+            "Friday prayer blackout (11:30 - 13:00), weekend blackout (Saturday/Sunday), the configured meeting buffer, and max negotiation rounds. "
+            "NOTE: For specific calendar dates of official Indonesian public holidays and joint leave (cuti bersama), use 'list_national_holidays'."
         ),
     )
     async def get_operational_rules(
@@ -554,8 +573,8 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="list_national_holidays",
         description=(
-            "[TIER-1 READ] List official Indonesian national holidays and collective leave days (cuti bersama) "
-            "recognized by Heketon operational policy for a given year."
+            "[TIER-1 READ] List official Indonesian national public holidays (libur nasional) and collective leave days (cuti bersama) "
+            "recognized by Heketon operational policy for a given year. Use this to inspect calendar dates of national holidays."
         ),
     )
     async def list_national_holidays(
@@ -590,8 +609,9 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
             "[TIER-2 DRAFT] Create a formal ActionPlan (PENDING APPROVAL) with an approval ticket. "
             "Deterministic, zero LLM. Validates operational rules, Indonesian timezones (WIB/WITA/WIT), "
             "working hours (09:00-17:00), Friday prayer blackout (11:30-13:00), weekends, national holidays, "
-            "and 15-minute calendar buffers (server-side defense-in-depth). "
-            "MUST display Confirmation Card and await human confirmation before calling approve_action_plan."
+            "and 15-minute calendar buffers. "
+            "CRITICAL TWO-TURN GATE: After calling this tool, you MUST STOP and present the Confirmation Card to the user. "
+            "NEVER call 'approve_action_plan' in the same turn!"
         ),
     )
     async def draft_action_plan(
@@ -1099,7 +1119,7 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
         description=(
             "[TIER-2 DRAFT] Process inbound WhatsApp/Email message from candidate during schedule negotiation. "
             "Evaluates reschedule requests, blocks Friday prayer times, escalates out-of-scope/salary topics, "
-            "and caps negotiation at 3 rounds."
+            "and caps negotiation at 3 rounds. Requires a valid numeric thread_id (discoverable via 'list_negotiation_threads')."
         ),
     )
     async def triage_candidate_reply(
@@ -1124,6 +1144,7 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
                 "success": False,
                 "error_code": "400_INVALID_THREAD_ID",
                 "message": f"thread_id '{thread_id}' tidak valid. Gunakan ID thread numerik.",
+                "hint": "Gunakan tool 'list_negotiation_threads()' untuk melihat daftar thread negosiasi aktif dan ID yang valid.",
             }
         t_id = int(str(thread_id).strip())
 
@@ -1136,6 +1157,7 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
                         "success": False,
                         "error_code": "404_THREAD_NOT_FOUND",
                         "message": f"Thread negosiasi #{t_id} tidak ditemukan.",
+                        "hint": "Gunakan tool 'list_negotiation_threads()' untuk melihat daftar thread negosiasi aktif dan ID yang valid.",
                     }
 
                 if thread.vstatus in ("DEADLOCK_ESCALATED", "HALTED", "COMPLETED"):
@@ -1292,7 +1314,9 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
         name="analyze_interview_session",
         description=(
             "[TIER-2 DRAFT] Pipeline 2 Post-Interview Transcript & Rubric Competency Analyzer. "
-            "Enforces UU PDP / PP No. 33/2026 Consent Gate, scans flags, and maps verbatim evidence quotes [seg-...]."
+            "Evaluates interview recordings/transcripts against competency rubrics (e.g. 'PROFILE-TECH-R1'). "
+            "Enforces strict UU PDP / PP No. 33/2026 Consent Gate (consent_status MUST be 'GRANTED'). "
+            "NOTE: This tool does NOT record final hiring decisions; use 'record_interview_decision' for that."
         ),
     )
     async def analyze_interview_session(
@@ -1381,10 +1405,9 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="approve_action_plan",
         description=(
-            "[TIER-3 EXECUTION - HIGH IMPACT] Approve an ActionPlan after human confirmation. "
-            "Requires approval_ticket and high_impact_acknowledged=True if plan is external. "
-            "Enforces Anti-Auto-Chain cooldown (>2000ms). For automated agent blackbox testing under transport latency, "
-            "pass simulate_fast_chain=True (or simulated_elapsed_ms < 2000) to verify COOLDOWN_ACTIVE. Only callable by HR or ADMIN."
+            "[TIER-3 EXECUTION - HIGH IMPACT] Approve an ActionPlan ONLY AFTER receiving explicit human confirmation on a subsequent turn. "
+            "Requires plan_id, approval_ticket, and high_impact_acknowledged=True if plan is external. "
+            "Enforces Anti-Auto-Chain cooldown (>2000ms). CRITICAL: Do NOT call this in the same turn as 'draft_action_plan'. Only callable by HR or ADMIN."
         ),
     )
     async def approve_action_plan(
@@ -1503,8 +1526,9 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="undo_action_plan",
         description=(
-            "[TIER-3 UNDO BUFFER] Cancel an approved ActionPlan within the 60-second grace period (UNDO_WINDOW). "
-            "Reverts status to UNDONE and appends proof to audit log. Only callable by HR or ADMIN."
+            "[TIER-3 UNDO BUFFER] Cancel an ALREADY APPROVED ActionPlan within the 60-second grace period (UNDO_WINDOW). "
+            "Reverts status to UNDONE and appends proof to audit log. Only callable by HR or ADMIN. "
+            "NOTE: If the ActionPlan is still in PENDING draft status, use 'reject_action_plan' instead."
         ),
     )
     async def undo_action_plan(
@@ -1521,20 +1545,33 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
             }
 
         clean_id = str(plan_id).strip()
-        async with AsyncSessionLocal() as db:
-            svc = ActionPlanService(db)
-            undone = await svc.undo_plan(clean_id, PlanUndoRequestDTO(reason=reason))
+        try:
+            async with AsyncSessionLocal() as db:
+                svc = ActionPlanService(db)
+                undone = await svc.undo_plan(clean_id, PlanUndoRequestDTO(reason=reason))
+                return {
+                    "success": True,
+                    "status": undone.status,
+                    "message": "Eksekusi ActionPlan berhasil dibatalkan dalam jendela 60 detik dan dicatat ke AuditLog.",
+                }
+        except Exception as e:
+            err_msg = str(e)
+            hint = "Pastikan plan_id valid dan berstatus APPROVED (dalam jendela undo 60 detik)."
+            if "PENDING" in err_msg.upper():
+                hint = "Plan ini masih berstatus PENDING (belum disetujui). Untuk menolak draf yang masih pending, gunakan tool 'reject_action_plan'."
             return {
-                "success": True,
-                "status": undone.status,
-                "message": "Eksekusi ActionPlan berhasil dibatalkan dalam jendela 60 detik dan dicatat ke AuditLog.",
+                "success": False,
+                "error_code": "UNDO_FAILED",
+                "message": err_msg,
+                "hint": hint,
             }
 
     @mcp.tool(
         name="reject_action_plan",
         description=(
-            "[TIER-3 EXECUTION] Reject a drafted ActionPlan. Reverts status to REJECTED with human rejection notes. "
-            "Only callable by HR or ADMIN."
+            "[TIER-3 EXECUTION] Reject a PENDING DRAFT ActionPlan before approval. Reverts status to REJECTED with human rejection notes. "
+            "Only callable by HR or ADMIN. "
+            "NOTE: If the ActionPlan was ALREADY APPROVED and is within the 60-second undo window, use 'undo_action_plan' instead."
         ),
     )
     async def reject_action_plan(
@@ -1551,22 +1588,35 @@ def register_heketon_mcp_tools(mcp: FastMCP) -> None:
             }
 
         clean_id = str(plan_id).strip()
-        async with AsyncSessionLocal() as db:
-            svc = ActionPlanService(db)
-            rejected = await svc.reject_plan(
-                clean_id, PlanRejectRequestDTO(reason=reason)
-            )
+        try:
+            async with AsyncSessionLocal() as db:
+                svc = ActionPlanService(db)
+                rejected = await svc.reject_plan(
+                    clean_id, PlanRejectRequestDTO(reason=reason)
+                )
+                return {
+                    "success": True,
+                    "status": rejected.status,
+                    "message": f"ActionPlan #{clean_id} berhasil ditolak (REJECTED) dan dicatat ke AuditLog.",
+                }
+        except Exception as e:
+            err_msg = str(e)
+            hint = "Pastikan plan_id valid dan berstatus PENDING_APPROVAL."
+            if "APPROVED" in err_msg.upper():
+                hint = "Plan ini sudah berstatus APPROVED. Untuk membatalkan rencana yang telah disetujui dalam 60 detik, gunakan tool 'undo_action_plan'."
             return {
-                "success": True,
-                "status": rejected.status,
-                "message": f"ActionPlan #{clean_id} berhasil ditolak (REJECTED) dan dicatat ke AuditLog.",
+                "success": False,
+                "error_code": "REJECT_FAILED",
+                "message": err_msg,
+                "hint": hint,
             }
 
     @mcp.tool(
         name="record_interview_decision",
         description=(
             "[TIER-3 EXECUTION] Record human HR final hiring or interview decision (ADVANCE / HOLD / REJECT). "
-            "Automatically commits decision to candidate ATS record and logs immutable audit trail."
+            "Automatically commits decision to candidate ATS record and logs immutable audit trail. "
+            "Call this tool AFTER completing interview transcript evaluation via 'analyze_interview_session'."
         ),
     )
     async def record_interview_decision(

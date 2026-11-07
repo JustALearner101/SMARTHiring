@@ -285,3 +285,34 @@ async def test_sched19_planner_survives_llm_failure(client: AsyncClient, test_se
 
     assert plan["status"] in ("PENDING_APPROVAL", "PENDING APPROVAL")
     assert await _agent_bookings(test_session) == booked_before
+
+
+# SCHED-20 ------------------------------------------------------------------ #
+async def test_sched20_send_now_from_undo_buffer_executes_successfully(client: AsyncClient, test_session: AsyncSession):
+    # 1. Generate plan
+    plan_id = (await _plan(client))["id"]
+
+    # 2. Approve entering 60s grace period (send_immediately=False)
+    res_buffer = await client.post(
+        f"/api/v1/actionPlans/{plan_id}/approve",
+        json={"approved_by": "HR Siti", "send_immediately": False},
+    )
+    assert res_buffer.status_code == 200
+    assert await _plan_status(test_session, plan_id) == "APPROVED"
+
+    # 3. User clicks "Send Now (Skip 60s)" or timer expires (send_immediately=True)
+    res_immediate = await client.post(
+        f"/api/v1/actionPlans/{plan_id}/approve",
+        json={"approved_by": "HR Siti", "send_immediately": True},
+    )
+    assert res_immediate.status_code == 200, res_immediate.text
+    data = res_immediate.json()["data"]
+    assert data["status"] == "EXECUTED"
+    assert await _plan_status(test_session, plan_id) == "EXECUTED"
+
+    # 4. Attempting to undo after execution must fail with 409
+    res_undo = await client.post(
+        f"/api/v1/actionPlans/{plan_id}/undo",
+        json={"reason": "too late"},
+    )
+    assert res_undo.status_code == 409

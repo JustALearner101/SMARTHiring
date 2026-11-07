@@ -47,6 +47,10 @@ pnpm-debug.log*
 
 #Playwright
 .playwright-mcp/
+playwright_verification_*.png
+
+# Workbuddy
+.workbuddy-ai/
 
 # Storage uploads
 storage/

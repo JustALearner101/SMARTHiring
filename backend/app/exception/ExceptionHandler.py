@@ -92,15 +92,18 @@ def register_exception_handlers(app: FastAPI) -> None:
         stacktrace_str = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
         logger.exception("Unhandled server exception at %s %s: %s", request.method, request.url.path, str(exc))
 
-        await SystemLogRepository.log_direct(
-            vlog_level="ERROR",
-            vlog_message=f"Internal Server Error: {exc!s}",
-            vlog_stacktrace=stacktrace_str,
-            vlog_source="EXCEPTION_HANDLER",
-            vlog_path=request.url.path,
-            vlog_method=request.method,
-            vlog_status_code="500",
-        )
+        try:
+            await SystemLogRepository.log_direct(
+                vlog_level="ERROR",
+                vlog_message=f"Internal Server Error: {exc!s}",
+                vlog_stacktrace=stacktrace_str,
+                vlog_source="EXCEPTION_HANDLER",
+                vlog_path=request.url.path,
+                vlog_method=request.method,
+                vlog_status_code="500",
+            )
+        except Exception as log_err:
+            logger.error("Failed to write system log for unhandled exception: %s", log_err)
 
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

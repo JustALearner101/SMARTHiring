@@ -110,14 +110,15 @@ class LlmFactory:
                     SystemMessage(content=system_instruction),
                     HumanMessage(content=user_content),
                 ]
-                result = await asyncio.wait_for(structured_llm.ainvoke(messages), timeout=12.0)
+                # Fast timeout (3.5s) for structured tool calling to prevent hanging on providers without tool support
+                result = await asyncio.wait_for(structured_llm.ainvoke(messages), timeout=3.5)
                 if isinstance(result, schema):
                     return result
                 if isinstance(result, dict):
                     return schema(**result)
             except Exception as tool_err:
-                logger.warning(
-                    "Structured tool invocation failed (%s). Falling back to direct JSON prompt...", tool_err
+                logger.info(
+                    "Structured tool invocation bypassed or failed (%s). Falling back to direct JSON prompt...", tool_err
                 )
                 json_prompt = (
                     f"{system_instruction}\n\n"
@@ -130,7 +131,7 @@ class LlmFactory:
                         SystemMessage(content=json_prompt),
                         HumanMessage(content=user_content),
                     ]),
-                    timeout=25.0,
+                    timeout=20.0,
                 )
                 raw_text = raw_res.content if hasattr(raw_res, "content") else str(raw_res)
                 if isinstance(raw_text, list):

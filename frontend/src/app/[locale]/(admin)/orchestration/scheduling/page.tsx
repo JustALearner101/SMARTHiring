@@ -119,6 +119,7 @@ function SchedulingContent() {
   const [status, setStatus] = useState<PlanStatus>("IDLE");
   const [isProcessing, setIsProcessing] = useState(false);
   const [isApprovingPlan, setIsApprovingPlan] = useState(false);
+  const [isDispatching, setIsDispatching] = useState(false);
   const [activePlan, setActivePlan] = useState<ActionPlan | null>(null);
   const [isDisambiguationOpen, setIsDisambiguationOpen] = useState(false);
   const [disambiguationProfiles, setDisambiguationProfiles] = useState<DisambiguationProfile[]>([]);
@@ -235,42 +236,33 @@ function SchedulingContent() {
         }
       }
 
-      // 2. Fallback: Restore any active action plan (either in UNDO_WINDOW or PENDING APPROVAL)
-      try {
-        const plan = await getCurrentActionPlan();
-        if (!cancelled && plan) {
-          if (plan.status === "UNDO_WINDOW") {
-            const expiresAt = plan.undo_expires_at;
-            if (typeof expiresAt === "number" && expiresAt > Date.now()) {
-              const remaining = Math.max(1, Math.ceil((expiresAt - Date.now()) / 1000));
-              setActivePlan(plan);
-              setUndoSeconds(remaining);
-              setStatus("UNDO_WINDOW");
-              pushAudit(
-                "UNDO_BUFFER_STARTED",
-                "Active 60-Second Undo Buffer Restored",
-                `Plan #${plan.id} sedang dalam masa tunda (${remaining} detik tersisa) sebelum pengiriman eksternal.`,
-                "Approval Gate Node",
-                "warning",
-                true
-              );
+      // 2. Fallback: Only restore active plan if NOT scheduling a specific candidate
+      // When a candidateId is present or no planIdParam is specified, page starts in clean IDLE state.
+      if (!candidateId) {
+        try {
+          const plan = await getCurrentActionPlan();
+          if (!cancelled && plan) {
+            if (plan.status === "UNDO_WINDOW") {
+              const expiresAt = plan.undo_expires_at;
+              if (typeof expiresAt === "number" && expiresAt > Date.now()) {
+                const remaining = Math.max(1, Math.ceil((expiresAt - Date.now()) / 1000));
+                setActivePlan(plan);
+                setUndoSeconds(remaining);
+                setStatus("UNDO_WINDOW");
+                pushAudit(
+                  "UNDO_BUFFER_STARTED",
+                  "Active 60-Second Undo Buffer Restored",
+                  `Plan #${plan.id} sedang dalam masa tunda (${remaining} detik tersisa) sebelum pengiriman eksternal.`,
+                  "Approval Gate Node",
+                  "warning",
+                  true
+                );
+              }
             }
-          } else if (plan.status === "PENDING APPROVAL") {
-            setActivePlan(plan);
-            setStatus("PENDING APPROVAL");
-            pushAudit(
-              "PLAN VALIDATED",
-              "Action Plan Awaiting Approval",
-              plan.validator_notes ||
-                `Action plan #${plan.id} untuk ${plan.candidate_name} menunggu persetujuan HR.`,
-              "Approval Gate Node",
-              "warning",
-              true
-            );
           }
+        } catch (error) {
+          console.error("Failed to check active action plan:", error);
         }
-      } catch (error) {
-        console.error("Failed to check active action plan:", error);
       }
     };
 
@@ -279,7 +271,7 @@ function SchedulingContent() {
     return () => {
       cancelled = true;
     };
-  }, [planIdParam, pushAudit]);
+  }, [planIdParam, candidateId, pushAudit]);
 
   // Candidate context from ?candidateId=...
   useEffect(() => {
@@ -358,6 +350,7 @@ function SchedulingContent() {
       const result = await executeCommand({
         command: prompt,
         scenario_id: scenarioId ?? null,
+        candidate_id: targetCandidate?.id ? Number(targetCandidate.id) : undefined,
       });
 
       if (isDisambiguationResult(result)) {
@@ -479,7 +472,11 @@ function SchedulingContent() {
     }
 
     try {
-      const result = await executeCommand({ command: followUpCommand, scenario_id: null });
+      const result = await executeCommand({
+        command: followUpCommand,
+        scenario_id: null,
+        candidate_id: targetCandidate?.id ? Number(targetCandidate.id) : undefined,
+      });
 
       if (isDisambiguationResult(result)) {
         setDisambiguationProfiles(result.profiles);
@@ -670,6 +667,7 @@ function SchedulingContent() {
     const plan = activePlan;
     if (!plan) return;
 
+    setIsDispatching(true);
     try {
       const executedPlan = await approveActionPlan(plan.id, {
         approved_by: "HR Admin (You)",
@@ -678,6 +676,7 @@ function SchedulingContent() {
       });
       setActivePlan(executedPlan);
       setStatus("EXECUTED");
+      setIsDispatching(false);
       void queryClient.invalidateQueries({ queryKey: ["candidates"] });
       void queryClient.invalidateQueries({ queryKey: ["notifications"] });
       void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
@@ -706,7 +705,10 @@ function SchedulingContent() {
       showSuccess("Terkirim", "Pesan dan jadwal wawancara berhasil dikirimkan ke semua pihak.");
     } catch (error) {
       console.error("Failed to dispatch action plan:", error);
-      showError("Gagal Mengirimkan", "Terjadi kesalahan saat mengirimkan jadwal wawancara.");
+      finalizedRef.current = false;
+      setIsDispatching(false);
+      const errMsg = error instanceof Error ? error.message : "Terjadi kesalahan saat mengirimkan jadwal wawancara.";
+      showError("Gagal Mengirimkan", errMsg);
     }
   };
 
@@ -756,6 +758,7 @@ function SchedulingContent() {
   // 7. Reset to Clean Idle State
   const handleReset = () => {
     finalizedRef.current = false;
+    setIsDispatching(false);
     setStatus("IDLE");
     setActivePlan(null);
     setAuditLogs([]);
@@ -857,6 +860,7 @@ function SchedulingContent() {
             initialSeconds={undoSeconds}
             onUndo={handleUndo}
             onDispatchImmediately={handleDispatchImmediately}
+            isDispatching={isDispatching}
           />
         </div>
       )}

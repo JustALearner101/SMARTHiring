@@ -68,7 +68,9 @@ heketon_mcp = FastMCP(
         "(3) Jangan pernah memanggil approve_action_plan pada giliran yang sama dengan pembuatan draf—"
         "sajikan Confirmation Card terlebih dahulu dan tunggu persetujuan manusia pada giliran berikutnya; "
         "(4) Jika is_high_impact=True, minta konfirmasi eksplisit pengguna sebelum menyetujui; "
-        "(5) Role INTERVIEWER tidak berwenang melihat gaji atau menyetujui rencana aksi."
+        "(5) Role INTERVIEWER tidak berwenang melihat gaji atau menyetujui rencana aksi; "
+        "(6) Jangan tertukar mencari entitas: panggil get_candidate_profile untuk pelamar/kandidat ATS, "
+        "dan panggil search_contacts untuk karyawan/pewawancara internal."
     ),
     transport_security=TransportSecuritySettings(
         enable_dns_rebinding_protection=_enable_rebinding_protection,
