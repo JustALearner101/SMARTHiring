@@ -34,14 +34,29 @@ export default function AudioWavePlayer({
   const resolvedAudioSrc = React.useMemo(() => {
     if (!audioStreamUrl) return "";
     let src = audioStreamUrl;
+    if (typeof window === "undefined") return src;
+
+    const baseApi = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+
     if (src.startsWith("/")) {
-      const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1").replace(/\/api\/v1\/?$/, "");
-      src = `${apiBase}${src}`;
+      if (baseApi.startsWith("http://") || baseApi.startsWith("https://")) {
+        const apiBase = baseApi.replace(/\/api\/v1\/?$/, "");
+        src = `${apiBase}${src}`;
+      }
     }
-    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+
+    const token = localStorage.getItem("auth_token");
     if (token && !src.includes("token=")) {
-      const sep = src.includes("?") ? "&" : "?";
-      if (new URL(src, window.location.origin).origin === new URL(process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1").origin) src = `${src}${sep}token=${encodeURIComponent(token)}`;
+      try {
+        const streamOrigin = new URL(src, window.location.origin).origin;
+        const apiOrigin = new URL(baseApi, window.location.origin).origin;
+        if (streamOrigin === apiOrigin || streamOrigin === window.location.origin) {
+          const sep = src.includes("?") ? "&" : "?";
+          src = `${src}${sep}token=${encodeURIComponent(token)}`;
+        }
+      } catch (err) {
+        console.warn("Failed to parse audio stream URL origin:", err);
+      }
     }
     return src;
   }, [audioStreamUrl]);
