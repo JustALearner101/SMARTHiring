@@ -137,15 +137,15 @@ export default function CalendarMatrixView({
       {/* Top Controls: Interviewer Selector & Week Navigation & Live Sync Indicator */}
       <div className="flex flex-col gap-4 border-b border-gray-100 pb-4 dark:border-gray-800 lg:flex-row lg:items-center lg:justify-between">
         {/* Left: Dynamic Interviewer Filter */}
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="text-xs font-bold text-gray-700 dark:text-gray-300">
+        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3 w-full lg:w-auto min-w-0">
+          <label className="text-xs font-bold text-gray-700 dark:text-gray-300 shrink-0">
             Pewawancara:
           </label>
           <select
             value={currentInterviewer?.id || ""}
             onChange={(e) => handleInterviewerChange(e.target.value)}
             disabled={interviewerOptions.length === 0}
-            className="rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-xs font-bold text-brand-700 shadow-theme-xs focus:border-brand-500 focus:outline-hidden disabled:opacity-60 dark:border-gray-800 dark:bg-gray-800 dark:text-brand-300"
+            className="w-full sm:w-auto max-w-full sm:max-w-md truncate rounded-xl border border-gray-200 bg-white px-3 py-2 sm:py-1.5 text-xs font-bold text-brand-700 shadow-theme-xs focus:border-brand-500 focus:outline-hidden disabled:opacity-60 dark:border-gray-800 dark:bg-gray-800 dark:text-brand-300"
           >
             {interviewerOptions.length === 0 ? (
               <option value="">Memuat data pewawancara...</option>

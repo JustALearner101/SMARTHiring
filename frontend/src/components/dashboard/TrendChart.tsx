@@ -22,6 +22,7 @@ export function TrendChart({ data }: TrendChartProps) {
       fontFamily: "Outfit, sans-serif",
       type: "area",
       height: 240,
+      width: "100%",
       toolbar: { show: false },
     },
     colors: ["#465fff"],
@@ -80,7 +81,7 @@ export function TrendChart({ data }: TrendChartProps) {
   ];
 
   return (
-    <div className="h-full rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
+    <div className="h-full rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900 overflow-hidden">
       <div className="flex items-center justify-between pb-2">
         <div>
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -92,12 +93,13 @@ export function TrendChart({ data }: TrendChartProps) {
         </div>
       </div>
 
-      <div className="mt-2 -ms-4">
+      <div className="mt-2 -ms-4 max-w-full overflow-hidden">
         <ReactApexChart
           options={options}
           series={series}
           type="area"
           height={240}
+          width="100%"
         />
       </div>
     </div>

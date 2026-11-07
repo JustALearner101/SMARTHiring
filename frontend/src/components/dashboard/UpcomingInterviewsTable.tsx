@@ -12,7 +12,7 @@ interface UpcomingInterviewsTableProps {
 
 export function UpcomingInterviewsTable({ interviews }: UpcomingInterviewsTableProps) {
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
+    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 md:p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
       <div className="flex items-center justify-between pb-4 border-b border-gray-100 dark:border-gray-800">
         <div className="flex items-center gap-2.5">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
@@ -44,14 +44,14 @@ export function UpcomingInterviewsTable({ interviews }: UpcomingInterviewsTableP
         </div>
       ) : (
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full text-start">
+          <table className="w-full min-w-[600px] text-start">
             <thead>
               <tr className="border-b border-gray-100 dark:border-gray-800 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                <th className="py-3 pe-4 text-start">Candidate</th>
-                <th className="py-3 pe-4 text-start">Position</th>
-                <th className="py-3 pe-4 text-start">Interviewer</th>
-                <th className="py-3 pe-4 text-start">Time</th>
-                <th className="py-3 text-start">Platform</th>
+                <th className="py-3 pe-4 text-start whitespace-nowrap">Candidate</th>
+                <th className="py-3 pe-4 text-start whitespace-nowrap">Position</th>
+                <th className="py-3 pe-4 text-start whitespace-nowrap">Interviewer</th>
+                <th className="py-3 pe-4 text-start whitespace-nowrap">Time</th>
+                <th className="py-3 text-start whitespace-nowrap">Platform</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-sm">

@@ -281,26 +281,165 @@ export default function SessionTable({
 
  {/* Sessions Table - 6 Streamlined Columns */}
  <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xs dark:border-gray-800 dark:bg-gray-900">
- <div className="overflow-x-auto">
- <Table className="w-full table-fixed">
+ {/* 1. Mobile Card List View (< md) */}
+ <div className="block md:hidden divide-y divide-gray-100 dark:divide-gray-800">
+ {isLoading ? (
+ <div className="py-12 text-center text-xs text-gray-400">
+ Loading interview sessions from database...
+ </div>
+ ) : filteredSessions.length === 0 ? (
+ <div className="py-12 text-center text-xs text-gray-400">
+ No interview sessions found matching current filter
+ </div>
+ ) : (
+ filteredSessions.map((session) => {
+ const actionCfg = getReviewActionConfig(session);
+ const canDeleteUndecided =
+ Boolean(onDeleteSession) &&
+ !session.hr_decision &&
+ (currentRole === "HR" ||
+ currentRole === "ADMIN" ||
+ (Boolean(currentUserId) && session.interviewer_id === currentUserId));
+
+ return (
+ <div key={session.id} className="p-4 space-y-3">
+ {/* Header: Candidate Info & Status */}
+ <div className="flex items-start justify-between gap-2.5">
+ <div className="flex items-center gap-2.5 min-w-0">
+ <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-50 font-bold text-xs text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
+ {session.candidate_name
+ .split(" ")
+ .map((n) => n[0])
+ .slice(0, 2)
+ .join("")}
+ </div>
+ <div className="min-w-0">
+ <span className="font-semibold text-xs text-gray-900 dark:text-white block truncate">
+ {session.candidate_name}
+ </span>
+ <span className="font-mono text-[11px] text-gray-500 dark:text-gray-400 block">
+ {session.candidate_code}
+ </span>
+ </div>
+ </div>
+ <div className="shrink-0">
+ {renderPipelineStatus(session)}
+ </div>
+ </div>
+
+ {/* Position & Round */}
+ <div className="text-xs">
+ <span className="font-medium text-gray-800 dark:text-gray-200 block truncate">
+ {session.position}
+ </span>
+ <span className="text-[11px] text-gray-500 dark:text-gray-400 block truncate" title={session.round_name}>
+ {session.round_name}
+ </span>
+ </div>
+
+ {/* Info Grid: Interviewer & Recording */}
+ <div className="grid grid-cols-2 gap-2.5 rounded-xl bg-gray-50/80 p-2.5 dark:bg-gray-800/40 border border-gray-100 dark:border-gray-800">
+ <div className="min-w-0">
+ <span className="text-[10px] font-semibold uppercase text-gray-400 block">
+ Interviewer
+ </span>
+ <p className="text-xs font-medium text-gray-900 dark:text-white truncate">
+ {session.interviewer_name}
+ </p>
+ <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
+ {session.interviewer_role}
+ </p>
+ </div>
+
+ <div>
+ <span className="text-[10px] font-semibold uppercase text-gray-400 block">
+ Recorded
+ </span>
+ <div className="inline-flex items-center gap-1 font-mono text-xs text-gray-700 dark:text-gray-300">
+ <AudioIcon className="text-brand-500 text-xs shrink-0" />
+ <span>{session.audio_duration || "00:00"}</span>
+ </div>
+ <span className="block text-[10px] text-gray-500 dark:text-gray-400">
+ {formatWibShort(session.scheduled_at)}
+ </span>
+ </div>
+ </div>
+
+ {/* Actions */}
+ <div className="flex items-center justify-end gap-2 pt-1">
+ {session.consent_status === "GRANTED" ? (
+ session.job_status === "COMPLETED" ? (
+ <Link
+ href={`/interviews/review?id=${session.id}`}
+ className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold whitespace-nowrap transition-all shadow-theme-xs ${actionCfg.className}`}
+ >
+ <DocsIcon />
+ <span>{actionCfg.label}</span>
+ </Link>
+ ) : (
+ <span className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-brand-200 bg-brand-50/50 px-3 py-2 text-xs font-semibold text-brand-600 dark:border-brand-500/20 dark:bg-brand-500/5 dark:text-brand-400">
+ <TimeIcon className="animate-spin text-xs" />
+ <span>Processing...</span>
+ </span>
+ )
+ ) : (
+ <span className="flex-1 text-center py-2 text-[11px] text-gray-400 italic">
+ Consent Blocked
+ </span>
+ )}
+
+ {(currentRole === "HR" || currentRole === "ADMIN") &&
+ session.hr_decision?.decision === "ADVANCE" &&
+ session.hr_decision?.next_stage === "NEXT_INTERVIEW" &&
+ session.hr_decision?.workflow_status !== "PENDING_HR_FOLLOWUP" && (
+ <Link
+ href={`/orchestration/scheduling?candidateId=${session.candidate_id}`}
+ className="inline-flex items-center justify-center gap-1 rounded-xl border border-warning-300 bg-warning-50 px-3 py-2 text-xs font-semibold text-warning-800 hover:bg-warning-100 dark:border-warning-500/30 dark:bg-warning-500/15 dark:text-warning-300 shadow-theme-xs"
+ title="Jadwalkan ronde interview berikutnya"
+ >
+ <BoltIcon />
+ <span>Next</span>
+ </Link>
+ )}
+
+ {canDeleteUndecided && (
+ <button
+ type="button"
+ onClick={() => setDeleteTarget(session)}
+ className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-error-200 bg-error-50/60 text-error-600 transition-colors hover:bg-error-100 dark:border-error-500/25 dark:bg-error-500/10 dark:text-error-400 dark:hover:bg-error-500/20"
+ title="Hapus sesi wawancara (hanya diizinkan sebelum ada keputusan)"
+ >
+ <TrashBinIcon />
+ </button>
+ )}
+ </div>
+ </div>
+ );
+ })
+ )}
+ </div>
+
+ {/* 2. Desktop Table View (>= md) */}
+ <div className="hidden md:block overflow-x-auto">
+ <Table className="w-full min-w-[950px] table-fixed">
  <TableHeader className="border-b border-gray-100 bg-gray-50/50 dark:border-gray-800 dark:bg-gray-800/40">
  <TableRow>
- <TableCell isHeader className="w-[19%] py-3.5 ps-5 pe-4 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+ <TableCell isHeader className="w-[19%] py-3.5 ps-5 pe-4 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap">
  Candidate
  </TableCell>
- <TableCell isHeader className="w-[19%] py-3.5 px-4 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+ <TableCell isHeader className="w-[19%] py-3.5 px-4 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap">
  Position &amp; Round
  </TableCell>
- <TableCell isHeader className="w-[15%] py-3.5 px-4 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+ <TableCell isHeader className="w-[15%] py-3.5 px-4 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap">
  Interviewer
  </TableCell>
- <TableCell isHeader className="w-[11%] py-3.5 px-4 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+ <TableCell isHeader className="w-[11%] py-3.5 px-4 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap">
  Recorded
  </TableCell>
- <TableCell isHeader className="w-[18%] py-3.5 px-4 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+ <TableCell isHeader className="w-[18%] py-3.5 px-4 text-start text-[11px] font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap">
  Status
  </TableCell>
- <TableCell isHeader className="w-[18%] py-3.5 ps-4 pe-5 text-end text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+ <TableCell isHeader className="w-[18%] py-3.5 ps-4 pe-5 text-end text-[11px] font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap">
  Action
  </TableCell>
  </TableRow>

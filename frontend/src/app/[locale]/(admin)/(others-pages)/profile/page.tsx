@@ -6,9 +6,7 @@ import UserMetaCard from "@/components/user-profile/UserMetaCard";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Profile | TailAdmin - Next.js Admin Dashboard Template",
-  description:
-    "Manage your personal information, security settings, and preference on the TailAdmin Profile page.",
+  title: "Profile | SmartHiring",
 };
 
 export default function Profile() {

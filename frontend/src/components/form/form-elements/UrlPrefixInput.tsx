@@ -7,7 +7,7 @@ export default function UrlPrefixInput() {
         http://
       </span>
 
-      <Input type="url" placeholder="www.tailadmin.com" className="ps-[90px]" />
+      <Input type="url" placeholder="www.smartHiring.com" className="ps-[90px]" />
     </div>
   );
 }

@@ -47,10 +47,10 @@ export function PendingApprovals({ items }: PendingApprovalsProps) {
           {items.map((item) => (
             <div
               key={item.id}
-              className="flex items-center justify-between rounded-xl border border-gray-100 p-3.5 transition-colors hover:border-gray-200 dark:border-gray-800 dark:hover:border-gray-700"
+              className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-gray-100 p-3.5 transition-colors hover:border-gray-200 dark:border-gray-800 dark:hover:border-gray-700"
             >
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
+              <div className="space-y-0.5 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-semibold text-sm text-gray-900 dark:text-white">
                     {item.candidate_name}
                   </span>
@@ -60,17 +60,17 @@ export function PendingApprovals({ items }: PendingApprovalsProps) {
                     </Badge>
                   )}
                 </div>
-                <p className="text-xs text-gray-600 dark:text-gray-400">
+                <p className="text-xs text-gray-600 dark:text-gray-400 truncate">
                   {item.position}
                 </p>
-                <p className="text-xs text-brand-600 dark:text-brand-400 font-medium">
+                <p className="text-xs text-brand-600 dark:text-brand-400 font-medium truncate">
                   {item.proposed_slot} · {item.items_count} action
                 </p>
               </div>
 
               <Link
                 href={`/orchestration/scheduling?planId=${item.id}`}
-                className="shrink-0 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-brand-600 transition-colors"
+                className="w-full sm:w-auto text-center shrink-0 rounded-lg bg-brand-500 px-3 py-2 sm:py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-brand-600 transition-colors"
                 title="Review proposed schedule and action items for approval"
               >
                 Review &amp; Approve

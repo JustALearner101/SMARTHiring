@@ -4,7 +4,7 @@ import type React from "react";
 import { useState } from "react";
 
 const CopyInput: React.FC = () => {
-  const [website, setWebsite] = useState("www.tailadmin.com");
+  const [website, setWebsite] = useState("www.SmartHiring.com");
   const [copyText, setCopyText] = useState("Copy");
 
   const copyWebsite = () => {

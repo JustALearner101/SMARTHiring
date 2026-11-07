@@ -47,22 +47,20 @@ export function RecentAuditTrail({ events }: RecentAuditTrailProps) {
           {events.map((ev) => (
             <div
               key={ev.id}
-              className="flex items-center justify-between rounded-xl border border-gray-100 p-3 text-xs dark:border-gray-800"
+              className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-gray-100 p-3 text-xs dark:border-gray-800"
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2.5 min-w-0 flex-wrap">
                 <Badge color={ev.badge_variant} size="sm">
                   {ev.event_type}
                 </Badge>
-                <div>
-                  <span className="font-semibold text-gray-900 dark:text-white">
-                    {ev.title}
-                  </span>
-                  <span className="ms-2 text-gray-500 dark:text-gray-400">
-                    by <strong className="font-medium text-gray-700 dark:text-gray-300">{ev.actor}</strong>
-                  </span>
-                </div>
+                <span className="font-semibold text-gray-900 dark:text-white truncate">
+                  {ev.title}
+                </span>
+                <span className="text-gray-500 dark:text-gray-400 truncate">
+                  by <strong className="font-medium text-gray-700 dark:text-gray-300">{ev.actor}</strong>
+                </span>
               </div>
-              <span className="text-gray-400 shrink-0">
+              <span className="text-gray-400 shrink-0 text-[11px] sm:text-xs">
                 {new Date(ev.timestamp).toLocaleString("id-ID", {
                   day: "numeric",
                   month: "short",

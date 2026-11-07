@@ -62,25 +62,27 @@ export default function CommandBar({
 
       {/* Main Input Form */}
       <form onSubmit={handleSubmit} className="mt-4">
-        <div className="relative flex items-center">
-          <div className="pointer-events-none absolute inset-y-0 start-0 flex items-center ps-4 text-brand-500">
-            <BoltIcon />
+        <div className="flex flex-col gap-2.5 sm:block sm:relative">
+          <div className="relative flex items-center">
+            <div className="pointer-events-none absolute inset-y-0 start-0 flex items-center ps-4 text-brand-500">
+              <BoltIcon />
+            </div>
+            <input
+              type="text"
+              className="w-full rounded-xl border border-gray-200 bg-gray-50/60 ps-12 pe-4 sm:pe-36 py-3.5 text-xs text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:bg-white focus:outline-hidden focus:ring-3 focus:ring-brand-500/15 dark:border-gray-800 dark:bg-gray-800/50 dark:text-white dark:placeholder-gray-500 transition-all font-medium"
+              placeholder="Example: Schedule Rina Kusuma's interview with Mr. Budi for next week..."
+              value={commandText}
+              onChange={(e) => setCommandText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleSubmit(e);
+                }
+              }}
+              disabled={isProcessing}
+            />
           </div>
-          <input
-            type="text"
-            className="w-full rounded-xl border border-gray-200 bg-gray-50/60 ps-12 pe-32 py-3.5 text-xs text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:bg-white focus:outline-hidden focus:ring-3 focus:ring-brand-500/15 dark:border-gray-800 dark:bg-gray-800/50 dark:text-white dark:placeholder-gray-500 transition-all font-medium"
-            placeholder="Example: Schedule Rina Kusuma's interview with Mr. Budi for next week..."
-            value={commandText}
-            onChange={(e) => setCommandText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                handleSubmit(e);
-              }
-            }}
-            disabled={isProcessing}
-          />
-          <div className="absolute inset-y-0 end-2 flex items-center">
+          <div className="w-full sm:absolute sm:inset-y-0 sm:end-2 sm:flex sm:w-auto sm:items-center">
             <Button
               type="button"
               onClick={(e) => {
@@ -89,6 +91,7 @@ export default function CommandBar({
               }}
               variant="primary"
               size="sm"
+              className="w-full justify-center sm:w-auto"
               isLoading={isProcessing}
               disabled={!commandText.trim() || isProcessing}
               startIcon={<ShootingStarIcon className="text-white" />}

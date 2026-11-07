@@ -90,7 +90,7 @@ export function DashboardContent() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full max-w-full overflow-hidden">
       {/* 1. Header Ringkasan */}
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -104,33 +104,41 @@ export function DashboardContent() {
       </div>
 
       {/* 2. KPI Metrics Cards */}
-      <MetricCards metrics={summary?.metrics ?? []} />
+      <div className="w-full min-w-0">
+        <MetricCards metrics={summary?.metrics ?? []} />
+      </div>
 
       {/* 3. Trend Chart & Pipeline Funnel */}
       <div className="grid grid-cols-12 gap-4 md:gap-6">
-        <div className="col-span-12 xl:col-span-7">
+        <div className="col-span-12 xl:col-span-7 min-w-0">
           <TrendChart data={summary?.weekly_trend ?? []} />
         </div>
-        <div className="col-span-12 xl:col-span-5">
+        <div className="col-span-12 xl:col-span-5 min-w-0">
           <PipelineFunnel stages={summary?.pipeline ?? []} />
         </div>
       </div>
 
       {/* 4. Upcoming Interviews */}
-      <UpcomingInterviewsTable interviews={interviews} />
+      <div className="w-full min-w-0">
+        <UpcomingInterviewsTable interviews={interviews} />
+      </div>
 
       {/* 5. Pending Approvals & Active Negotiations */}
       <div className="grid grid-cols-12 gap-4 md:gap-6">
-        <div className="col-span-12 lg:col-span-6">
+        <div className="col-span-12 lg:col-span-6 min-w-0">
           <PendingApprovals items={feed?.pending_approvals ?? []} />
         </div>
-        <div className="col-span-12 lg:col-span-6">
+        <div className="col-span-12 lg:col-span-6 min-w-0">
           <ActiveNegotiations threads={feed?.active_negotiations ?? []} />
         </div>
       </div>
 
       {/* 6. Recent Audit Trail (ADMIN Role only) */}
-      {isAdmin && <RecentAuditTrail events={feed?.recent_audit ?? []} />}
+      {isAdmin && (
+        <div className="w-full min-w-0">
+          <RecentAuditTrail events={feed?.recent_audit ?? []} />
+        </div>
+      )}
     </div>
   );
 }

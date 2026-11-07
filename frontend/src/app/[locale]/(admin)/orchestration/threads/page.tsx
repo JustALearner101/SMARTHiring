@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import { NegotiationThread } from "@/types/orchestration";
 import {
@@ -15,9 +15,12 @@ import ThreadDetailModal from "@/components/orchestration/threads/ThreadDetailMo
 
 export default function TriageThreadsPage() {
   const [threads, setThreads] = useState<NegotiationThread[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [channelFilter, setChannelFilter] = useState("ALL");
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
   const [selectedThread, setSelectedThread] = useState<NegotiationThread | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -26,12 +29,17 @@ export default function TriageThreadsPage() {
     let isCancelled = false;
 
     const loadThreads = async () => {
+      setIsLoading(true);
       try {
-        const page = await listNegotiationThreads({ page_size: 50 });
+        const page = await listNegotiationThreads({ page_size: 100 });
         if (isCancelled) return;
         setThreads(Array.isArray(page?.items) ? page.items : []);
       } catch (error) {
         console.error("Failed to fetch negotiation threads:", error);
+      } finally {
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
       }
     };
 
@@ -43,15 +51,40 @@ export default function TriageThreadsPage() {
   }, []);
 
   // Filter threads
-  const filteredThreads = threads.filter((t) => {
-    const matchesSearch =
-      t.candidate_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.candidate_position.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.interviewer_name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === "ALL" || t.status === statusFilter;
-    const matchesChannel = channelFilter === "ALL" || t.candidate_channel === channelFilter;
-    return matchesSearch && matchesStatus && matchesChannel;
-  });
+  const filteredThreads = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    return threads.filter((t) => {
+      const matchesSearch =
+        !q ||
+        t.candidate_name.toLowerCase().includes(q) ||
+        t.candidate_position.toLowerCase().includes(q) ||
+        t.interviewer_name.toLowerCase().includes(q);
+      const matchesStatus = statusFilter === "ALL" || t.status === statusFilter;
+      const matchesChannel = channelFilter === "ALL" || t.candidate_channel === channelFilter;
+      return matchesSearch && matchesStatus && matchesChannel;
+    });
+  }, [threads, searchQuery, statusFilter, channelFilter]);
+
+  // Paginate filtered threads
+  const paginatedThreads = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredThreads.slice(start, start + pageSize);
+  }, [filteredThreads, currentPage, pageSize]);
+
+  const handleSearchChange = (val: string) => {
+    setSearchQuery(val);
+    setCurrentPage(1);
+  };
+
+  const handleStatusChange = (val: string) => {
+    setStatusFilter(val);
+    setCurrentPage(1);
+  };
+
+  const handleChannelChange = (val: string) => {
+    setChannelFilter(val);
+    setCurrentPage(1);
+  };
 
   const handleOpenThread = (thread: NegotiationThread) => {
     setSelectedThread(thread);
@@ -144,15 +177,24 @@ export default function TriageThreadsPage() {
       <div className="space-y-4">
         <ThreadFilters
           searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
+          onSearchChange={handleSearchChange}
           statusFilter={statusFilter}
-          onStatusChange={setStatusFilter}
+          onStatusChange={handleStatusChange}
           channelFilter={channelFilter}
-          onChannelChange={setChannelFilter}
+          onChannelChange={handleChannelChange}
         />
 
         <ThreadTable
-          threads={filteredThreads}
+          threads={paginatedThreads}
+          totalItems={filteredThreads.length}
+          currentPage={currentPage}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(newSize) => {
+            setPageSize(newSize);
+            setCurrentPage(1);
+          }}
+          isLoading={isLoading}
           onSelectThread={handleOpenThread}
         />
       </div>
